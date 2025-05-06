@@ -1,0 +1,157 @@
+syntax = "proto3";
+
+package cloud.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/auto-np/client/api/cloud/v1";
+
+// Request message for flow key count stream
+message StreamFlowKeyCountRequest {
+  // Source endpoint details
+  Endpoint src = 1;
+
+  // Destination endpoint details
+  Endpoint dst = 2;
+
+  // Direction from source's viewpoint (ingress or egress)
+  string direction = 3;
+
+  // Port number
+  uint32 port = 4;
+
+  // Protocol (TCP, UDP, etc.)
+  string protocol = 5;
+
+  // Whether the connection was allowed
+  bool allowed = 6;
+
+  // Count of times this flow was observed
+  int64 count = 7;
+
+  // When this flow was first seen
+  google.protobuf.Timestamp first_seen = 8;
+
+  // When this flow was last seen
+  google.protobuf.Timestamp last_seen = 9;
+}
+
+// Endpoint definition for source or destination
+message Endpoint {
+  // Namespace
+  string ns = 1;
+
+  // Kind (Deployment, StatefulSet, etc.)
+  string kind = 2;
+
+  // Resource name
+  string name = 3;
+
+  // Digest of labels attached to the resource
+  string label_digest = 4;
+}
+
+// Response message
+message StreamFlowKeyCountResponse {
+  oneof response {
+    // Simple acknowledgment when message is received
+    Ack ack = 1;
+    // Network policy when computation is complete
+    NetworkPolicy network_policy = 2;
+  }
+}
+
+// Simple acknowledgment message
+message Ack {}
+
+// Network policy definition matching Kubernetes NetworkPolicy format
+message NetworkPolicy {
+  // Standard Kubernetes metadata
+  ObjectMeta metadata = 1;
+  NetworkPolicySpec spec = 2;
+}
+
+// Kubernetes ObjectMeta
+message ObjectMeta {
+  string name = 1;
+  string namespace = 2;
+  map<string, string> labels = 3;
+  map<string, string> annotations = 4;
+  string resource_version = 5;
+  string uid = 6;
+}
+
+// NetworkPolicy specification
+message NetworkPolicySpec {
+  // Selects the pods to which this NetworkPolicy object applies
+  LabelSelector pod_selector = 1;
+
+  // List of ingress rules to be applied
+  repeated NetworkPolicyIngressRule ingress = 2;
+
+  // List of egress rules to be applied
+  repeated NetworkPolicyEgressRule egress = 3;
+
+  // List of rule types that the NetworkPolicy relates to
+  // Valid options are ["Ingress"], ["Egress"], or ["Ingress", "Egress"]
+  repeated string policy_types = 4;
+}
+
+// Label selector for Kubernetes resources
+message LabelSelector {
+  map<string, string> match_labels = 1;
+  repeated LabelSelectorRequirement match_expressions = 2;
+}
+
+message LabelSelectorRequirement {
+  string key = 1;
+  string operator = 2; // In, NotIn, Exists, DoesNotExist
+  repeated string values = 3;
+}
+
+// NetworkPolicy ingress rule
+message NetworkPolicyIngressRule {
+  repeated NetworkPolicyPeer from = 1;
+  repeated NetworkPolicyPort ports = 2;
+}
+
+// NetworkPolicy egress rule
+message NetworkPolicyEgressRule {
+  repeated NetworkPolicyPeer to = 1;
+  repeated NetworkPolicyPort ports = 2;
+}
+
+// NetworkPolicy peer
+message NetworkPolicyPeer {
+  // Either pod_selector, namespace_selector, or ip_block should be specified
+  LabelSelector pod_selector = 1;
+  LabelSelector namespace_selector = 2;
+  IPBlock ip_block = 3;
+}
+
+// IP CIDR block specification
+message IPBlock {
+  string cidr = 1;
+  repeated string except = 2;
+}
+
+// NetworkPolicy port rule
+message NetworkPolicyPort {
+  // Protocol is optional; if not specified, applies to all protocols
+  string protocol = 1; // TCP, UDP, SCTP, etc.
+
+  // Port is optional; if not specified, matches all ports
+  oneof port_value {
+    int32 port = 2;
+    string port_name = 3; // Named port on pods
+  }
+
+  // Port range (Kubernetes extension)
+  int32 end_port = 4;
+}
+
+// Service definition with bi-directional streaming RPC
+service StreamService {
+  // Bi-directional streaming RPC
+  rpc StreamFlowKeyCount(stream StreamFlowKeyCountRequest) returns (stream StreamFlowKeyCountResponse) {}
+}
