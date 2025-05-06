@@ -5,6 +5,8 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+
+	v1 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v1"
 )
 
 // This cache needs to hold flowkeys and flowcount for each flowkey.
@@ -18,6 +20,7 @@ type SmartCache struct {
 type FlowKeyCount struct {
 	FlowKey string
 	Count   int64
+	RawFlow *v1.Flow
 }
 
 func InitFlowCache(ctx context.Context, flowChan chan FlowKeyCount) *SmartCache {

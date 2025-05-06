@@ -93,6 +93,11 @@ func NewFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace s
 
 // exportCiliumFlows makes one stream gRPC call to hubble-relay to collect, convert, and export flows into the given stream.
 func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
+
+	// Need to rerwite this now with caching system
+	// We need to calculate the flow key from the flow and then add it to the cache
+	// This flow we need to keep track of is the raw flow from cilium and the count we have seen it.
+	// I dont think we store a flow key in the cache, we can just calcualte it on the fly. Extremely lightweight.
 	req := &observer.GetFlowsRequest{
 		Number: ciliumHubbleRelayMaxFlowCount,
 		Follow: true,
