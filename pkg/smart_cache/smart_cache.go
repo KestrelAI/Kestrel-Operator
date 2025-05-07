@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	v1 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v1"
+	v1 "github.com/cilium/cilium/api/v1/flow"
 )
 
 // This cache needs to hold flowkeys and flowcount for each flowkey.

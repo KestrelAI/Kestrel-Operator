@@ -14,8 +14,9 @@ type FlowSender struct {
 
 func NewFlowSender(logger *zap.Logger, client *grpc.ClientConn) *FlowSender {
 	return &FlowSender{
-		Logger: logger,
-		Client: client,
+		Logger:   logger,
+		Client:   client,
+		flowChan: make(chan smartcache.FlowKeyCount, 100),
 	}
 }
 
@@ -24,7 +25,10 @@ func (s *FlowSender) startFlowSender(flowKey string) error {
 	for {
 		select {
 		case flow := <-s.flowChan:
-			// Send flow here
+			s.Logger.Info("Sending flow to server",
+				zap.String("flowKey", flowKey),
+				zap.Int64("count", flow.Count),
+			)
 		}
 	}
 }
