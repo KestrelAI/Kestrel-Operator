@@ -1,0 +1,8 @@
+apiVersion: v2
+name: autonp-operator
+description: Automatic network policy client that connects to the server with JWT authentication
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: autonp-team

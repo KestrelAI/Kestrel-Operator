@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: SERVER_HOST
+              value: "{{ .Values.server.host }}"
+            - name: SERVER_PORT
+              value: "{{ .Values.server.port }}"
+            - name: SERVER_TLS
+              value: "{{ .Values.server.useTLS }}"
+            - name: AUTH_ENABLED
+              value: "true"
+            {{- if .Values.auth.existingSecret }}
+            - name: JWT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.secretKey }}
+            {{- else }}
+            - name: JWT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-jwt
+                  key: {{ .Values.auth.secretKey }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+{{- if not .Values.auth.existingSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-jwt
+type: Opaque
+data:
+  {{ .Values.auth.secretKey }}: {{ .Values.auth.token | b64enc }}
+{{- end }} 
