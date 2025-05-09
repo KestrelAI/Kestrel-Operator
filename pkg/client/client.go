@@ -4,50 +4,36 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"net/http"
 
-	"github.com/auto-np/client/pkg/k8s_helper"
-	"github.com/golang-jwt/jwt/v4"
+	"operator/pkg/k8s_helper"
+
 	"go.uber.org/zap"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/clientcredentials"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/oauth"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type Credentials struct {
-	ClientID     string
-	ClientSecret string
-}
-
-// ReadK8sSecret takes a secretName and reads the file.
-func ReadCredentialsK8sSecrets(ctx context.Context, logger *zap.Logger, secretName string, podNamespace string) (string, string, error) {
-	// Create a new clientset
+// ReadJWTTokenFromSecret reads a JWT token from a Kubernetes secret
+func ReadJWTTokenFromSecret(ctx context.Context, logger *zap.Logger, secretName string, podNamespace string) (string, error) {
 	clientset, err := k8s_helper.NewClientSet()
 	if err != nil {
 		logger.Error("Failed to create clientSet", zap.Error(err))
-		return "", "", err
+		return "", err
 	}
 
-	// Get the secret
 	secret, err := clientset.CoreV1().Secrets(podNamespace).Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
 		logger.Error("Failed to get secret", zap.Error(err))
-		return "", "", err
+		return "", err
 	}
 
-	// Assuming your secret data has a "client_id" and "client_secret" key.
-	clientID := string(secret.Data["client_id"])
-	if clientID == "" {
-		return "", "", errors.New("clientID not found in secret")
+	token := string(secret.Data["jwt_token"])
+	if token == "" {
+		return "", errors.New("jwt_token not found in secret")
 	}
-	clientSecret := string(secret.Data["client_secret"])
-	if clientSecret == "" {
-		return "", "", errors.New("clientSecret not found in secret")
-	}
-	return clientID, clientSecret, nil
+	return token, nil
 }
 
 func DoesK8sSecretExist(ctx context.Context, logger *zap.Logger, secretName string, podNamespace string) bool {
@@ -68,72 +54,75 @@ func GetTLSConfig(skipTLS bool) *tls.Config {
 	}
 }
 
-func NewGRPCClient(ctx context.Context, logger *zap.Logger, Oauth2Credentials Credentials, tokenURL string, skipTLS bool) (*grpc.ClientConn, error) {
+// Unary interceptor
+func authInterceptor(token string) grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string,
+		req, reply interface{},
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		md := metadata.New(map[string]string{
+			"authorization": "Bearer " + token,
+		})
+		ctx = metadata.NewOutgoingContext(ctx, md)
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
+// Stream interceptor to attach JWT to metadata
+func streamAuthInterceptor(token string) grpc.StreamClientInterceptor {
+	return func(
+		ctx context.Context,
+		desc *grpc.StreamDesc,
+		cc *grpc.ClientConn,
+		method string,
+		streamer grpc.Streamer,
+		opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
+		md := metadata.New(map[string]string{
+			"authorization": "Bearer " + token,
+		})
+		ctx = metadata.NewOutgoingContext(ctx, md)
+		return streamer(ctx, desc, cc, method, opts...)
+	}
+}
+
+// NewGRPCClient creates a new gRPC client connection with authentication
+func NewGRPCClient(ctx context.Context, logger *zap.Logger, serverAddress string, jwtSecretName string, podNamespace string, tenantID string, skipTLS bool) (*grpc.ClientConn, error) {
+	// Read JWT token from Kubernetes secret
+	token, err := ReadJWTTokenFromSecret(ctx, logger, jwtSecretName, podNamespace)
+	if err != nil {
+		logger.Error("Failed to read JWT token from secret",
+			zap.String("secret", jwtSecretName),
+			zap.Error(err))
+		return nil, err
+	}
+
+	// Configure TLS
 	tlsConfig := GetTLSConfig(skipTLS)
-	oauthConfig := clientcredentials.Config{
-		ClientID:     Oauth2Credentials.ClientID,
-		ClientSecret: Oauth2Credentials.ClientSecret,
-		TokenURL:     tokenURL,
-		AuthStyle:    oauth2.AuthStyleInParams,
-	}
-	tokenSource := GetTokenSource(ctx, oauthConfig, tlsConfig)
-	token, err := tokenSource.Token()
-	if err != nil {
-		logger.Error("Error retrieving a valid token", zap.Error(err))
-		return nil, err
+	var transportCreds grpc.DialOption
+	if skipTLS {
+		transportCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
+	} else {
+		transportCreds = grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))
 	}
 
-	claims, err := ParseToken(token.AccessToken)
-	if err != nil {
-		logger.Error("Error parsing token", zap.Error(err))
-		return nil, err
-	}
-
-	aud, err := getFirstAudience(logger, claims)
-	if err != nil {
-		logger.Error("Error pulling audience out of token", zap.Error(err))
-		return nil, err
-	}
-
-	tokenSource = GetTokenSource(ctx, oauthConfig, tlsConfig)
-	creds := credentials.NewTLS(tlsConfig)
+	// Create gRPC connection with interceptors
 	conn, err := grpc.NewClient(
-		aud,
-		grpc.WithTransportCredentials(creds),
-		grpc.WithPerRPCCredentials(oauth.TokenSource{TokenSource: tokenSource}),
+		serverAddress,
+		transportCreds,
+		grpc.WithUnaryInterceptor(authInterceptor(token)),
+		grpc.WithStreamInterceptor(streamAuthInterceptor(token)),
 	)
 	if err != nil {
+		logger.Error("Failed to create gRPC connection",
+			zap.String("server", serverAddress),
+			zap.Error(err))
 		return nil, err
 	}
+
 	return conn, nil
-}
-
-// GetTokenSource returns an OAuth2 token source.
-func GetTokenSource(ctx context.Context, config clientcredentials.Config, tlsConfig *tls.Config) oauth2.TokenSource {
-	return config.TokenSource(context.WithValue(ctx, oauth2.HTTPClient, &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
-	}))
-}
-
-// ParseToken parses the JWT token and returns the claims.
-func ParseToken(tokenString string) (jwt.MapClaims, error) {
-	claims := jwt.MapClaims{}
-	_, _, err := jwt.NewParser().ParseUnverified(tokenString, claims)
-	return claims, err
-}
-
-func getFirstAudience(logger *zap.Logger, claims jwt.MapClaims) (string, error) {
-	aud, ok := claims["aud"].([]interface{})
-	if !ok {
-		return "", errors.New("audience not found in token")
-	}
-
-	firstAudience, ok := aud[0].(string)
-	if !ok {
-		return "", errors.New("first audience not found in token")
-	}
-
-	return firstAudience, nil
 }

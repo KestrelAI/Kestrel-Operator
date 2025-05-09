@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 
-	"github.com/auto-np/client/pkg/client"
+	"operator/pkg/client"
+
 	"go.uber.org/zap"
 )
 
@@ -18,15 +18,11 @@ func main() {
 		log.Fatalf("Failed to create logger: %v", err)
 	}
 
-	credentials := &client.Credentials{
-		ClientID:     os.Getenv("CLIENT_ID"),
-		ClientSecret: os.Getenv("CLIENT_SECRET"),
-	}
 	// Create a context with cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	newgRPCClient, err := client.NewGRPCClient(ctx, logger, *credentials, "https://localhost:8080/oauth/token", false)
+	newgRPCClient, err := client.NewGRPCClient(ctx, logger, "https://localhost:8080/oauth/token", "jwt-secret", "default", "", false)
 	if err != nil {
 		logger.Error("Error creating gRPC client", zap.Error(err))
 		return

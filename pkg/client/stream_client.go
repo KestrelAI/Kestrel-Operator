@@ -3,9 +3,12 @@ package client
 import (
 	"context"
 
-	v1 "github.com/auto-np/client/api/cloud/v1"
-	cilium "github.com/auto-np/client/pkg/cilium"
-	smartcache "github.com/auto-np/client/pkg/smart_cache"
+	v1 "operator/api/cloud/v1"
+
+	cilium "operator/pkg/cilium"
+
+	smartcache "operator/pkg/smart_cache"
+
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -19,13 +22,25 @@ type StreamClient struct {
 func (s *StreamClient) StartOperator(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	flowChan := make(chan smartcache.FlowCount)
+
+	cache := smartcache.InitFlowCache(ctx, flowChan)
+	flowCollector, err := cilium.NewFlowCollector(ctx, s.Logger, "kube-system", cache)
+	if err != nil {
+		s.Logger.Error("Failed to create flow collector", zap.Error(err))
+		return err
+	}
+
+	go flowCollector.ExportCiliumFlows(ctx)
+
 	// Create a new stream service client
 	streamClient := v1.NewStreamServiceClient(s.Client)
 
 	// Define the stream function that will be retried
 	streamFunc := func(ctx context.Context) error {
 		// Start the bidirectional stream
-		stream, err := streamClient.StreamFlowKeyCount(ctx)
+		stream, err := streamClient.StreamData(ctx)
 		if err != nil {
 			s.Logger.Error("Failed to establish stream", zap.Error(err))
 			return err
@@ -45,23 +60,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 				// Handle the response based on its type
 				switch resp := response.Response.(type) {
-				case *v1.StreamFlowKeyCountResponse_Ack:
+				case *v1.StreamDataResponse_Ack:
 					s.Logger.Debug("Received acknowledgment from server")
-				case *v1.StreamFlowKeyCountResponse_NetworkPolicy:
+				case *v1.StreamDataResponse_NetworkPolicy:
 					s.Logger.Info("Received network policy from server", zap.String("name", resp.NetworkPolicy.String()))
 				}
 			}
 		}()
-		flowChan := make(chan smartcache.FlowKeyCount)
-
-		cache := smartcache.InitFlowCache(ctx, flowChan)
-		flowCollector, err := cilium.NewFlowCollector(ctx, s.Logger, "cilium", cache)
-		if err != nil {
-			s.Logger.Error("Failed to create flow collector", zap.Error(err))
-			return err
-		}
-
-		go flowCollector.ExportCiliumFlows(ctx)
 
 		// Wait for stream to end or context cancellation
 		select {

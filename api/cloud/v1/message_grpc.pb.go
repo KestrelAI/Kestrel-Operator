@@ -19,7 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	StreamService_StreamFlowKeyCount_FullMethodName = "/cloud.v1.StreamService/StreamFlowKeyCount"
+	StreamService_StreamData_FullMethodName = "/cloud.v1.StreamService/StreamData"
 )
 
 // StreamServiceClient is the client API for StreamService service.
@@ -27,7 +27,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type StreamServiceClient interface {
 	// Bi-directional streaming RPC
-	StreamFlowKeyCount(ctx context.Context, opts ...grpc.CallOption) (StreamService_StreamFlowKeyCountClient, error)
+	StreamData(ctx context.Context, opts ...grpc.CallOption) (StreamService_StreamDataClient, error)
 }
 
 type streamServiceClient struct {
@@ -38,31 +38,31 @@ func NewStreamServiceClient(cc grpc.ClientConnInterface) StreamServiceClient {
 	return &streamServiceClient{cc}
 }
 
-func (c *streamServiceClient) StreamFlowKeyCount(ctx context.Context, opts ...grpc.CallOption) (StreamService_StreamFlowKeyCountClient, error) {
-	stream, err := c.cc.NewStream(ctx, &StreamService_ServiceDesc.Streams[0], StreamService_StreamFlowKeyCount_FullMethodName, opts...)
+func (c *streamServiceClient) StreamData(ctx context.Context, opts ...grpc.CallOption) (StreamService_StreamDataClient, error) {
+	stream, err := c.cc.NewStream(ctx, &StreamService_ServiceDesc.Streams[0], StreamService_StreamData_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &streamServiceStreamFlowKeyCountClient{stream}
+	x := &streamServiceStreamDataClient{stream}
 	return x, nil
 }
 
-type StreamService_StreamFlowKeyCountClient interface {
-	Send(*StreamFlowKeyCountRequest) error
-	Recv() (*StreamFlowKeyCountResponse, error)
+type StreamService_StreamDataClient interface {
+	Send(*StreamDataRequest) error
+	Recv() (*StreamDataResponse, error)
 	grpc.ClientStream
 }
 
-type streamServiceStreamFlowKeyCountClient struct {
+type streamServiceStreamDataClient struct {
 	grpc.ClientStream
 }
 
-func (x *streamServiceStreamFlowKeyCountClient) Send(m *StreamFlowKeyCountRequest) error {
+func (x *streamServiceStreamDataClient) Send(m *StreamDataRequest) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *streamServiceStreamFlowKeyCountClient) Recv() (*StreamFlowKeyCountResponse, error) {
-	m := new(StreamFlowKeyCountResponse)
+func (x *streamServiceStreamDataClient) Recv() (*StreamDataResponse, error) {
+	m := new(StreamDataResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (x *streamServiceStreamFlowKeyCountClient) Recv() (*StreamFlowKeyCountRespo
 // for forward compatibility
 type StreamServiceServer interface {
 	// Bi-directional streaming RPC
-	StreamFlowKeyCount(StreamService_StreamFlowKeyCountServer) error
+	StreamData(StreamService_StreamDataServer) error
 	mustEmbedUnimplementedStreamServiceServer()
 }
 
@@ -82,8 +82,8 @@ type StreamServiceServer interface {
 type UnimplementedStreamServiceServer struct {
 }
 
-func (UnimplementedStreamServiceServer) StreamFlowKeyCount(StreamService_StreamFlowKeyCountServer) error {
-	return status.Errorf(codes.Unimplemented, "method StreamFlowKeyCount not implemented")
+func (UnimplementedStreamServiceServer) StreamData(StreamService_StreamDataServer) error {
+	return status.Errorf(codes.Unimplemented, "method StreamData not implemented")
 }
 func (UnimplementedStreamServiceServer) mustEmbedUnimplementedStreamServiceServer() {}
 
@@ -98,26 +98,26 @@ func RegisterStreamServiceServer(s grpc.ServiceRegistrar, srv StreamServiceServe
 	s.RegisterService(&StreamService_ServiceDesc, srv)
 }
 
-func _StreamService_StreamFlowKeyCount_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(StreamServiceServer).StreamFlowKeyCount(&streamServiceStreamFlowKeyCountServer{stream})
+func _StreamService_StreamData_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(StreamServiceServer).StreamData(&streamServiceStreamDataServer{stream})
 }
 
-type StreamService_StreamFlowKeyCountServer interface {
-	Send(*StreamFlowKeyCountResponse) error
-	Recv() (*StreamFlowKeyCountRequest, error)
+type StreamService_StreamDataServer interface {
+	Send(*StreamDataResponse) error
+	Recv() (*StreamDataRequest, error)
 	grpc.ServerStream
 }
 
-type streamServiceStreamFlowKeyCountServer struct {
+type streamServiceStreamDataServer struct {
 	grpc.ServerStream
 }
 
-func (x *streamServiceStreamFlowKeyCountServer) Send(m *StreamFlowKeyCountResponse) error {
+func (x *streamServiceStreamDataServer) Send(m *StreamDataResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *streamServiceStreamFlowKeyCountServer) Recv() (*StreamFlowKeyCountRequest, error) {
-	m := new(StreamFlowKeyCountRequest)
+func (x *streamServiceStreamDataServer) Recv() (*StreamDataRequest, error) {
+	m := new(StreamDataRequest)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -133,8 +133,8 @@ var StreamService_ServiceDesc = grpc.ServiceDesc{
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "StreamFlowKeyCount",
-			Handler:       _StreamService_StreamFlowKeyCount_Handler,
+			StreamName:    "StreamData",
+			Handler:       _StreamService_StreamData_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

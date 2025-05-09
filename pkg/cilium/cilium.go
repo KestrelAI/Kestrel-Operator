@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/auto-np/client/pkg/k8s_helper"
-	smartcache "github.com/auto-np/client/pkg/smart_cache"
+	"operator/pkg/k8s_helper"
+
+	smartcache "operator/pkg/smart_cache"
+
 	flow "github.com/cilium/cilium/api/v1/flow"
 	observer "github.com/cilium/cilium/api/v1/observer"
 	"go.uber.org/zap"
@@ -20,37 +22,6 @@ const (
 	ciliumHubbleRelayMaxFlowCount uint64 = 100
 	ciliumHubbleRelayServiceName  string = "hubble-relay"
 )
-
-// FlowKey represents a unique identifier for a network flow
-type FlowKey struct {
-	SourceNamespace      string
-	SourceKind           string
-	SourceName           string
-	DestinationNamespace string
-	DestinationKind      string
-	DestinationName      string
-	SourcePort           uint32
-	DestinationPort      uint32
-	Protocol             string
-	Direction            string
-	Verdict              string
-}
-
-// String returns a string representation of the FlowKey
-func (f *FlowKey) String() string {
-	return fmt.Sprintf("%s.%s.%s.%s.%s.%s.%d.%d.%s.%s.%s",
-		f.SourceNamespace,
-		f.SourceKind,
-		f.SourceName,
-		f.DestinationNamespace,
-		f.DestinationKind,
-		f.DestinationName,
-		f.SourcePort,
-		f.DestinationPort,
-		f.Protocol,
-		f.Direction,
-		f.Verdict)
-}
 
 type FlowCollector struct {
 	logger *zap.Logger
@@ -93,11 +64,6 @@ func NewFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace s
 
 // exportCiliumFlows makes one stream gRPC call to hubble-relay to collect, convert, and export flows into the given stream.
 func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
-
-	// Need to rerwite this now with caching system
-	// We need to calculate the flow key from the flow and then add it to the cache
-	// This flow we need to keep track of is the raw flow from cilium and the count we have seen it.
-	// I dont think we store a flow key in the cache, we can just calcualte it on the fly. Extremely lightweight.
 	req := &observer.GetFlowsRequest{
 		Number: ciliumHubbleRelayMaxFlowCount,
 		Follow: true,
@@ -127,28 +93,43 @@ func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
 			return err
 		}
 		flowKey := createFlowKey(flow.GetFlow())
-		count, exists := fm.cache.GetFlowKey(flowKey.String())
+		count, exists := fm.cache.GetFlowKey(*flowKey)
 		if !exists {
-			fm.cache.AddFlowKey(flowKey.String(), 1)
+			fm.cache.AddFlowKey(*flowKey, 1, flow.GetFlow())
 		} else {
-			fm.cache.AddFlowKey(flowKey.String(), count+1)
+			fm.cache.AddFlowKey(*flowKey, count.Count+1, flow.GetFlow())
 		}
 	}
 }
 
 // createFlowKey creates a FlowKey struct from a Cilium flow
-func createFlowKey(flow *flow.Flow) *FlowKey {
-	return &FlowKey{
-		SourceNamespace:      flow.GetSource().GetNamespace(),
-		SourceKind:           flow.GetSource().GetWorkloads()[0].GetKind(),
-		SourceName:           flow.GetSource().GetWorkloads()[0].GetName(),
-		DestinationNamespace: flow.GetDestination().GetNamespace(),
-		DestinationKind:      flow.GetDestination().GetWorkloads()[0].GetKind(),
-		DestinationName:      flow.GetDestination().GetWorkloads()[0].GetName(),
-		SourcePort:           flow.GetL4().GetTCP().GetSourcePort(),
-		DestinationPort:      flow.GetL4().GetTCP().GetDestinationPort(),
-		Protocol:             "TCP", // Temporarily hardcoded until we can determine correct API
-		Direction:            flow.GetTrafficDirection().String(),
-		Verdict:              flow.GetVerdict().String(),
+func createFlowKey(networkFlow *flow.Flow) *smartcache.FlowKey {
+	var protocol string
+	var srcport, dstport uint32
+
+	switch networkFlow.GetL4().GetProtocol().(type) {
+	case *flow.Layer4_TCP:
+		protocol = "TCP"
+		srcport = networkFlow.GetL4().GetTCP().GetSourcePort()
+		dstport = networkFlow.GetL4().GetTCP().GetDestinationPort()
+	case *flow.Layer4_UDP:
+		protocol = "UDP"
+		srcport = networkFlow.GetL4().GetUDP().GetSourcePort()
+		dstport = networkFlow.GetL4().GetUDP().GetDestinationPort()
+	}
+	return &smartcache.FlowKey{
+		SourceIPAddress:      networkFlow.GetIP().GetSource(),
+		SourceNamespace:      networkFlow.GetSource().GetNamespace(),
+		SourceKind:           networkFlow.GetSource().GetWorkloads()[0].GetKind(),
+		SourceName:           networkFlow.GetSource().GetWorkloads()[0].GetName(),
+		DestinationIPAddress: networkFlow.GetIP().GetDestination(),
+		DestinationNamespace: networkFlow.GetDestination().GetNamespace(),
+		DestinationKind:      networkFlow.GetDestination().GetWorkloads()[0].GetKind(),
+		DestinationName:      networkFlow.GetDestination().GetWorkloads()[0].GetName(),
+		SourcePort:           srcport,
+		DestinationPort:      dstport,
+		Protocol:             protocol,
+		Direction:            networkFlow.GetTrafficDirection().String(),
+		Verdict:              networkFlow.GetVerdict().String(),
 	}
 }

@@ -22,8 +22,90 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Request message for flow key count stream
-type StreamFlowKeyCountRequest struct {
+// Request message for flow stream
+type StreamDataRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Request:
+	//
+	//	*StreamDataRequest_Flow
+	//	*StreamDataRequest_NetworkPolicy
+	Request       isStreamDataRequest_Request `protobuf_oneof:"request"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamDataRequest) Reset() {
+	*x = StreamDataRequest{}
+	mi := &file_cloud_v1_message_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamDataRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamDataRequest) ProtoMessage() {}
+
+func (x *StreamDataRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cloud_v1_message_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamDataRequest.ProtoReflect.Descriptor instead.
+func (*StreamDataRequest) Descriptor() ([]byte, []int) {
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *StreamDataRequest) GetRequest() isStreamDataRequest_Request {
+	if x != nil {
+		return x.Request
+	}
+	return nil
+}
+
+func (x *StreamDataRequest) GetFlow() *Flow {
+	if x != nil {
+		if x, ok := x.Request.(*StreamDataRequest_Flow); ok {
+			return x.Flow
+		}
+	}
+	return nil
+}
+
+func (x *StreamDataRequest) GetNetworkPolicy() *NetworkPolicy {
+	if x != nil {
+		if x, ok := x.Request.(*StreamDataRequest_NetworkPolicy); ok {
+			return x.NetworkPolicy
+		}
+	}
+	return nil
+}
+
+type isStreamDataRequest_Request interface {
+	isStreamDataRequest_Request()
+}
+
+type StreamDataRequest_Flow struct {
+	Flow *Flow `protobuf:"bytes,1,opt,name=flow,proto3,oneof"`
+}
+
+type StreamDataRequest_NetworkPolicy struct {
+	NetworkPolicy *NetworkPolicy `protobuf:"bytes,2,opt,name=network_policy,json=networkPolicy,proto3,oneof"`
+}
+
+func (*StreamDataRequest_Flow) isStreamDataRequest_Request() {}
+
+func (*StreamDataRequest_NetworkPolicy) isStreamDataRequest_Request() {}
+
+type Flow struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Source endpoint details
 	Src *Endpoint `protobuf:"bytes,1,opt,name=src,proto3" json:"src,omitempty"`
@@ -47,21 +129,21 @@ type StreamFlowKeyCountRequest struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *StreamFlowKeyCountRequest) Reset() {
-	*x = StreamFlowKeyCountRequest{}
-	mi := &file_cloud_v1_message_proto_msgTypes[0]
+func (x *Flow) Reset() {
+	*x = Flow{}
+	mi := &file_cloud_v1_message_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *StreamFlowKeyCountRequest) String() string {
+func (x *Flow) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*StreamFlowKeyCountRequest) ProtoMessage() {}
+func (*Flow) ProtoMessage() {}
 
-func (x *StreamFlowKeyCountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[0]
+func (x *Flow) ProtoReflect() protoreflect.Message {
+	mi := &file_cloud_v1_message_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -72,68 +154,68 @@ func (x *StreamFlowKeyCountRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use StreamFlowKeyCountRequest.ProtoReflect.Descriptor instead.
-func (*StreamFlowKeyCountRequest) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{0}
+// Deprecated: Use Flow.ProtoReflect.Descriptor instead.
+func (*Flow) Descriptor() ([]byte, []int) {
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *StreamFlowKeyCountRequest) GetSrc() *Endpoint {
+func (x *Flow) GetSrc() *Endpoint {
 	if x != nil {
 		return x.Src
 	}
 	return nil
 }
 
-func (x *StreamFlowKeyCountRequest) GetDst() *Endpoint {
+func (x *Flow) GetDst() *Endpoint {
 	if x != nil {
 		return x.Dst
 	}
 	return nil
 }
 
-func (x *StreamFlowKeyCountRequest) GetDirection() string {
+func (x *Flow) GetDirection() string {
 	if x != nil {
 		return x.Direction
 	}
 	return ""
 }
 
-func (x *StreamFlowKeyCountRequest) GetPort() uint32 {
+func (x *Flow) GetPort() uint32 {
 	if x != nil {
 		return x.Port
 	}
 	return 0
 }
 
-func (x *StreamFlowKeyCountRequest) GetProtocol() string {
+func (x *Flow) GetProtocol() string {
 	if x != nil {
 		return x.Protocol
 	}
 	return ""
 }
 
-func (x *StreamFlowKeyCountRequest) GetAllowed() bool {
+func (x *Flow) GetAllowed() bool {
 	if x != nil {
 		return x.Allowed
 	}
 	return false
 }
 
-func (x *StreamFlowKeyCountRequest) GetCount() int64 {
+func (x *Flow) GetCount() int64 {
 	if x != nil {
 		return x.Count
 	}
 	return 0
 }
 
-func (x *StreamFlowKeyCountRequest) GetFirstSeen() *timestamppb.Timestamp {
+func (x *Flow) GetFirstSeen() *timestamppb.Timestamp {
 	if x != nil {
 		return x.FirstSeen
 	}
 	return nil
 }
 
-func (x *StreamFlowKeyCountRequest) GetLastSeen() *timestamppb.Timestamp {
+func (x *Flow) GetLastSeen() *timestamppb.Timestamp {
 	if x != nil {
 		return x.LastSeen
 	}
@@ -150,14 +232,14 @@ type Endpoint struct {
 	// Resource name
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// Digest of labels attached to the resource
-	LabelDigest   string `protobuf:"bytes,4,opt,name=label_digest,json=labelDigest,proto3" json:"label_digest,omitempty"`
+	Labels        []string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Endpoint) Reset() {
 	*x = Endpoint{}
-	mi := &file_cloud_v1_message_proto_msgTypes[1]
+	mi := &file_cloud_v1_message_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -169,7 +251,7 @@ func (x *Endpoint) String() string {
 func (*Endpoint) ProtoMessage() {}
 
 func (x *Endpoint) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[1]
+	mi := &file_cloud_v1_message_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -182,7 +264,7 @@ func (x *Endpoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Endpoint.ProtoReflect.Descriptor instead.
 func (*Endpoint) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{1}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Endpoint) GetNs() string {
@@ -206,40 +288,40 @@ func (x *Endpoint) GetName() string {
 	return ""
 }
 
-func (x *Endpoint) GetLabelDigest() string {
+func (x *Endpoint) GetLabels() []string {
 	if x != nil {
-		return x.LabelDigest
+		return x.Labels
 	}
-	return ""
+	return nil
 }
 
 // Response message
-type StreamFlowKeyCountResponse struct {
+type StreamDataResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Response:
 	//
-	//	*StreamFlowKeyCountResponse_Ack
-	//	*StreamFlowKeyCountResponse_NetworkPolicy
-	Response      isStreamFlowKeyCountResponse_Response `protobuf_oneof:"response"`
+	//	*StreamDataResponse_Ack
+	//	*StreamDataResponse_NetworkPolicy
+	Response      isStreamDataResponse_Response `protobuf_oneof:"response"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *StreamFlowKeyCountResponse) Reset() {
-	*x = StreamFlowKeyCountResponse{}
-	mi := &file_cloud_v1_message_proto_msgTypes[2]
+func (x *StreamDataResponse) Reset() {
+	*x = StreamDataResponse{}
+	mi := &file_cloud_v1_message_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *StreamFlowKeyCountResponse) String() string {
+func (x *StreamDataResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*StreamFlowKeyCountResponse) ProtoMessage() {}
+func (*StreamDataResponse) ProtoMessage() {}
 
-func (x *StreamFlowKeyCountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[2]
+func (x *StreamDataResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cloud_v1_message_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -250,53 +332,53 @@ func (x *StreamFlowKeyCountResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use StreamFlowKeyCountResponse.ProtoReflect.Descriptor instead.
-func (*StreamFlowKeyCountResponse) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{2}
+// Deprecated: Use StreamDataResponse.ProtoReflect.Descriptor instead.
+func (*StreamDataResponse) Descriptor() ([]byte, []int) {
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *StreamFlowKeyCountResponse) GetResponse() isStreamFlowKeyCountResponse_Response {
+func (x *StreamDataResponse) GetResponse() isStreamDataResponse_Response {
 	if x != nil {
 		return x.Response
 	}
 	return nil
 }
 
-func (x *StreamFlowKeyCountResponse) GetAck() *Ack {
+func (x *StreamDataResponse) GetAck() *Ack {
 	if x != nil {
-		if x, ok := x.Response.(*StreamFlowKeyCountResponse_Ack); ok {
+		if x, ok := x.Response.(*StreamDataResponse_Ack); ok {
 			return x.Ack
 		}
 	}
 	return nil
 }
 
-func (x *StreamFlowKeyCountResponse) GetNetworkPolicy() *NetworkPolicy {
+func (x *StreamDataResponse) GetNetworkPolicy() *NetworkPolicy {
 	if x != nil {
-		if x, ok := x.Response.(*StreamFlowKeyCountResponse_NetworkPolicy); ok {
+		if x, ok := x.Response.(*StreamDataResponse_NetworkPolicy); ok {
 			return x.NetworkPolicy
 		}
 	}
 	return nil
 }
 
-type isStreamFlowKeyCountResponse_Response interface {
-	isStreamFlowKeyCountResponse_Response()
+type isStreamDataResponse_Response interface {
+	isStreamDataResponse_Response()
 }
 
-type StreamFlowKeyCountResponse_Ack struct {
+type StreamDataResponse_Ack struct {
 	// Simple acknowledgment when message is received
 	Ack *Ack `protobuf:"bytes,1,opt,name=ack,proto3,oneof"`
 }
 
-type StreamFlowKeyCountResponse_NetworkPolicy struct {
+type StreamDataResponse_NetworkPolicy struct {
 	// Network policy when computation is complete
 	NetworkPolicy *NetworkPolicy `protobuf:"bytes,2,opt,name=network_policy,json=networkPolicy,proto3,oneof"`
 }
 
-func (*StreamFlowKeyCountResponse_Ack) isStreamFlowKeyCountResponse_Response() {}
+func (*StreamDataResponse_Ack) isStreamDataResponse_Response() {}
 
-func (*StreamFlowKeyCountResponse_NetworkPolicy) isStreamFlowKeyCountResponse_Response() {}
+func (*StreamDataResponse_NetworkPolicy) isStreamDataResponse_Response() {}
 
 // Simple acknowledgment message
 type Ack struct {
@@ -307,7 +389,7 @@ type Ack struct {
 
 func (x *Ack) Reset() {
 	*x = Ack{}
-	mi := &file_cloud_v1_message_proto_msgTypes[3]
+	mi := &file_cloud_v1_message_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -319,7 +401,7 @@ func (x *Ack) String() string {
 func (*Ack) ProtoMessage() {}
 
 func (x *Ack) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[3]
+	mi := &file_cloud_v1_message_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -332,7 +414,7 @@ func (x *Ack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ack.ProtoReflect.Descriptor instead.
 func (*Ack) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{3}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{4}
 }
 
 // Network policy definition matching Kubernetes NetworkPolicy format
@@ -347,7 +429,7 @@ type NetworkPolicy struct {
 
 func (x *NetworkPolicy) Reset() {
 	*x = NetworkPolicy{}
-	mi := &file_cloud_v1_message_proto_msgTypes[4]
+	mi := &file_cloud_v1_message_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -359,7 +441,7 @@ func (x *NetworkPolicy) String() string {
 func (*NetworkPolicy) ProtoMessage() {}
 
 func (x *NetworkPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[4]
+	mi := &file_cloud_v1_message_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -372,7 +454,7 @@ func (x *NetworkPolicy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkPolicy.ProtoReflect.Descriptor instead.
 func (*NetworkPolicy) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{4}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *NetworkPolicy) GetMetadata() *ObjectMeta {
@@ -404,7 +486,7 @@ type ObjectMeta struct {
 
 func (x *ObjectMeta) Reset() {
 	*x = ObjectMeta{}
-	mi := &file_cloud_v1_message_proto_msgTypes[5]
+	mi := &file_cloud_v1_message_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -416,7 +498,7 @@ func (x *ObjectMeta) String() string {
 func (*ObjectMeta) ProtoMessage() {}
 
 func (x *ObjectMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[5]
+	mi := &file_cloud_v1_message_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -429,7 +511,7 @@ func (x *ObjectMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObjectMeta.ProtoReflect.Descriptor instead.
 func (*ObjectMeta) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{5}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ObjectMeta) GetName() string {
@@ -492,7 +574,7 @@ type NetworkPolicySpec struct {
 
 func (x *NetworkPolicySpec) Reset() {
 	*x = NetworkPolicySpec{}
-	mi := &file_cloud_v1_message_proto_msgTypes[6]
+	mi := &file_cloud_v1_message_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -504,7 +586,7 @@ func (x *NetworkPolicySpec) String() string {
 func (*NetworkPolicySpec) ProtoMessage() {}
 
 func (x *NetworkPolicySpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[6]
+	mi := &file_cloud_v1_message_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -517,7 +599,7 @@ func (x *NetworkPolicySpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkPolicySpec.ProtoReflect.Descriptor instead.
 func (*NetworkPolicySpec) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{6}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *NetworkPolicySpec) GetPodSelector() *LabelSelector {
@@ -559,7 +641,7 @@ type LabelSelector struct {
 
 func (x *LabelSelector) Reset() {
 	*x = LabelSelector{}
-	mi := &file_cloud_v1_message_proto_msgTypes[7]
+	mi := &file_cloud_v1_message_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -571,7 +653,7 @@ func (x *LabelSelector) String() string {
 func (*LabelSelector) ProtoMessage() {}
 
 func (x *LabelSelector) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[7]
+	mi := &file_cloud_v1_message_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -584,7 +666,7 @@ func (x *LabelSelector) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LabelSelector.ProtoReflect.Descriptor instead.
 func (*LabelSelector) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{7}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *LabelSelector) GetMatchLabels() map[string]string {
@@ -612,7 +694,7 @@ type LabelSelectorRequirement struct {
 
 func (x *LabelSelectorRequirement) Reset() {
 	*x = LabelSelectorRequirement{}
-	mi := &file_cloud_v1_message_proto_msgTypes[8]
+	mi := &file_cloud_v1_message_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -624,7 +706,7 @@ func (x *LabelSelectorRequirement) String() string {
 func (*LabelSelectorRequirement) ProtoMessage() {}
 
 func (x *LabelSelectorRequirement) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[8]
+	mi := &file_cloud_v1_message_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -637,7 +719,7 @@ func (x *LabelSelectorRequirement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LabelSelectorRequirement.ProtoReflect.Descriptor instead.
 func (*LabelSelectorRequirement) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{8}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *LabelSelectorRequirement) GetKey() string {
@@ -672,7 +754,7 @@ type NetworkPolicyIngressRule struct {
 
 func (x *NetworkPolicyIngressRule) Reset() {
 	*x = NetworkPolicyIngressRule{}
-	mi := &file_cloud_v1_message_proto_msgTypes[9]
+	mi := &file_cloud_v1_message_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -684,7 +766,7 @@ func (x *NetworkPolicyIngressRule) String() string {
 func (*NetworkPolicyIngressRule) ProtoMessage() {}
 
 func (x *NetworkPolicyIngressRule) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[9]
+	mi := &file_cloud_v1_message_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -697,7 +779,7 @@ func (x *NetworkPolicyIngressRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkPolicyIngressRule.ProtoReflect.Descriptor instead.
 func (*NetworkPolicyIngressRule) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{9}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *NetworkPolicyIngressRule) GetFrom() []*NetworkPolicyPeer {
@@ -725,7 +807,7 @@ type NetworkPolicyEgressRule struct {
 
 func (x *NetworkPolicyEgressRule) Reset() {
 	*x = NetworkPolicyEgressRule{}
-	mi := &file_cloud_v1_message_proto_msgTypes[10]
+	mi := &file_cloud_v1_message_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -737,7 +819,7 @@ func (x *NetworkPolicyEgressRule) String() string {
 func (*NetworkPolicyEgressRule) ProtoMessage() {}
 
 func (x *NetworkPolicyEgressRule) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[10]
+	mi := &file_cloud_v1_message_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -750,7 +832,7 @@ func (x *NetworkPolicyEgressRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkPolicyEgressRule.ProtoReflect.Descriptor instead.
 func (*NetworkPolicyEgressRule) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{10}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *NetworkPolicyEgressRule) GetTo() []*NetworkPolicyPeer {
@@ -780,7 +862,7 @@ type NetworkPolicyPeer struct {
 
 func (x *NetworkPolicyPeer) Reset() {
 	*x = NetworkPolicyPeer{}
-	mi := &file_cloud_v1_message_proto_msgTypes[11]
+	mi := &file_cloud_v1_message_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -792,7 +874,7 @@ func (x *NetworkPolicyPeer) String() string {
 func (*NetworkPolicyPeer) ProtoMessage() {}
 
 func (x *NetworkPolicyPeer) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[11]
+	mi := &file_cloud_v1_message_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -805,7 +887,7 @@ func (x *NetworkPolicyPeer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkPolicyPeer.ProtoReflect.Descriptor instead.
 func (*NetworkPolicyPeer) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{11}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *NetworkPolicyPeer) GetPodSelector() *LabelSelector {
@@ -840,7 +922,7 @@ type IPBlock struct {
 
 func (x *IPBlock) Reset() {
 	*x = IPBlock{}
-	mi := &file_cloud_v1_message_proto_msgTypes[12]
+	mi := &file_cloud_v1_message_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -852,7 +934,7 @@ func (x *IPBlock) String() string {
 func (*IPBlock) ProtoMessage() {}
 
 func (x *IPBlock) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[12]
+	mi := &file_cloud_v1_message_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -865,7 +947,7 @@ func (x *IPBlock) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IPBlock.ProtoReflect.Descriptor instead.
 func (*IPBlock) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{12}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *IPBlock) GetCidr() string {
@@ -902,7 +984,7 @@ type NetworkPolicyPort struct {
 
 func (x *NetworkPolicyPort) Reset() {
 	*x = NetworkPolicyPort{}
-	mi := &file_cloud_v1_message_proto_msgTypes[13]
+	mi := &file_cloud_v1_message_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -914,7 +996,7 @@ func (x *NetworkPolicyPort) String() string {
 func (*NetworkPolicyPort) ProtoMessage() {}
 
 func (x *NetworkPolicyPort) ProtoReflect() protoreflect.Message {
-	mi := &file_cloud_v1_message_proto_msgTypes[13]
+	mi := &file_cloud_v1_message_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -927,7 +1009,7 @@ func (x *NetworkPolicyPort) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkPolicyPort.ProtoReflect.Descriptor instead.
 func (*NetworkPolicyPort) Descriptor() ([]byte, []int) {
-	return file_cloud_v1_message_proto_rawDescGZIP(), []int{13}
+	return file_cloud_v1_message_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *NetworkPolicyPort) GetProtocol() string {
@@ -989,8 +1071,12 @@ var File_cloud_v1_message_proto protoreflect.FileDescriptor
 
 const file_cloud_v1_message_proto_rawDesc = "" +
 	"\n" +
-	"\x16cloud/v1/message.proto\x12\bcloud.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd9\x02\n" +
-	"\x19StreamFlowKeyCountRequest\x12$\n" +
+	"\x16cloud/v1/message.proto\x12\bcloud.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x86\x01\n" +
+	"\x11StreamDataRequest\x12$\n" +
+	"\x04flow\x18\x01 \x01(\v2\x0e.cloud.v1.FlowH\x00R\x04flow\x12@\n" +
+	"\x0enetwork_policy\x18\x02 \x01(\v2\x17.cloud.v1.NetworkPolicyH\x00R\rnetworkPolicyB\t\n" +
+	"\arequest\"\xc4\x02\n" +
+	"\x04Flow\x12$\n" +
 	"\x03src\x18\x01 \x01(\v2\x12.cloud.v1.EndpointR\x03src\x12$\n" +
 	"\x03dst\x18\x02 \x01(\v2\x12.cloud.v1.EndpointR\x03dst\x12\x1c\n" +
 	"\tdirection\x18\x03 \x01(\tR\tdirection\x12\x12\n" +
@@ -1000,13 +1086,13 @@ const file_cloud_v1_message_proto_rawDesc = "" +
 	"\x05count\x18\a \x01(\x03R\x05count\x129\n" +
 	"\n" +
 	"first_seen\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tfirstSeen\x127\n" +
-	"\tlast_seen\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\"e\n" +
+	"\tlast_seen\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\"Z\n" +
 	"\bEndpoint\x12\x0e\n" +
 	"\x02ns\x18\x01 \x01(\tR\x02ns\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x12!\n" +
-	"\flabel_digest\x18\x04 \x01(\tR\vlabelDigest\"\x8d\x01\n" +
-	"\x1aStreamFlowKeyCountResponse\x12!\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x16\n" +
+	"\x06labels\x18\x04 \x03(\tR\x06labels\"\x85\x01\n" +
+	"\x12StreamDataResponse\x12!\n" +
 	"\x03ack\x18\x01 \x01(\v2\r.cloud.v1.AckH\x00R\x03ack\x12@\n" +
 	"\x0enetwork_policy\x18\x02 \x01(\v2\x17.cloud.v1.NetworkPolicyH\x00R\rnetworkPolicyB\n" +
 	"\n" +
@@ -1063,9 +1149,10 @@ const file_cloud_v1_message_proto_rawDesc = "" +
 	"\tport_name\x18\x03 \x01(\tH\x00R\bportName\x12\x19\n" +
 	"\bend_port\x18\x04 \x01(\x05R\aendPortB\f\n" +
 	"\n" +
-	"port_value2v\n" +
-	"\rStreamService\x12e\n" +
-	"\x12StreamFlowKeyCount\x12#.cloud.v1.StreamFlowKeyCountRequest\x1a$.cloud.v1.StreamFlowKeyCountResponse\"\x00(\x010\x01B\x85\x01\n" +
+	"port_value2^\n" +
+	"\rStreamService\x12M\n" +
+	"\n" +
+	"StreamData\x12\x1b.cloud.v1.StreamDataRequest\x1a\x1c.cloud.v1.StreamDataResponse\"\x00(\x010\x01B\x85\x01\n" +
 	"\fcom.cloud.v1B\fMessageProtoP\x01Z&github.com/auto-np/client/api/cloud/v1\xa2\x02\x03CXX\xaa\x02\bCloud.V1\xca\x02\bCloud\\V1\xe2\x02\x14Cloud\\V1\\GPBMetadata\xea\x02\tCloud::V1b\x06proto3"
 
 var (
@@ -1080,57 +1167,60 @@ func file_cloud_v1_message_proto_rawDescGZIP() []byte {
 	return file_cloud_v1_message_proto_rawDescData
 }
 
-var file_cloud_v1_message_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_cloud_v1_message_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_cloud_v1_message_proto_goTypes = []any{
-	(*StreamFlowKeyCountRequest)(nil),  // 0: cloud.v1.StreamFlowKeyCountRequest
-	(*Endpoint)(nil),                   // 1: cloud.v1.Endpoint
-	(*StreamFlowKeyCountResponse)(nil), // 2: cloud.v1.StreamFlowKeyCountResponse
-	(*Ack)(nil),                        // 3: cloud.v1.Ack
-	(*NetworkPolicy)(nil),              // 4: cloud.v1.NetworkPolicy
-	(*ObjectMeta)(nil),                 // 5: cloud.v1.ObjectMeta
-	(*NetworkPolicySpec)(nil),          // 6: cloud.v1.NetworkPolicySpec
-	(*LabelSelector)(nil),              // 7: cloud.v1.LabelSelector
-	(*LabelSelectorRequirement)(nil),   // 8: cloud.v1.LabelSelectorRequirement
-	(*NetworkPolicyIngressRule)(nil),   // 9: cloud.v1.NetworkPolicyIngressRule
-	(*NetworkPolicyEgressRule)(nil),    // 10: cloud.v1.NetworkPolicyEgressRule
-	(*NetworkPolicyPeer)(nil),          // 11: cloud.v1.NetworkPolicyPeer
-	(*IPBlock)(nil),                    // 12: cloud.v1.IPBlock
-	(*NetworkPolicyPort)(nil),          // 13: cloud.v1.NetworkPolicyPort
-	nil,                                // 14: cloud.v1.ObjectMeta.LabelsEntry
-	nil,                                // 15: cloud.v1.ObjectMeta.AnnotationsEntry
-	nil,                                // 16: cloud.v1.LabelSelector.MatchLabelsEntry
-	(*timestamppb.Timestamp)(nil),      // 17: google.protobuf.Timestamp
+	(*StreamDataRequest)(nil),        // 0: cloud.v1.StreamDataRequest
+	(*Flow)(nil),                     // 1: cloud.v1.Flow
+	(*Endpoint)(nil),                 // 2: cloud.v1.Endpoint
+	(*StreamDataResponse)(nil),       // 3: cloud.v1.StreamDataResponse
+	(*Ack)(nil),                      // 4: cloud.v1.Ack
+	(*NetworkPolicy)(nil),            // 5: cloud.v1.NetworkPolicy
+	(*ObjectMeta)(nil),               // 6: cloud.v1.ObjectMeta
+	(*NetworkPolicySpec)(nil),        // 7: cloud.v1.NetworkPolicySpec
+	(*LabelSelector)(nil),            // 8: cloud.v1.LabelSelector
+	(*LabelSelectorRequirement)(nil), // 9: cloud.v1.LabelSelectorRequirement
+	(*NetworkPolicyIngressRule)(nil), // 10: cloud.v1.NetworkPolicyIngressRule
+	(*NetworkPolicyEgressRule)(nil),  // 11: cloud.v1.NetworkPolicyEgressRule
+	(*NetworkPolicyPeer)(nil),        // 12: cloud.v1.NetworkPolicyPeer
+	(*IPBlock)(nil),                  // 13: cloud.v1.IPBlock
+	(*NetworkPolicyPort)(nil),        // 14: cloud.v1.NetworkPolicyPort
+	nil,                              // 15: cloud.v1.ObjectMeta.LabelsEntry
+	nil,                              // 16: cloud.v1.ObjectMeta.AnnotationsEntry
+	nil,                              // 17: cloud.v1.LabelSelector.MatchLabelsEntry
+	(*timestamppb.Timestamp)(nil),    // 18: google.protobuf.Timestamp
 }
 var file_cloud_v1_message_proto_depIdxs = []int32{
-	1,  // 0: cloud.v1.StreamFlowKeyCountRequest.src:type_name -> cloud.v1.Endpoint
-	1,  // 1: cloud.v1.StreamFlowKeyCountRequest.dst:type_name -> cloud.v1.Endpoint
-	17, // 2: cloud.v1.StreamFlowKeyCountRequest.first_seen:type_name -> google.protobuf.Timestamp
-	17, // 3: cloud.v1.StreamFlowKeyCountRequest.last_seen:type_name -> google.protobuf.Timestamp
-	3,  // 4: cloud.v1.StreamFlowKeyCountResponse.ack:type_name -> cloud.v1.Ack
-	4,  // 5: cloud.v1.StreamFlowKeyCountResponse.network_policy:type_name -> cloud.v1.NetworkPolicy
-	5,  // 6: cloud.v1.NetworkPolicy.metadata:type_name -> cloud.v1.ObjectMeta
-	6,  // 7: cloud.v1.NetworkPolicy.spec:type_name -> cloud.v1.NetworkPolicySpec
-	14, // 8: cloud.v1.ObjectMeta.labels:type_name -> cloud.v1.ObjectMeta.LabelsEntry
-	15, // 9: cloud.v1.ObjectMeta.annotations:type_name -> cloud.v1.ObjectMeta.AnnotationsEntry
-	7,  // 10: cloud.v1.NetworkPolicySpec.pod_selector:type_name -> cloud.v1.LabelSelector
-	9,  // 11: cloud.v1.NetworkPolicySpec.ingress:type_name -> cloud.v1.NetworkPolicyIngressRule
-	10, // 12: cloud.v1.NetworkPolicySpec.egress:type_name -> cloud.v1.NetworkPolicyEgressRule
-	16, // 13: cloud.v1.LabelSelector.match_labels:type_name -> cloud.v1.LabelSelector.MatchLabelsEntry
-	8,  // 14: cloud.v1.LabelSelector.match_expressions:type_name -> cloud.v1.LabelSelectorRequirement
-	11, // 15: cloud.v1.NetworkPolicyIngressRule.from:type_name -> cloud.v1.NetworkPolicyPeer
-	13, // 16: cloud.v1.NetworkPolicyIngressRule.ports:type_name -> cloud.v1.NetworkPolicyPort
-	11, // 17: cloud.v1.NetworkPolicyEgressRule.to:type_name -> cloud.v1.NetworkPolicyPeer
-	13, // 18: cloud.v1.NetworkPolicyEgressRule.ports:type_name -> cloud.v1.NetworkPolicyPort
-	7,  // 19: cloud.v1.NetworkPolicyPeer.pod_selector:type_name -> cloud.v1.LabelSelector
-	7,  // 20: cloud.v1.NetworkPolicyPeer.namespace_selector:type_name -> cloud.v1.LabelSelector
-	12, // 21: cloud.v1.NetworkPolicyPeer.ip_block:type_name -> cloud.v1.IPBlock
-	0,  // 22: cloud.v1.StreamService.StreamFlowKeyCount:input_type -> cloud.v1.StreamFlowKeyCountRequest
-	2,  // 23: cloud.v1.StreamService.StreamFlowKeyCount:output_type -> cloud.v1.StreamFlowKeyCountResponse
-	23, // [23:24] is the sub-list for method output_type
-	22, // [22:23] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	1,  // 0: cloud.v1.StreamDataRequest.flow:type_name -> cloud.v1.Flow
+	5,  // 1: cloud.v1.StreamDataRequest.network_policy:type_name -> cloud.v1.NetworkPolicy
+	2,  // 2: cloud.v1.Flow.src:type_name -> cloud.v1.Endpoint
+	2,  // 3: cloud.v1.Flow.dst:type_name -> cloud.v1.Endpoint
+	18, // 4: cloud.v1.Flow.first_seen:type_name -> google.protobuf.Timestamp
+	18, // 5: cloud.v1.Flow.last_seen:type_name -> google.protobuf.Timestamp
+	4,  // 6: cloud.v1.StreamDataResponse.ack:type_name -> cloud.v1.Ack
+	5,  // 7: cloud.v1.StreamDataResponse.network_policy:type_name -> cloud.v1.NetworkPolicy
+	6,  // 8: cloud.v1.NetworkPolicy.metadata:type_name -> cloud.v1.ObjectMeta
+	7,  // 9: cloud.v1.NetworkPolicy.spec:type_name -> cloud.v1.NetworkPolicySpec
+	15, // 10: cloud.v1.ObjectMeta.labels:type_name -> cloud.v1.ObjectMeta.LabelsEntry
+	16, // 11: cloud.v1.ObjectMeta.annotations:type_name -> cloud.v1.ObjectMeta.AnnotationsEntry
+	8,  // 12: cloud.v1.NetworkPolicySpec.pod_selector:type_name -> cloud.v1.LabelSelector
+	10, // 13: cloud.v1.NetworkPolicySpec.ingress:type_name -> cloud.v1.NetworkPolicyIngressRule
+	11, // 14: cloud.v1.NetworkPolicySpec.egress:type_name -> cloud.v1.NetworkPolicyEgressRule
+	17, // 15: cloud.v1.LabelSelector.match_labels:type_name -> cloud.v1.LabelSelector.MatchLabelsEntry
+	9,  // 16: cloud.v1.LabelSelector.match_expressions:type_name -> cloud.v1.LabelSelectorRequirement
+	12, // 17: cloud.v1.NetworkPolicyIngressRule.from:type_name -> cloud.v1.NetworkPolicyPeer
+	14, // 18: cloud.v1.NetworkPolicyIngressRule.ports:type_name -> cloud.v1.NetworkPolicyPort
+	12, // 19: cloud.v1.NetworkPolicyEgressRule.to:type_name -> cloud.v1.NetworkPolicyPeer
+	14, // 20: cloud.v1.NetworkPolicyEgressRule.ports:type_name -> cloud.v1.NetworkPolicyPort
+	8,  // 21: cloud.v1.NetworkPolicyPeer.pod_selector:type_name -> cloud.v1.LabelSelector
+	8,  // 22: cloud.v1.NetworkPolicyPeer.namespace_selector:type_name -> cloud.v1.LabelSelector
+	13, // 23: cloud.v1.NetworkPolicyPeer.ip_block:type_name -> cloud.v1.IPBlock
+	0,  // 24: cloud.v1.StreamService.StreamData:input_type -> cloud.v1.StreamDataRequest
+	3,  // 25: cloud.v1.StreamService.StreamData:output_type -> cloud.v1.StreamDataResponse
+	25, // [25:26] is the sub-list for method output_type
+	24, // [24:25] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_cloud_v1_message_proto_init() }
@@ -1138,11 +1228,15 @@ func file_cloud_v1_message_proto_init() {
 	if File_cloud_v1_message_proto != nil {
 		return
 	}
-	file_cloud_v1_message_proto_msgTypes[2].OneofWrappers = []any{
-		(*StreamFlowKeyCountResponse_Ack)(nil),
-		(*StreamFlowKeyCountResponse_NetworkPolicy)(nil),
+	file_cloud_v1_message_proto_msgTypes[0].OneofWrappers = []any{
+		(*StreamDataRequest_Flow)(nil),
+		(*StreamDataRequest_NetworkPolicy)(nil),
 	}
-	file_cloud_v1_message_proto_msgTypes[13].OneofWrappers = []any{
+	file_cloud_v1_message_proto_msgTypes[3].OneofWrappers = []any{
+		(*StreamDataResponse_Ack)(nil),
+		(*StreamDataResponse_NetworkPolicy)(nil),
+	}
+	file_cloud_v1_message_proto_msgTypes[14].OneofWrappers = []any{
 		(*NetworkPolicyPort_Port)(nil),
 		(*NetworkPolicyPort_PortName)(nil),
 	}
@@ -1152,7 +1246,7 @@ func file_cloud_v1_message_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cloud_v1_message_proto_rawDesc), len(file_cloud_v1_message_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

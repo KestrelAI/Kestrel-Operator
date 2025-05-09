@@ -6,8 +6,15 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/auto-np/client/api/cloud/v1";
 
-// Request message for flow key count stream
-message StreamFlowKeyCountRequest {
+// Request message for flow stream
+message StreamDataRequest {
+  oneof request {
+    Flow flow = 1;
+    NetworkPolicy network_policy = 2;
+  }
+}
+
+message Flow {
   // Source endpoint details
   Endpoint src = 1;
 
@@ -48,11 +55,11 @@ message Endpoint {
   string name = 3;
 
   // Digest of labels attached to the resource
-  string label_digest = 4;
+  repeated string labels = 4;
 }
 
 // Response message
-message StreamFlowKeyCountResponse {
+message StreamDataResponse {
   oneof response {
     // Simple acknowledgment when message is received
     Ack ack = 1;
@@ -153,5 +160,5 @@ message NetworkPolicyPort {
 // Service definition with bi-directional streaming RPC
 service StreamService {
   // Bi-directional streaming RPC
-  rpc StreamFlowKeyCount(stream StreamFlowKeyCountRequest) returns (stream StreamFlowKeyCountResponse) {}
+  rpc StreamData(stream StreamDataRequest) returns (stream StreamDataResponse) {}
 }

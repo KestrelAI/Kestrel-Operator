@@ -2,30 +2,73 @@ package smartcache
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
 
+	"maps"
+
 	v1 "github.com/cilium/cilium/api/v1/flow"
 )
 
+//TODO:  I think this cache needs to have an in and out channel to avoid blocking operations.
+
+type FlowData struct {
+	Count int64
+	Flow  *v1.Flow
+}
+
+// FlowKey represents a unique identifier for a network flow
+type FlowKey struct {
+	SourceIPAddress      string
+	SourceNamespace      string
+	SourceKind           string
+	SourceName           string
+	DestinationIPAddress string
+	DestinationNamespace string
+	DestinationKind      string
+	DestinationName      string
+	SourcePort           uint32
+	DestinationPort      uint32
+	Protocol             string
+	Direction            string
+	Verdict              string
+}
+
 // This cache needs to hold flowkeys and flowcount for each flowkey.
 type SmartCache struct {
-	FlowKeys map[string]int64
+	FlowKeys map[FlowKey]FlowData
 	mu       sync.RWMutex
 	stopCh   chan struct{}
-	flowChan chan FlowKeyCount
+	flowChan chan FlowCount
 }
 
-type FlowKeyCount struct {
-	FlowKey string
+type FlowCount struct {
+	FlowKey FlowKey
 	Count   int64
-	RawFlow *v1.Flow
+	Flow    *v1.Flow
 }
 
-func InitFlowCache(ctx context.Context, flowChan chan FlowKeyCount) *SmartCache {
+// String returns a string representation of the FlowKey
+func (f FlowKey) String() string {
+	return fmt.Sprintf("%s.%s.%s.%s.%s.%s.%d.%d.%s.%s.%s",
+		f.SourceNamespace,
+		f.SourceKind,
+		f.SourceName,
+		f.DestinationNamespace,
+		f.DestinationKind,
+		f.DestinationName,
+		f.SourcePort,
+		f.DestinationPort,
+		f.Protocol,
+		f.Direction,
+		f.Verdict)
+}
+
+func InitFlowCache(ctx context.Context, flowChan chan FlowCount) *SmartCache {
 	cache := &SmartCache{
-		FlowKeys: make(map[string]int64),
+		FlowKeys: make(map[FlowKey]FlowData),
 		stopCh:   make(chan struct{}),
 		flowChan: flowChan,
 	}
@@ -65,56 +108,60 @@ func (s *SmartCache) startPurging(ctx context.Context) {
 func (s *SmartCache) purgeCache() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for flowKey, flowCount := range s.FlowKeys {
-		s.flowChan <- FlowKeyCount{FlowKey: flowKey, Count: flowCount}
+	for flowKey, flowData := range s.FlowKeys {
+		s.flowChan <- FlowCount{
+			FlowKey: flowKey,
+			Count:   flowData.Count,
+			Flow:    flowData.Flow,
+		}
 	}
-	s.FlowKeys = make(map[string]int64)
+	s.FlowKeys = make(map[FlowKey]FlowData)
 }
 
 func (s *SmartCache) Stop() {
 	close(s.stopCh)
 }
 
-func (s *SmartCache) AddFlowKey(flowKey string, flowCount int64) {
+func (s *SmartCache) AddFlowKey(flowKey FlowKey, flowCount int64, flow *v1.Flow) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.FlowKeys[flowKey] = flowCount
+	s.FlowKeys[flowKey] = FlowData{
+		Count: flowCount,
+		Flow:  flow,
+	}
 }
 
-func (s *SmartCache) GetFlowKey(flowKey string) (int64, bool) {
+func (s *SmartCache) GetFlowKey(flowKey FlowKey) (FlowData, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	count, exists := s.FlowKeys[flowKey]
-	return count, exists
+	data, exists := s.FlowKeys[flowKey]
+	return data, exists
 }
 
-func (s *SmartCache) RemoveFlowKey(flowKey string) {
+func (s *SmartCache) RemoveFlowKey(flowKey FlowKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.FlowKeys, flowKey)
 }
 
-func (s *SmartCache) GetAllFlowKeys() map[string]int64 {
+func (s *SmartCache) GetAllFlowKeys() map[FlowKey]FlowData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	// Create a copy of the map to prevent concurrent access issues
-	flowKeys := make(map[string]int64, len(s.FlowKeys))
-	for k, v := range s.FlowKeys {
-		flowKeys[k] = v
-	}
+	flowKeys := make(map[FlowKey]FlowData, len(s.FlowKeys))
+	maps.Copy(flowKeys, s.FlowKeys)
 	return flowKeys
 }
 
-func (s *SmartCache) GetFlowCount(flowKey string) int64 {
+func (s *SmartCache) GetFlowCount(flowKey FlowKey) int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.FlowKeys[flowKey]
+	return s.FlowKeys[flowKey].Count
 }
 
-func (s *SmartCache) GetFlowKeys() []string {
+func (s *SmartCache) GetFlowKeys() []FlowKey {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	flowKeys := make([]string, 0, len(s.FlowKeys))
+	flowKeys := make([]FlowKey, 0, len(s.FlowKeys))
 	for flowKey := range s.FlowKeys {
 		flowKeys = append(flowKeys, flowKey)
 	}
