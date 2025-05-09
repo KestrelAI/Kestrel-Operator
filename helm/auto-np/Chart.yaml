@@ -1,8 +1,0 @@
-apiVersion: v2
-name: auto-np
-description: Automatic network policy client that connects to the server with JWT authentication
-type: application
-version: 0.1.0
-appVersion: "0.1.0"
-maintainers:
-  - name: auto-np-team 
