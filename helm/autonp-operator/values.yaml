@@ -1,8 +1,8 @@
-# Default values for auto-np client
+# Default values for autonp-operator client
 replicaCount: 1
 
 image:
-  repository: auto-np-client
+  repository: autonp/operator
   tag: latest
   pullPolicy: IfNotPresent
 
