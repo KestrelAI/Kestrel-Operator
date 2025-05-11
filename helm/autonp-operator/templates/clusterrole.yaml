@@ -17,6 +17,11 @@ rules:
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "list", "watch"]
+    
+  # Allow reading Services for Cilium Hubble integration
+  - apiGroups: [""]
+    resources: ["services", "endpoints"]
+    verbs: ["get", "list", "watch"]
   
   # Allow access to the Cilium APIs
   - apiGroups: ["cilium.io"]
