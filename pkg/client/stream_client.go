@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 
 	v1 "operator/api/cloud/v1"
 	"operator/pkg/cilium"
@@ -11,13 +13,96 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ServerConfig holds the configuration for connecting to the server
+type ServerConfig struct {
+	Host   string
+	Port   int
+	UseTLS bool
+	Token  string
+}
+
+// StreamClient is the client for streaming data to and from the server
 type StreamClient struct {
 	Logger *zap.Logger
 	Client *grpc.ClientConn
+	Config ServerConfig
+}
+
+// NewStreamClient creates a new StreamClient with the given configuration
+func NewStreamClient(logger *zap.Logger, config ServerConfig) (*StreamClient, error) {
+	var opts []grpc.DialOption
+	var creds credentials.TransportCredentials
+
+	// Set up credentials based on TLS configuration
+	if config.UseTLS {
+		// Use TLS credentials
+		creds = credentials.NewClientTLSFromCert(nil, "")
+	} else {
+		// Use insecure credentials
+		creds = insecure.NewCredentials()
+	}
+	opts = append(opts, grpc.WithTransportCredentials(creds))
+
+	// TODO: Add JWT token-based authentication if needed
+	// if config.Token != "" {
+	//     opts = append(opts, grpc.WithPerRPCCredentials(...))
+	// }
+
+	// Create the connection to the server
+	serverAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
+	conn, err := grpc.NewClient(serverAddr, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to server at %s: %w", serverAddr, err)
+	}
+
+	return &StreamClient{
+		Logger: logger,
+		Client: conn,
+		Config: config,
+	}, nil
+}
+
+// LoadConfigFromEnv loads server configuration from environment variables
+func LoadConfigFromEnv() ServerConfig {
+	// Get server configuration from environment variables (set by Helm)
+	host := getEnvOrDefault("SERVER_HOST", "auto-np-server")
+	portStr := getEnvOrDefault("SERVER_PORT", "50051")
+	useTLSStr := getEnvOrDefault("SERVER_USE_TLS", "true")
+	token := getEnvOrDefault("AUTH_TOKEN", "")
+
+	// Parse port as integer
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		port = 50051 // Default port if parsing fails
+	}
+
+	// Parse useTLS as boolean
+	useTLS := true
+	if useTLSStr == "false" {
+		useTLS = false
+	}
+
+	return ServerConfig{
+		Host:   host,
+		Port:   port,
+		UseTLS: useTLS,
+		Token:  token,
+	}
+}
+
+// Helper function to get environment variable with default value
+func getEnvOrDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
 }
 
 // startOperator starts the operator and begins to stream data to the server and listens to cilium flows.

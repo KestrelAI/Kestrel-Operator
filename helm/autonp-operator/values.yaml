@@ -23,7 +23,6 @@ auth:
   token: ""
   # If using a secret instead of direct token value
   existingSecret: ""
-  secretKey: "jwt-token"
 
 # Resource limits and requests
 resources:

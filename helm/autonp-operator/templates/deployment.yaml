@@ -19,30 +19,36 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            # Server connection configuration
             - name: SERVER_HOST
               value: "{{ .Values.server.host }}"
             - name: SERVER_PORT
               value: "{{ .Values.server.port }}"
-            - name: SERVER_TLS
+            - name: SERVER_USE_TLS
               value: "{{ .Values.server.useTLS }}"
-            - name: AUTH_ENABLED
-              value: "true"
-            {{- if .Values.auth.existingSecret }}
-            - name: JWT_TOKEN
+            
+            # Pod namespace for self-identification
+            - name: POD_NAMESPACE
               valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.auth.existingSecret }}
-                  key: {{ .Values.auth.secretKey }}
-            {{- else }}
-            - name: JWT_TOKEN
+                fieldRef:
+                  fieldPath: metadata.namespace
+                  
+            # JWT Authentication configuration
+            {{- if .Values.auth.existingSecret }}
+            - name: AUTH_SECRET_NAME
+              value: "{{ .Values.auth.existingSecret }}"
+            - name: AUTH_SECRET_KEY
+              value: "{{ .Values.auth.secretKey | default "token" }}"
+            {{- else if .Values.auth.token }}
+            - name: AUTH_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ .Release.Name }}-jwt
-                  key: {{ .Values.auth.secretKey }}
+                  key: token
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-{{- if not .Values.auth.existingSecret }}
+{{- if and (not .Values.auth.existingSecret) .Values.auth.token }}
 ---
 apiVersion: v1
 kind: Secret
@@ -50,5 +56,5 @@ metadata:
   name: {{ .Release.Name }}-jwt
 type: Opaque
 data:
-  {{ .Values.auth.secretKey }}: {{ .Values.auth.token | b64enc }}
+  token: {{ .Values.auth.token | b64enc }}
 {{- end }} 

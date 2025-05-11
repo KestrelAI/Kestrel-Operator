@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"os"
 
 	"operator/pkg/auth"
 	"operator/pkg/k8s_helper"
@@ -14,6 +15,12 @@ import (
 
 // ReadJWTTokenFromSecret reads a JWT token from a Kubernetes secret
 func ReadJWTTokenFromSecret(ctx context.Context, logger *zap.Logger, secretName string, podNamespace string) (string, error) {
+	// Get the secret key name from environment or use default
+	secretKey := os.Getenv("AUTH_SECRET_KEY")
+	if secretKey == "" {
+		secretKey = "token"
+	}
+
 	clientset, err := k8s_helper.NewClientSet()
 	if err != nil {
 		logger.Error("Failed to create clientSet", zap.Error(err))
@@ -28,8 +35,13 @@ func ReadJWTTokenFromSecret(ctx context.Context, logger *zap.Logger, secretName 
 
 	token := string(secret.Data["jwt_token"])
 	if token == "" {
-		return "", errors.New("jwt_token not found in secret")
+		logger.Error("JWT token not found in secret",
+			zap.String("secretName", secretName),
+			zap.String("namespace", podNamespace),
+			zap.String("expectedKey", secretKey))
+		return "", errors.New("JWT token not found in secret")
 	}
+
 	return token, nil
 }
 
