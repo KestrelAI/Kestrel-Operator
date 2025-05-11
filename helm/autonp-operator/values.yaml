@@ -18,11 +18,9 @@ server:
 
 # JWT Authentication configuration
 auth:
-  # JWT token for authentication with the server
-  # In production, use a secret instead of embedding the token directly
-  token: ""
   # If using a secret instead of direct token value
   existingSecret: ""
+  secretKey: "token"
 
 # Resource limits and requests
 resources:
