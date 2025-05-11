@@ -2,10 +2,11 @@ package auth
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
-	"os"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
@@ -13,14 +14,6 @@ import (
 // Config represents authentication configuration
 type Config struct {
 	Token string
-}
-
-// LoadConfigFromEnv loads auth config from environment variables
-func LoadConfigFromEnv() Config {
-	token := os.Getenv("JWT_TOKEN")
-	return Config{
-		Token: token,
-	}
 }
 
 // GetAuthInterceptor returns a gRPC client interceptor that adds JWT token to requests
@@ -54,13 +47,23 @@ func GetStreamAuthInterceptor(config Config) grpc.StreamClientInterceptor {
 	}
 }
 
+// GetTLSConfig returns a TLS configuration.
+func GetTLSConfig(skipTLS bool) *tls.Config {
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: skipTLS,
+	}
+}
+
 // CreateDialOptions creates gRPC dial options with or without TLS and authentication
 func CreateDialOptions(config Config, useTLS bool) []grpc.DialOption {
 	var opts []grpc.DialOption
-
+	tlsConfig := GetTLSConfig(useTLS)
 	// Handle TLS - using insecure for simplicity, but should use proper TLS in production
 	if !useTLS {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	}
 
 	// Add auth interceptors

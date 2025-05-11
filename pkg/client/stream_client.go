@@ -2,15 +2,17 @@ package client
 
 import (
 	"context"
+	"fmt"
 
 	v1 "operator/api/cloud/v1"
-
-	cilium "operator/pkg/cilium"
-
+	"operator/pkg/cilium"
+	"operator/pkg/ingestion"
 	smartcache "operator/pkg/smart_cache"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type StreamClient struct {
@@ -23,16 +25,25 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Create a channel for flow data
 	flowChan := make(chan smartcache.FlowCount)
 
+	// Initialize flow cache
 	cache := smartcache.InitFlowCache(ctx, flowChan)
+
+	// Set up the flow collector to monitor Cilium flows
 	flowCollector, err := cilium.NewFlowCollector(ctx, s.Logger, "kube-system", cache)
 	if err != nil {
 		s.Logger.Error("Failed to create flow collector", zap.Error(err))
 		return err
 	}
 
-	go flowCollector.ExportCiliumFlows(ctx)
+	// Set up network policy ingestion
+	networkPolicyIngester, err := ingestion.NewNetworkPolicyIngester()
+	if err != nil {
+		s.Logger.Error("Failed to create network policy ingester", zap.Error(err))
+		return err
+	}
 
 	// Create a new stream service client
 	streamClient := v1.NewStreamServiceClient(s.Client)
@@ -46,24 +57,121 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			return err
 		}
 
+		// First, fetch and send current network policies
+		s.Logger.Info("Fetching current network policies from the cluster")
+		policies, err := networkPolicyIngester.IngestNetworkPolicies(ctx)
+		if err != nil {
+			s.Logger.Error("Failed to ingest network policies", zap.Error(err))
+			return err
+		}
+
+		// Send initial network policies to the server
+		for _, policy := range policies {
+			// Check context before each send
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			// Convert to proto message and send
+			policyMsg := &v1.StreamDataRequest{
+				Request: &v1.StreamDataRequest_NetworkPolicy{
+					NetworkPolicy: convertToProtoNetworkPolicy(policy),
+				},
+			}
+			if err := stream.Send(policyMsg); err != nil {
+				s.Logger.Error("Failed to send network policy", zap.Error(err))
+				return err
+			}
+		}
+		s.Logger.Info("Sent initial network policies to server", zap.Int("count", len(policies)))
+
+		// Start exporting Cilium flows with context
+		flowCtx, flowCancel := context.WithCancel(ctx)
+		defer flowCancel() // Ensure flowCollector stops if this function exits
+
+		go func() {
+			// If ExportCiliumFlows returns, consider it an error and cancel the parent context
+			err := flowCollector.ExportCiliumFlows(flowCtx)
+			if err != nil && flowCtx.Err() == nil {
+				s.Logger.Error("Flow collector failed unexpectedly", zap.Error(err))
+				flowCancel() // Cancel this context to signal other components
+			}
+		}()
+		s.Logger.Info("Started exporting Cilium flows")
+
 		// Create a channel to handle stream closure
 		done := make(chan error, 1)
 
-		// Start goroutine to handle incoming messages
+		// Start goroutine to handle incoming messages (network policies from server)
 		go func() {
 			for {
-				response, err := stream.Recv()
-				if err != nil {
-					done <- err
+				select {
+				case <-ctx.Done():
+					done <- ctx.Err()
 					return
-				}
+				default:
+					// Attempt to receive with a timeout to allow checking context
+					// This is a non-blocking receive attempt
+					response, err := stream.Recv()
+					if err != nil {
+						done <- err
+						return
+					}
 
-				// Handle the response based on its type
-				switch resp := response.Response.(type) {
-				case *v1.StreamDataResponse_Ack:
-					s.Logger.Debug("Received acknowledgment from server")
-				case *v1.StreamDataResponse_NetworkPolicy:
-					s.Logger.Info("Received network policy from server", zap.String("name", resp.NetworkPolicy.String()))
+					// Handle the response based on its type
+					switch resp := response.Response.(type) {
+					case *v1.StreamDataResponse_Ack:
+						s.Logger.Debug("Received acknowledgment from server")
+					case *v1.StreamDataResponse_NetworkPolicy:
+						s.Logger.Info("Received network policy from server", zap.String("name", resp.NetworkPolicy.String()))
+
+						// Apply the network policy with context
+						err := ingestion.ApplyNetworkPolicy(ctx, resp.NetworkPolicy)
+						if err != nil {
+							s.Logger.Error("Failed to apply network policy", zap.Error(err))
+							// Continue processing other messages, don't fail the whole stream
+						} else {
+							s.Logger.Info("Successfully applied network policy from server")
+						}
+					}
+				}
+			}
+		}()
+
+		// Start goroutine to collect flow data and send to server
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					// Context is done, exit the goroutine
+					return
+				case flowData, ok := <-flowChan:
+					// Check if channel was closed
+					if !ok {
+						s.Logger.Warn("Flow channel closed unexpectedly")
+						done <- fmt.Errorf("flow channel closed")
+						return
+					}
+
+					// Check context again before sending
+					select {
+					case <-ctx.Done():
+						return
+					default:
+						// Convert flow data to proto message and send
+						flowMsg := &v1.StreamDataRequest{
+							Request: &v1.StreamDataRequest_Flow{
+								Flow: convertToProtoFlow(flowData),
+							},
+						}
+						if err := stream.Send(flowMsg); err != nil {
+							s.Logger.Error("Failed to send flow data", zap.Error(err))
+							done <- err
+							return
+						}
+					}
 				}
 			}
 		}()
@@ -79,4 +187,53 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 	// Use the retry logic to handle stream reconnection
 	return WithReconnect(ctx, streamFunc)
+}
+
+// convertToProtoNetworkPolicy converts a K8s NetworkPolicy to our proto NetworkPolicy
+func convertToProtoNetworkPolicy(policy networkingv1.NetworkPolicy) *v1.NetworkPolicy {
+	// Convert K8s NetworkPolicy to our proto NetworkPolicy
+	return &v1.NetworkPolicy{
+		Metadata: &v1.ObjectMeta{
+			Name:      policy.Name,
+			Namespace: policy.Namespace,
+		},
+		// Add spec conversion based on the proto definition
+		Spec: &v1.NetworkPolicySpec{
+			PodSelector: convertLabelSelector(policy.Spec.PodSelector),
+			// Convert other fields as needed
+		},
+	}
+}
+
+// Helper function to convert label selector
+func convertLabelSelector(selector metav1.LabelSelector) *v1.LabelSelector {
+	return &v1.LabelSelector{
+		MatchLabels: selector.MatchLabels,
+		// Convert expressions if needed
+	}
+}
+
+// convertToProtoFlow converts a FlowCount to our proto Flow
+func convertToProtoFlow(flowData smartcache.FlowCount) *v1.Flow {
+	// Extract data from FlowKey
+	flowKey := flowData.FlowKey
+
+	return &v1.Flow{
+		Src: &v1.Endpoint{
+			Ns:   flowKey.SourceNamespace,
+			Kind: flowKey.SourceKind,
+			Name: flowKey.SourceName,
+		},
+		Dst: &v1.Endpoint{
+			Ns:   flowKey.DestinationNamespace,
+			Kind: flowKey.DestinationKind,
+			Name: flowKey.DestinationName,
+		},
+		Direction: flowKey.Direction,
+		Port:      flowKey.DestinationPort,
+		Protocol:  flowKey.Protocol,
+		Allowed:   flowKey.Verdict != "DROPPED", // Assuming "FORWARDED" means allowed
+		Count:     flowData.Count,
+		FirstSeen: flowData.Flow.GetTime(),
+	}
 }
