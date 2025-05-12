@@ -32,26 +32,15 @@ func NewNetworkPolicyIngester() (*NetworkPolicyIngester, error) {
 
 // IngestNetworkPolicies fetches all network policies from the cluster
 func (npi *NetworkPolicyIngester) IngestNetworkPolicies(ctx context.Context) ([]networkingv1.NetworkPolicy, error) {
-	// Get all namespaces
-	namespaces, err := npi.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	policies, err := npi.clientset.
+		NetworkingV1().
+		NetworkPolicies(metav1.NamespaceAll).
+		List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list namespaces: %v", err)
+		return nil, fmt.Errorf("failed to list network policies: %v", err)
 	}
 
-	var allPolicies []networkingv1.NetworkPolicy
-
-	// Iterate through each namespace and get network policies
-	for _, namespace := range namespaces.Items {
-		policies, err := npi.clientset.NetworkingV1().NetworkPolicies(namespace.Name).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			log.Printf("Warning: failed to list network policies in namespace %s: %v", namespace.Name, err)
-			continue
-		}
-
-		allPolicies = append(allPolicies, policies.Items...)
-	}
-
-	return allPolicies, nil
+	return policies.Items, nil
 }
 
 // GetNetworkPolicy fetches a specific network policy by name and namespace
