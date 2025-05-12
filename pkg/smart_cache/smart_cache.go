@@ -142,15 +142,28 @@ func (s *SmartCache) Stop() {
 func (s *SmartCache) AddFlowKey(key FlowKey, flow *v1.Flow, flowMetadata *FlowMetadata) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	fd := s.FlowKeys[key] // if key does not exist, fd.Count will be 0.
-	fd.Count += 1
-	fd.Flow = flow
-	fd.FlowMetadata.LastSeen = timestamppb.Now()
-	if fd.FlowMetadata.FirstSeen == nil {
-		fd.FlowMetadata.FirstSeen = timestamppb.Now()
+
+	// Get existing data or create new
+	fd, exists := s.FlowKeys[key]
+	if !exists {
+		fd = FlowData{
+			Count: 0,
+			Flow:  flow,
+			FlowMetadata: &FlowMetadata{
+				FirstSeen:    timestamppb.Now(),
+				LastSeen:     timestamppb.Now(),
+				SourceLabels: flowMetadata.SourceLabels,
+				DestLabels:   flowMetadata.DestLabels,
+			},
+		}
+	} else {
+		fd.Count += 1
+		fd.Flow = flow
+		fd.FlowMetadata.LastSeen = timestamppb.Now()
+		fd.FlowMetadata.SourceLabels = flowMetadata.SourceLabels
+		fd.FlowMetadata.DestLabels = flowMetadata.DestLabels
 	}
-	fd.FlowMetadata.SourceLabels = flowMetadata.SourceLabels
-	fd.FlowMetadata.DestLabels = flowMetadata.DestLabels
+
 	s.FlowKeys[key] = fd
 }
 

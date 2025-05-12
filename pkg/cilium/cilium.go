@@ -99,64 +99,56 @@ func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
 	}
 }
 
-// getSafeWorkloadInfo safely extracts kind and name from a Cilium endpoint
-// Falls back to pod_name if available when workloads slice is empty
-func getSafeWorkloadInfo(endpoint *flow.Endpoint) (kind, name string) {
-	if endpoint == nil {
-		return "Unknown", "unknown"
+// getEndpointNameAndKind safely extracts the name and kind from an endpoint
+func getEndpointNameAndKind(endpoint *flow.Endpoint) (name, kind string) {
+	if len(endpoint.GetWorkloads()) > 0 {
+		return endpoint.GetWorkloads()[0].GetName(), endpoint.GetWorkloads()[0].GetKind()
+	} else if endpoint.GetPodName() != "" {
+		return endpoint.GetPodName(), "Pod"
+	} else if len(endpoint.GetLabels()) > 0 {
+		return endpoint.GetLabels()[0], "Unmanaged"
+	} else if endpoint.GetIdentity() != 0 {
+		return fmt.Sprintf("identity-%d", endpoint.GetIdentity()), "Unknown"
 	}
-
-	workloads := endpoint.GetWorkloads()
-	if len(workloads) > 0 {
-		return workloads[0].GetKind(), workloads[0].GetName()
-	}
-
-	if podName := endpoint.GetPodName(); podName != "" {
-		// Fall back to pod_name if workloads is empty
-		return "Pod", podName
-	}
-
-	// Unidentified endpoint
-	return "Unknown", "unknown"
+	return "unknown", "Unknown"
 }
 
-// createFlowKey creates a FlowKey struct from a Cilium flow
+// createFlowKey creates a FlowKey from a Cilium flow
 func createFlowKey(networkFlow *flow.Flow) *smartcache.FlowKey {
 	var protocol string
 	var srcport, dstport uint32
 
-	switch networkFlow.GetL4().GetProtocol().(type) {
+	switch l4 := networkFlow.GetL4().GetProtocol().(type) {
 	case *flow.Layer4_TCP:
 		protocol = "TCP"
-		srcport = networkFlow.GetL4().GetTCP().GetSourcePort()
-		dstport = networkFlow.GetL4().GetTCP().GetDestinationPort()
+		srcport = l4.TCP.GetSourcePort()
+		dstport = l4.TCP.GetDestinationPort()
 	case *flow.Layer4_UDP:
 		protocol = "UDP"
-		srcport = networkFlow.GetL4().GetUDP().GetSourcePort()
-		dstport = networkFlow.GetL4().GetUDP().GetDestinationPort()
-	case *flow.Layer4_ICMPv4:
-		protocol = "ICMP"
-		// ICMPv4 does not have ports
+		srcport = l4.UDP.GetSourcePort()
+		dstport = l4.UDP.GetDestinationPort()
 	case *flow.Layer4_SCTP:
 		protocol = "SCTP"
-		srcport = networkFlow.GetL4().GetSCTP().GetSourcePort()
-		dstport = networkFlow.GetL4().GetSCTP().GetDestinationPort()
-	default:
-		return &smartcache.FlowKey{}
+		srcport = l4.SCTP.GetSourcePort()
+		dstport = l4.SCTP.GetDestinationPort()
+	case *flow.Layer4_ICMPv4:
+		protocol = "ICMP"
+		// ICMPv4 doesn't have ports
 	}
-	// Get source and destination workload info safely
-	sourceKind, sourceName := getSafeWorkloadInfo(networkFlow.GetSource())
-	destKind, destName := getSafeWorkloadInfo(networkFlow.GetDestination())
+
+	// Use the helper to extract name and kind
+	srcName, srcKind := getEndpointNameAndKind(networkFlow.GetSource())
+	dstName, dstKind := getEndpointNameAndKind(networkFlow.GetDestination())
 
 	return &smartcache.FlowKey{
 		SourceIPAddress:      networkFlow.GetIP().GetSource(),
 		SourceNamespace:      networkFlow.GetSource().GetNamespace(),
-		SourceKind:           sourceKind,
-		SourceName:           sourceName,
+		SourceKind:           srcKind,
+		SourceName:           srcName,
 		DestinationIPAddress: networkFlow.GetIP().GetDestination(),
 		DestinationNamespace: networkFlow.GetDestination().GetNamespace(),
-		DestinationKind:      destKind,
-		DestinationName:      destName,
+		DestinationKind:      dstKind,
+		DestinationName:      dstName,
 		SourcePort:           srcport,
 		DestinationPort:      dstport,
 		Protocol:             protocol,
