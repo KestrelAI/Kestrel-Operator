@@ -49,13 +49,3 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-{{- if and (not .Values.auth.existingSecret) .Values.auth.token }}
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ .Release.Name }}-jwt
-type: Opaque
-data:
-  token: {{ .Values.auth.token | b64enc }}
-{{- end }} 

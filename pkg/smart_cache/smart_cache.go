@@ -66,7 +66,9 @@ func (f FlowKey) String() string {
 		f.Verdict)
 }
 
+// InitFlowCache initializes a new SmartCache with the given flow channel
 func InitFlowCache(ctx context.Context, flowChan chan FlowCount) *SmartCache {
+
 	cache := &SmartCache{
 		FlowKeys: make(map[FlowKey]FlowData),
 		stopCh:   make(chan struct{}),
@@ -109,12 +111,16 @@ func (s *SmartCache) purgeCache() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for flowKey, flowData := range s.FlowKeys {
-		s.flowChan <- FlowCount{
+		select {
+		case s.flowChan <- FlowCount{
 			FlowKey: flowKey,
 			Count:   flowData.Count,
 			Flow:    flowData.Flow,
+		}:
+		default:
 		}
 	}
+	// Clear the cache regardless of whether we could send all flows
 	s.FlowKeys = make(map[FlowKey]FlowData)
 }
 
@@ -122,13 +128,13 @@ func (s *SmartCache) Stop() {
 	close(s.stopCh)
 }
 
-func (s *SmartCache) AddFlowKey(flowKey FlowKey, flowCount int64, flow *v1.Flow) {
+func (s *SmartCache) AddFlowKey(key FlowKey, flow *v1.Flow) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.FlowKeys[flowKey] = FlowData{
-		Count: flowCount,
-		Flow:  flow,
-	}
+	fd := s.FlowKeys[key] // if key does not exist, fd.Count will be 0.
+	fd.Count += 1
+	fd.Flow = flow
+	s.FlowKeys[key] = fd
 }
 
 func (s *SmartCache) GetFlowKey(flowKey FlowKey) (FlowData, bool) {
@@ -152,10 +158,15 @@ func (s *SmartCache) GetAllFlowKeys() map[FlowKey]FlowData {
 	return flowKeys
 }
 
+// GetFlowCount returns the count for a given flow key and a boolean indicating if the key exists
 func (s *SmartCache) GetFlowCount(flowKey FlowKey) int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.FlowKeys[flowKey].Count
+	data, exists := s.FlowKeys[flowKey]
+	if !exists {
+		return -1
+	}
+	return data.Count
 }
 
 func (s *SmartCache) GetFlowKeys() []FlowKey {

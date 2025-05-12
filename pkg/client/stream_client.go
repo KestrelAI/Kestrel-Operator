@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"os"
 	"strconv"
@@ -41,11 +42,16 @@ func NewStreamClient(logger *zap.Logger, config ServerConfig) (*StreamClient, er
 
 	// Set up credentials based on TLS configuration
 	if config.UseTLS {
-		// Use TLS credentials
-		creds = credentials.NewClientTLSFromCert(nil, "")
+		// Use TLS credentials with skip verification since we're in a cluster
+		// For production, you'd want to use proper CA certificates
+		creds = credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: true,
+		})
+		logger.Info("Using TLS with InsecureSkipVerify=true")
 	} else {
 		// Use insecure credentials
 		creds = insecure.NewCredentials()
+		logger.Info("Using insecure credentials (no TLS)")
 	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
@@ -56,6 +62,7 @@ func NewStreamClient(logger *zap.Logger, config ServerConfig) (*StreamClient, er
 
 	// Create the connection to the server
 	serverAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
+	logger.Info("Connecting to server at", zap.String("serverAddr", serverAddr))
 	conn, err := grpc.NewClient(serverAddr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to server at %s: %w", serverAddr, err)

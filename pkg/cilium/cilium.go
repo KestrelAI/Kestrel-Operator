@@ -93,12 +93,7 @@ func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
 			return err
 		}
 		flowKey := createFlowKey(flow.GetFlow())
-		count, exists := fm.cache.GetFlowKey(*flowKey)
-		if !exists {
-			fm.cache.AddFlowKey(*flowKey, 1, flow.GetFlow())
-		} else {
-			fm.cache.AddFlowKey(*flowKey, count.Count+1, flow.GetFlow())
-		}
+		fm.cache.AddFlowKey(*flowKey, flow.GetFlow())
 	}
 }
 
