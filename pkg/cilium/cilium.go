@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -93,7 +94,7 @@ func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
 			return err
 		}
 		flowKey := createFlowKey(flow.GetFlow())
-		flowMetadata := &smartcache.FlowMetadata{FirstSeen: nil, LastSeen: nil, SourceLabels: flow.GetFlow().GetSource().Labels, DestLabels: flow.GetFlow().GetDestination().Labels}
+		flowMetadata := &smartcache.FlowMetadata{FirstSeen: &timestamppb.Timestamp{}, LastSeen: &timestamppb.Timestamp{}, SourceLabels: flow.GetFlow().GetSource().GetLabels(), DestLabels: flow.GetFlow().GetDestination().GetLabels()}
 		fm.cache.AddFlowKey(*flowKey, flow.GetFlow(), flowMetadata)
 	}
 }

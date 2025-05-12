@@ -7,9 +7,11 @@ import (
 	v1 "operator/api/cloud/v1"
 	"operator/pkg/k8s_helper"
 
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -139,9 +141,9 @@ func convertToK8sPeers(peers []*v1.NetworkPolicyPeer) []networkingv1.NetworkPoli
 func convertToK8sPorts(ports []*v1.NetworkPolicyPort) []networkingv1.NetworkPolicyPort {
 	out := make([]networkingv1.NetworkPolicyPort, 0, len(ports))
 	for _, pp := range ports {
-		var protoPtr *v1.Protocol
+		var protoPtr *corev1.Protocol
 		if pp.Protocol != "" {
-			p := v1.Protocol(pp.Protocol)
+			p := corev1.Protocol(pp.Protocol)
 			protoPtr = &p
 		}
 
@@ -149,7 +151,7 @@ func convertToK8sPorts(ports []*v1.NetworkPolicyPort) []networkingv1.NetworkPoli
 			Protocol: protoPtr,
 		}
 
-		switch v := pp.Port.(type) {
+		switch v := pp.PortValue.(type) {
 		case *v1.NetworkPolicyPort_Port:
 			port := intstr.FromInt(int(v.Port))
 			k8sPort.Port = &port
@@ -209,3 +211,4 @@ func convertToK8sIPBlockPtr(b *v1.IPBlock) *networkingv1.IPBlock {
 		CIDR:   b.Cidr,
 		Except: b.Except,
 	}
+}
