@@ -281,27 +281,124 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	return WithReconnect(ctx, streamFunc)
 }
 
-// convertToProtoNetworkPolicy converts a K8s NetworkPolicy to our proto NetworkPolicy
-func convertToProtoNetworkPolicy(policy networkingv1.NetworkPolicy) *v1.NetworkPolicy {
-	// Convert K8s NetworkPolicy to our proto NetworkPolicy
+// convertToProtoNetworkPolicy converts a native K8s NetworkPolicy
+// (k8s.io/api/networking/v1) to our cloud.v1 proto representation.
+func convertToProtoNetworkPolicy(np networkingv1.NetworkPolicy) *v1.NetworkPolicy {
 	return &v1.NetworkPolicy{
 		Metadata: &v1.ObjectMeta{
-			Name:      policy.Name,
-			Namespace: policy.Namespace,
+			Name:        np.Name,
+			Namespace:   np.Namespace,
+			Labels:      np.Labels, // maybe unnecessary
+			Annotations: np.Annotations, // maybe unnecessary
 		},
-		// Add spec conversion based on the proto definition
 		Spec: &v1.NetworkPolicySpec{
-			PodSelector: convertLabelSelector(policy.Spec.PodSelector),
-			// Convert other fields as needed
+			PodSelector:  convertLabelSelector(np.Spec.PodSelector),
+			Ingress:      convertIngressRules(np.Spec.Ingress),
+			Egress:       convertEgressRules(np.Spec.Egress),
+			PolicyTypes:  convertPolicyTypes(np.Spec.PolicyTypes),
 		},
 	}
 }
 
-// Helper function to convert label selector
-func convertLabelSelector(selector metav1.LabelSelector) *v1.LabelSelector {
+// ---------- helpers ----------
+
+func convertPolicyTypes(t []networkingv1.PolicyType) []string {
+	out := make([]string, 0, len(t))
+	for _, pt := range t {
+		out = append(out, string(pt)) // "Ingress" / "Egress"
+	}
+	return out
+}
+
+func convertIngressRules(rules []networkingv1.NetworkPolicyIngressRule) []*v1.NetworkPolicyIngressRule {
+	out := make([]*v1.NetworkPolicyIngressRule, 0, len(rules))
+	for _, r := range rules {
+		out = append(out, &v1.NetworkPolicyIngressRule{
+			From:  convertPeers(r.From),
+			Ports: convertPorts(r.Ports),
+		})
+	}
+	return out
+}
+
+func convertEgressRules(rules []networkingv1.NetworkPolicyEgressRule) []*v1.NetworkPolicyEgressRule {
+	out := make([]*v1.NetworkPolicyEgressRule, 0, len(rules))
+	for _, r := range rules {
+		out = append(out, &v1.NetworkPolicyEgressRule{
+			To:    convertPeers(r.To),
+			Ports: convertPorts(r.Ports),
+		})
+	}
+	return out
+}
+
+func convertPeers(peers []networkingv1.NetworkPolicyPeer) []*v1.NetworkPolicyPeer {
+	out := make([]*v1.NetworkPolicyPeer, 0, len(peers))
+	for _, p := range peers {
+		out = append(out, &v1.NetworkPolicyPeer{
+			PodSelector:       convertLabelSelectorPtr(p.PodSelector),
+			NamespaceSelector: convertLabelSelectorPtr(p.NamespaceSelector),
+			IpBlock:           convertIPBlockPtr(p.IPBlock),
+		})
+	}
+	return out
+}
+
+func convertPorts(ports []networkingv1.NetworkPolicyPort) []*v1.NetworkPolicyPort {
+	out := make([]*v1.NetworkPolicyPort, 0, len(ports))
+	for _, p := range ports {
+		pp := &v1.NetworkPolicyPort{}
+		if p.Protocol != nil {
+			pp.Protocol = string(*p.Protocol)
+		}
+		if p.Port != nil {
+			if intPort, ok := p.Port.IntVal.(int32); ok && intPort != 0 {
+				pp.Port = &v1.NetworkPolicyPort_Port{Port: int32(intPort)}
+			} else {
+				pp.Port = &v1.NetworkPolicyPort_PortName{PortName: p.Port.StrVal}
+			}
+		}
+		if p.EndPort != nil {
+			pp.EndPort = *p.EndPort
+		}
+		out = append(out, pp)
+	}
+	return out
+}
+
+func convertLabelSelector(ls metav1.LabelSelector) *v1.LabelSelector {
 	return &v1.LabelSelector{
-		MatchLabels: selector.MatchLabels,
-		// Convert expressions if needed
+		MatchLabels:      ls.MatchLabels,
+		MatchExpressions: convertLabelExprs(ls.MatchExpressions),
+	}
+}
+
+func convertLabelSelectorPtr(ls *metav1.LabelSelector) *v1.LabelSelector {
+	if ls == nil {
+		return nil
+	}
+	return convertLabelSelector(*ls)
+}
+
+func convertLabelExprs(exprs []metav1.LabelSelectorRequirement) []*v1.LabelSelectorRequirement {
+	out := make([]*v1.LabelSelectorRequirement, 0, len(exprs))
+	for _, e := range exprs {
+		out = append(out, &v1.LabelSelectorRequirement{
+			Key:      e.Key,
+			Operator: string(e.Operator),
+			Values:   e.Values,
+		})
+	}
+	return out
+}
+
+func convertIPBlockPtr(block *networkingv1.IPBlock) *v1.IPBlock {
+	if block == nil {
+		return nil
+	}
+	return &v1.IPBlock{
+		Cidr:   block.CIDR,
+		Except: block.Except,
 	}
 }
 
