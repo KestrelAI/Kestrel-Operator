@@ -85,24 +85,139 @@ func ApplyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, po
 	return nil
 }
 
-// convertToK8sNetworkPolicy converts our proto NetworkPolicy to a K8s NetworkPolicy
-func convertToK8sNetworkPolicy(policy *v1.NetworkPolicy) *networkingv1.NetworkPolicy {
-	// Convert proto NetworkPolicy to K8s NetworkPolicy
+// convertToK8sNetworkPolicy converts our proto NetworkPolicy back to the
+// Kubernetes API object (networking.k8s.io/v1).
+func convertToK8sNetworkPolicy(p *v1.NetworkPolicy) *networkingv1.NetworkPolicy {
 	return &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      policy.Metadata.Name,
-			Namespace: policy.Metadata.Namespace,
+			Name:        p.Metadata.Name,
+			Namespace:   p.Metadata.Namespace,
+			Labels:      p.Metadata.Labels,
+			Annotations: p.Metadata.Annotations,
 		},
 		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: convertToK8sLabelSelector(policy.Spec.PodSelector),
-			// Will add more fields here
+			PodSelector: convertToK8sLabelSelector(p.Spec.PodSelector),
+			PolicyTypes: convertToK8sPolicyTypes(p.Spec.PolicyTypes),
+			Ingress:     convertToK8sIngressRules(p.Spec.Ingress),
+			Egress:      convertToK8sEgressRules(p.Spec.Egress),
 		},
 	}
 }
 
-// Helper function to convert proto label selector to K8s label selector
-func convertToK8sLabelSelector(selector *v1.LabelSelector) metav1.LabelSelector {
+/* ---------- helpers ---------- */
+
+func convertToK8sPolicyTypes(types []string) []networkingv1.PolicyType {
+	out := make([]networkingv1.PolicyType, 0, len(types))
+	for _, t := range types {
+		out = append(out, networkingv1.PolicyType(t)) // "Ingress"/"Egress"
+	}
+	return out
+}
+
+func convertToK8sIngressRules(in []*v1.NetworkPolicyIngressRule) []networkingv1.NetworkPolicyIngressRule {
+	out := make([]networkingv1.NetworkPolicyIngressRule, 0, len(in))
+	for _, r := range in {
+		out = append(out, networkingv1.NetworkPolicyIngressRule{
+			From:  convertToK8sPeers(r.From),
+			Ports: convertToK8sPorts(r.Ports),
+		})
+	}
+	return out
+}
+
+func convertToK8sEgressRules(eg []*v1.NetworkPolicyEgressRule) []networkingv1.NetworkPolicyEgressRule {
+	out := make([]networkingv1.NetworkPolicyEgressRule, 0, len(eg))
+	for _, r := range eg {
+		out = append(out, networkingv1.NetworkPolicyEgressRule{
+			To:    convertToK8sPeers(r.To),
+			Ports: convertToK8sPorts(r.Ports),
+		})
+	}
+	return out
+}
+
+func convertToK8sPeers(peers []*v1.NetworkPolicyPeer) []networkingv1.NetworkPolicyPeer {
+	out := make([]networkingv1.NetworkPolicyPeer, 0, len(peers))
+	for _, p := range peers {
+		out = append(out, networkingv1.NetworkPolicyPeer{
+			PodSelector:       convertToK8sLabelSelectorPtr(p.PodSelector),
+			NamespaceSelector: convertToK8sLabelSelectorPtr(p.NamespaceSelector),
+			IPBlock:           convertToK8sIPBlockPtr(p.IpBlock),
+		})
+	}
+	return out
+}
+
+func convertToK8sPorts(ports []*v1.NetworkPolicyPort) []networkingv1.NetworkPolicyPort {
+	out := make([]networkingv1.NetworkPolicyPort, 0, len(ports))
+	for _, pp := range ports {
+		var protoPtr *v1.Protocol
+		if pp.Protocol != "" {
+			p := v1.Protocol(pp.Protocol)
+			protoPtr = &p
+		}
+
+		k8sPort := networkingv1.NetworkPolicyPort{
+			Protocol: protoPtr,
+		}
+
+		switch v := pp.Port.(type) {
+		case *v1.NetworkPolicyPort_Port:
+			port := intstr.FromInt(int(v.Port))
+			k8sPort.Port = &port
+		case *v1.NetworkPolicyPort_PortName:
+			port := intstr.FromString(v.PortName)
+			k8sPort.Port = &port
+		}
+
+		if pp.EndPort != 0 {
+			end := int32(pp.EndPort)
+			k8sPort.EndPort = &end
+		}
+		out = append(out, k8sPort)
+	}
+	return out
+}
+
+/* ----- label / selector helpers ----- */
+
+func convertToK8sLabelSelector(sel *v1.LabelSelector) metav1.LabelSelector {
+	if sel == nil {
+		return metav1.LabelSelector{}
+	}
 	return metav1.LabelSelector{
-		MatchLabels: selector.MatchLabels,
+		MatchLabels:      sel.MatchLabels,
+		MatchExpressions: convertToK8sLabelExprs(sel.MatchExpressions),
 	}
 }
+
+func convertToK8sLabelSelectorPtr(sel *v1.LabelSelector) *metav1.LabelSelector {
+	if sel == nil {
+		return nil
+	}
+	tmp := convertToK8sLabelSelector(sel)
+	return &tmp
+}
+
+func convertToK8sLabelExprs(exprs []*v1.LabelSelectorRequirement) []metav1.LabelSelectorRequirement {
+	out := make([]metav1.LabelSelectorRequirement, 0, len(exprs))
+	for _, e := range exprs {
+		out = append(out, metav1.LabelSelectorRequirement{
+			Key:      e.Key,
+			Operator: metav1.LabelSelectorOperator(e.Operator),
+			Values:   e.Values,
+		})
+	}
+	return out
+}
+
+/* ---------- IPBlock helper ---------- */
+
+func convertToK8sIPBlockPtr(b *v1.IPBlock) *networkingv1.IPBlock {
+	if b == nil {
+		return nil
+	}
+	return &networkingv1.IPBlock{
+		CIDR:   b.Cidr,
+		Except: b.Except,
+	}
