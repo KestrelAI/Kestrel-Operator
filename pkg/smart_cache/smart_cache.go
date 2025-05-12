@@ -100,13 +100,14 @@ func (s *SmartCache) startPurging(ctx context.Context) {
 		// Context was cancelled during initial jitter
 		return
 	}
-
-	ticker := time.NewTicker(5 * time.Minute)
+	// Setting timer to 1 minute to make local testing easier
+	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
+			fmt.Println("Purging cache")
 			s.purgeCache()
 		case <-s.stopCh:
 			return
@@ -163,7 +164,6 @@ func (s *SmartCache) AddFlowKey(key FlowKey, flow *v1.Flow, flowMetadata *FlowMe
 		fd.FlowMetadata.SourceLabels = flowMetadata.SourceLabels
 		fd.FlowMetadata.DestLabels = flowMetadata.DestLabels
 	}
-
 	s.FlowKeys[key] = fd
 }
 

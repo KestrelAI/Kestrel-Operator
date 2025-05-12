@@ -269,6 +269,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 					case <-ctx.Done():
 						return
 					default:
+						fmt.Println("Sending flow data to server")
 						// Convert flow data to proto message and send
 						flowMsg := &v1.StreamDataRequest{
 							Request: &v1.StreamDataRequest_Flow{
