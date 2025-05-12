@@ -3,7 +3,6 @@ package ingestion
 import (
 	"context"
 	"fmt"
-	"log"
 
 	v1 "operator/api/cloud/v1"
 	"operator/pkg/k8s_helper"
