@@ -324,7 +324,7 @@ func convertToProtoFlow(flowData smartcache.FlowCount) *v1.Flow {
 		Direction: flowKey.Direction,
 		Port:      flowKey.DestinationPort,
 		Protocol:  flowKey.Protocol,
-		Allowed:   flowKey.Verdict != "DROPPED", // Assuming "FORWARDED" means allowed
+		Allowed:   flowKey.Verdict == "FORWARDED", // Assuming "FORWARDED" means allowed
 		Count:     flowData.Count,
 		FirstSeen: flowData.Flow.GetTime(),
 	}

@@ -8,6 +8,7 @@ import (
 	"operator/pkg/auth"
 	"operator/pkg/k8s_helper"
 
+	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,7 +34,7 @@ func ReadJWTTokenFromSecret(ctx context.Context, logger *zap.Logger, secretName 
 		return "", err
 	}
 
-	token := string(secret.Data["jwt_token"])
+	token := string(secret.Data["token"])
 	if token == "" {
 		logger.Error("JWT token not found in secret",
 			zap.String("secretName", secretName),
@@ -82,4 +83,25 @@ func NewGRPCClient(ctx context.Context, logger *zap.Logger, serverAddress string
 	}
 
 	return conn, nil
+}
+
+// ParseToken parses the JWT token and returns the claims.
+func ParseToken(tokenString string) (jwt.MapClaims, error) {
+	claims := jwt.MapClaims{}
+	_, _, err := jwt.NewParser().ParseUnverified(tokenString, claims)
+	return claims, err
+}
+
+func getTenantIdFromToken(logger *zap.Logger, claims jwt.MapClaims) (string, error) {
+	sub, ok := claims["sub"].([]interface{})
+	if !ok {
+		return "", errors.New("sub not found in token")
+	}
+
+	tenantId, ok := sub[0].(string)
+	if !ok {
+		return "", errors.New("first sub not found in token")
+	}
+
+	return tenantId, nil
 }

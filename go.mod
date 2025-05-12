@@ -4,6 +4,7 @@ go 1.24.3
 
 require (
 	github.com/cilium/cilium v1.17.3
+	github.com/golang-jwt/jwt/v4 v4.5.1
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.72.0
 	google.golang.org/protobuf v1.36.6

@@ -97,6 +97,27 @@ func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
 	}
 }
 
+// getSafeWorkloadInfo safely extracts kind and name from a Cilium endpoint
+// Falls back to pod_name if available when workloads slice is empty
+func getSafeWorkloadInfo(endpoint *flow.Endpoint) (kind, name string) {
+	if endpoint == nil {
+		return "Unknown", "unknown"
+	}
+
+	workloads := endpoint.GetWorkloads()
+	if len(workloads) > 0 {
+		return workloads[0].GetKind(), workloads[0].GetName()
+	}
+
+	if podName := endpoint.GetPodName(); podName != "" {
+		// Fall back to pod_name if workloads is empty
+		return "Pod", podName
+	}
+
+	// Unidentified endpoint
+	return "Unknown", "unknown"
+}
+
 // createFlowKey creates a FlowKey struct from a Cilium flow
 func createFlowKey(networkFlow *flow.Flow) *smartcache.FlowKey {
 	var protocol string
@@ -111,16 +132,24 @@ func createFlowKey(networkFlow *flow.Flow) *smartcache.FlowKey {
 		protocol = "UDP"
 		srcport = networkFlow.GetL4().GetUDP().GetSourcePort()
 		dstport = networkFlow.GetL4().GetUDP().GetDestinationPort()
+	default:
+		// If protocol is not TCP or UDP, return an empty FlowKey
+		return &smartcache.FlowKey{}
 	}
+
+	// Get source and destination workload info safely
+	sourceKind, sourceName := getSafeWorkloadInfo(networkFlow.GetSource())
+	destKind, destName := getSafeWorkloadInfo(networkFlow.GetDestination())
+
 	return &smartcache.FlowKey{
 		SourceIPAddress:      networkFlow.GetIP().GetSource(),
 		SourceNamespace:      networkFlow.GetSource().GetNamespace(),
-		SourceKind:           networkFlow.GetSource().GetWorkloads()[0].GetKind(),
-		SourceName:           networkFlow.GetSource().GetWorkloads()[0].GetName(),
+		SourceKind:           sourceKind,
+		SourceName:           sourceName,
 		DestinationIPAddress: networkFlow.GetIP().GetDestination(),
 		DestinationNamespace: networkFlow.GetDestination().GetNamespace(),
-		DestinationKind:      networkFlow.GetDestination().GetWorkloads()[0].GetKind(),
-		DestinationName:      networkFlow.GetDestination().GetWorkloads()[0].GetName(),
+		DestinationKind:      destKind,
+		DestinationName:      destName,
 		SourcePort:           srcport,
 		DestinationPort:      dstport,
 		Protocol:             protocol,
