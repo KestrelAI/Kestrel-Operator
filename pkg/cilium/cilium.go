@@ -132,11 +132,16 @@ func createFlowKey(networkFlow *flow.Flow) *smartcache.FlowKey {
 		protocol = "UDP"
 		srcport = networkFlow.GetL4().GetUDP().GetSourcePort()
 		dstport = networkFlow.GetL4().GetUDP().GetDestinationPort()
+	case *flow.Layer4_ICMPv4:
+		protocol = "ICMP"
+		// ICMPv4 does not have ports
+	case *flow.Layer4_SCTP:
+		protocol = "SCTP"
+		srcport = networkFlow.GetL4().GetSCTP().GetSourcePort()
+		dstport = networkFlow.GetL4().GetSCTP().GetDestinationPort()
 	default:
-		// If protocol is not TCP or UDP, return an empty FlowKey
 		return &smartcache.FlowKey{}
 	}
-
 	// Get source and destination workload info safely
 	sourceKind, sourceName := getSafeWorkloadInfo(networkFlow.GetSource())
 	destKind, destName := getSafeWorkloadInfo(networkFlow.GetDestination())
