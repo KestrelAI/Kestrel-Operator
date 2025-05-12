@@ -10,13 +10,22 @@ import (
 	"maps"
 
 	v1 "github.com/cilium/cilium/api/v1/flow"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 //TODO:  I think this cache needs to have an in and out channel to avoid blocking operations.
 
+type FlowMetadata struct {
+	FirstSeen    *timestamppb.Timestamp
+	LastSeen     *timestamppb.Timestamp
+	SourceLabels []string
+	DestLabels   []string
+}
+
 type FlowData struct {
-	Count int64
-	Flow  *v1.Flow
+	Count        int64
+	Flow         *v1.Flow
+	FlowMetadata *FlowMetadata
 }
 
 // FlowKey represents a unique identifier for a network flow
@@ -45,9 +54,10 @@ type SmartCache struct {
 }
 
 type FlowCount struct {
-	FlowKey FlowKey
-	Count   int64
-	Flow    *v1.Flow
+	FlowKey      FlowKey
+	Count        int64
+	Flow         *v1.Flow
+	FlowMetadata *FlowMetadata
 }
 
 // String returns a string representation of the FlowKey
@@ -91,7 +101,7 @@ func (s *SmartCache) startPurging(ctx context.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {
@@ -113,9 +123,10 @@ func (s *SmartCache) purgeCache() {
 	for flowKey, flowData := range s.FlowKeys {
 		select {
 		case s.flowChan <- FlowCount{
-			FlowKey: flowKey,
-			Count:   flowData.Count,
-			Flow:    flowData.Flow,
+			FlowKey:      flowKey,
+			Count:        flowData.Count,
+			Flow:         flowData.Flow,
+			FlowMetadata: flowData.FlowMetadata,
 		}:
 		default:
 		}
@@ -128,12 +139,18 @@ func (s *SmartCache) Stop() {
 	close(s.stopCh)
 }
 
-func (s *SmartCache) AddFlowKey(key FlowKey, flow *v1.Flow) {
+func (s *SmartCache) AddFlowKey(key FlowKey, flow *v1.Flow, flowMetadata *FlowMetadata) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	fd := s.FlowKeys[key] // if key does not exist, fd.Count will be 0.
 	fd.Count += 1
 	fd.Flow = flow
+	fd.FlowMetadata.LastSeen = timestamppb.Now()
+	if fd.FlowMetadata.FirstSeen == nil {
+		fd.FlowMetadata.FirstSeen = timestamppb.Now()
+	}
+	fd.FlowMetadata.SourceLabels = flowMetadata.SourceLabels
+	fd.FlowMetadata.DestLabels = flowMetadata.DestLabels
 	s.FlowKeys[key] = fd
 }
 

@@ -10,12 +10,13 @@ import (
 	v1 "operator/api/cloud/v1"
 	"operator/pkg/cilium"
 	"operator/pkg/ingestion"
+	"operator/pkg/k8s_helper"
 	smartcache "operator/pkg/smart_cache"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -45,12 +46,14 @@ func NewStreamClient(logger *zap.Logger, config ServerConfig) (*StreamClient, er
 		// Use TLS credentials with skip verification since we're in a cluster
 		// For production, you'd want to use proper CA certificates
 		creds = credentials.NewTLS(&tls.Config{
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: false,
 		})
 		logger.Info("Using TLS with InsecureSkipVerify=true")
 	} else {
 		// Use insecure credentials
-		creds = insecure.NewCredentials()
+		creds = credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: true,
+		})
 		logger.Info("Using insecure credentials (no TLS)")
 	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
@@ -61,6 +64,7 @@ func NewStreamClient(logger *zap.Logger, config ServerConfig) (*StreamClient, er
 	// }
 
 	// Create the connection to the server
+
 	serverAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	logger.Info("Connecting to server at", zap.String("serverAddr", serverAddr))
 	conn, err := grpc.NewClient(serverAddr, opts...)
@@ -142,6 +146,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 	// Define the stream function that will be retried
 	streamFunc := func(ctx context.Context) error {
+		// Add tenant ID to the context metadata
+		// Temp until we implement multi-tenancy
+		md := metadata.New(map[string]string{
+			"autonp-tenantid": "default",
+		})
+		ctx = metadata.NewOutgoingContext(ctx, md)
+
 		// Start the bidirectional stream
 		stream, err := streamClient.StreamData(ctx)
 		if err != nil {
@@ -198,6 +209,12 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		// Start goroutine to handle incoming messages (network policies from server)
 		go func() {
+			k8sClient, err := k8s_helper.NewClientSet()
+			if err != nil {
+				s.Logger.Error("Failed to create k8s client", zap.Error(err))
+				done <- err
+				return
+			}
 			for {
 				select {
 				case <-ctx.Done():
@@ -220,7 +237,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 						s.Logger.Info("Received network policy from server", zap.String("name", resp.NetworkPolicy.String()))
 
 						// Apply the network policy with context
-						err := ingestion.ApplyNetworkPolicy(ctx, resp.NetworkPolicy)
+						err := ingestion.ApplyNetworkPolicy(ctx, k8sClient, resp.NetworkPolicy)
 						if err != nil {
 							s.Logger.Error("Failed to apply network policy", zap.Error(err))
 							// Continue processing other messages, don't fail the whole stream
@@ -288,14 +305,14 @@ func convertToProtoNetworkPolicy(np networkingv1.NetworkPolicy) *v1.NetworkPolic
 		Metadata: &v1.ObjectMeta{
 			Name:        np.Name,
 			Namespace:   np.Namespace,
-			Labels:      np.Labels, // maybe unnecessary
+			Labels:      np.Labels,      // maybe unnecessary
 			Annotations: np.Annotations, // maybe unnecessary
 		},
 		Spec: &v1.NetworkPolicySpec{
-			PodSelector:  convertLabelSelector(np.Spec.PodSelector),
-			Ingress:      convertIngressRules(np.Spec.Ingress),
-			Egress:       convertEgressRules(np.Spec.Egress),
-			PolicyTypes:  convertPolicyTypes(np.Spec.PolicyTypes),
+			PodSelector: convertLabelSelector(np.Spec.PodSelector),
+			Ingress:     convertIngressRules(np.Spec.Ingress),
+			Egress:      convertEgressRules(np.Spec.Egress),
+			PolicyTypes: convertPolicyTypes(np.Spec.PolicyTypes),
 		},
 	}
 }
@@ -352,10 +369,10 @@ func convertPorts(ports []networkingv1.NetworkPolicyPort) []*v1.NetworkPolicyPor
 			pp.Protocol = string(*p.Protocol)
 		}
 		if p.Port != nil {
-			if intPort, ok := p.Port.IntVal.(int32); ok && intPort != 0 {
-				pp.Port = &v1.NetworkPolicyPort_Port{Port: int32(intPort)}
+			if intPort := p.Port.IntVal; intPort != 0 {
+				pp.PortValue = &v1.NetworkPolicyPort_Port{Port: int32(intPort)}
 			} else {
-				pp.Port = &v1.NetworkPolicyPort_PortName{PortName: p.Port.StrVal}
+				pp.PortValue = &v1.NetworkPolicyPort_PortName{PortName: p.Port.StrVal}
 			}
 		}
 		if p.EndPort != nil {
@@ -409,20 +426,23 @@ func convertToProtoFlow(flowData smartcache.FlowCount) *v1.Flow {
 
 	return &v1.Flow{
 		Src: &v1.Endpoint{
-			Ns:   flowKey.SourceNamespace,
-			Kind: flowKey.SourceKind,
-			Name: flowKey.SourceName,
+			Ns:     flowKey.SourceNamespace,
+			Kind:   flowKey.SourceKind,
+			Name:   flowKey.SourceName,
+			Labels: flowData.FlowMetadata.SourceLabels,
 		},
 		Dst: &v1.Endpoint{
-			Ns:   flowKey.DestinationNamespace,
-			Kind: flowKey.DestinationKind,
-			Name: flowKey.DestinationName,
+			Ns:     flowKey.DestinationNamespace,
+			Kind:   flowKey.DestinationKind,
+			Name:   flowKey.DestinationName,
+			Labels: flowData.FlowMetadata.DestLabels,
 		},
 		Direction: flowKey.Direction,
 		Port:      flowKey.DestinationPort,
 		Protocol:  flowKey.Protocol,
 		Allowed:   flowKey.Verdict == "FORWARDED", // Assuming "FORWARDED" means allowed
 		Count:     flowData.Count,
-		FirstSeen: flowData.Flow.GetTime(),
+		FirstSeen: flowData.FlowMetadata.FirstSeen,
+		LastSeen:  flowData.FlowMetadata.LastSeen,
 	}
 }

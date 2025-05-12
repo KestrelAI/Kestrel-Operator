@@ -93,7 +93,8 @@ func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
 			return err
 		}
 		flowKey := createFlowKey(flow.GetFlow())
-		fm.cache.AddFlowKey(*flowKey, flow.GetFlow())
+		flowMetadata := &smartcache.FlowMetadata{FirstSeen: nil, LastSeen: nil, SourceLabels: flow.GetFlow().GetSource().Labels, DestLabels: flow.GetFlow().GetDestination().Labels}
+		fm.cache.AddFlowKey(*flowKey, flow.GetFlow(), flowMetadata)
 	}
 }
 

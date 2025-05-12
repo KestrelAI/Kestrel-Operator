@@ -9,6 +9,7 @@ import (
 	"operator/pkg/k8s_helper"
 
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -59,21 +60,26 @@ func (npi *NetworkPolicyIngester) GetNetworkPolicy(ctx context.Context, namespac
 }
 
 // applyNetworkPolicy applies a network policy received from the server to the cluster
-func ApplyNetworkPolicy(ctx context.Context, policy *v1.NetworkPolicy) error {
-	k8sClient, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return err
-	}
-
+func ApplyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, policy *v1.NetworkPolicy) error {
 	// Convert proto policy to K8s policy
 	k8sPolicy := convertToK8sNetworkPolicy(policy)
 
 	// Apply or update the policy
-	_, err = k8sClient.NetworkingV1().NetworkPolicies(k8sPolicy.Namespace).Create(ctx, k8sPolicy, metav1.CreateOptions{})
+	_, err := k8sClient.NetworkingV1().NetworkPolicies(k8sPolicy.Namespace).Create(ctx, k8sPolicy, metav1.CreateOptions{})
 	if err != nil {
-		// If policy already exists, update it
-		_, err = k8sClient.NetworkingV1().NetworkPolicies(k8sPolicy.Namespace).Update(ctx, k8sPolicy, metav1.UpdateOptions{})
-		return err
+		if apierrors.IsAlreadyExists(err) {
+			current, _ := k8sClient.NetworkingV1().
+				NetworkPolicies(k8sPolicy.Namespace).
+				Get(ctx, k8sPolicy.Name, metav1.GetOptions{})
+
+			k8sPolicy.ResourceVersion = current.ResourceVersion
+
+			_, err = k8sClient.NetworkingV1().
+				NetworkPolicies(k8sPolicy.Namespace).
+				Update(ctx, k8sPolicy, metav1.UpdateOptions{})
+
+			return err
+		}
 	}
 
 	return nil
