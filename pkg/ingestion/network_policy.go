@@ -70,6 +70,7 @@ func ApplyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, po
 
 			return err
 		}
+		return err
 	}
 
 	return nil

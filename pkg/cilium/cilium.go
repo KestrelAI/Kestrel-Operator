@@ -94,7 +94,23 @@ func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
 			return err
 		}
 		flowKey := createFlowKey(flow.GetFlow())
-		flowMetadata := &smartcache.FlowMetadata{FirstSeen: &timestamppb.Timestamp{}, LastSeen: &timestamppb.Timestamp{}, SourceLabels: flow.GetFlow().GetSource().GetLabels(), DestLabels: flow.GetFlow().GetDestination().GetLabels()}
+
+		// Convert string slice labels to map[string]struct{}
+		srcLabels := make(map[string]struct{})
+		dstLabels := make(map[string]struct{})
+		for _, label := range flow.GetFlow().GetSource().GetLabels() {
+			srcLabels[label] = struct{}{}
+		}
+		for _, label := range flow.GetFlow().GetDestination().GetLabels() {
+			dstLabels[label] = struct{}{}
+		}
+
+		flowMetadata := &smartcache.FlowMetadata{
+			FirstSeen:    &timestamppb.Timestamp{},
+			LastSeen:     &timestamppb.Timestamp{},
+			SourceLabels: srcLabels,
+			DestLabels:   dstLabels,
+		}
 		fm.cache.AddFlowKey(*flowKey, flow.GetFlow(), flowMetadata)
 	}
 }
@@ -134,6 +150,9 @@ func createFlowKey(networkFlow *flow.Flow) *smartcache.FlowKey {
 	case *flow.Layer4_ICMPv4:
 		protocol = "ICMP"
 		// ICMPv4 doesn't have ports
+	case *flow.Layer4_ICMPv6:
+		protocol = "ICMP"
+		// ICMPv6 doesn't have ports
 	}
 
 	// Use the helper to extract name and kind

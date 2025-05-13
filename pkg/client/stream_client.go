@@ -425,18 +425,28 @@ func convertToProtoFlow(flowData smartcache.FlowCount) *v1.Flow {
 	// Extract data from FlowKey
 	flowKey := flowData.FlowKey
 
+	// Convert map[string]struct{} labels to []string
+	srcLabels := make([]string, 0, len(flowData.FlowMetadata.SourceLabels))
+	for label := range flowData.FlowMetadata.SourceLabels {
+		srcLabels = append(srcLabels, label)
+	}
+	dstLabels := make([]string, 0, len(flowData.FlowMetadata.DestLabels))
+	for label := range flowData.FlowMetadata.DestLabels {
+		dstLabels = append(dstLabels, label)
+	}
+
 	return &v1.Flow{
 		Src: &v1.Endpoint{
 			Ns:     flowKey.SourceNamespace,
 			Kind:   flowKey.SourceKind,
 			Name:   flowKey.SourceName,
-			Labels: flowData.FlowMetadata.SourceLabels,
+			Labels: srcLabels,
 		},
 		Dst: &v1.Endpoint{
 			Ns:     flowKey.DestinationNamespace,
 			Kind:   flowKey.DestinationKind,
 			Name:   flowKey.DestinationName,
-			Labels: flowData.FlowMetadata.DestLabels,
+			Labels: dstLabels,
 		},
 		Direction: flowKey.Direction,
 		Port:      flowKey.DestinationPort,
