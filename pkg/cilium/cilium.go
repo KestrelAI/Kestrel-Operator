@@ -148,10 +148,10 @@ func createFlowKey(networkFlow *flow.Flow) *smartcache.FlowKey {
 		srcport = l4.SCTP.GetSourcePort()
 		dstport = l4.SCTP.GetDestinationPort()
 	case *flow.Layer4_ICMPv4:
-		protocol = "ICMP"
+		protocol = "ICMPv4"
 		// ICMPv4 doesn't have ports
 	case *flow.Layer4_ICMPv6:
-		protocol = "ICMP"
+		protocol = "ICMPv6"
 		// ICMPv6 doesn't have ports
 	}
 
