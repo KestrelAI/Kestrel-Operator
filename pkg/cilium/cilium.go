@@ -134,6 +134,9 @@ func createFlowKey(networkFlow *flow.Flow) *smartcache.FlowKey {
 	case *flow.Layer4_ICMPv4:
 		protocol = "ICMP"
 		// ICMPv4 doesn't have ports
+	case *flow.Layer4_ICMPv6:
+		protocol = "ICMP"
+		// ICMPv6 doesn't have ports
 	}
 
 	// Use the helper to extract name and kind

@@ -18,8 +18,8 @@ import (
 type FlowMetadata struct {
 	FirstSeen    *timestamppb.Timestamp
 	LastSeen     *timestamppb.Timestamp
-	SourceLabels []string
-	DestLabels   []string
+	SourceLabels map[string]struct{}
+	DestLabels   map[string]struct{}
 }
 
 type FlowData struct {
@@ -147,22 +147,40 @@ func (s *SmartCache) AddFlowKey(key FlowKey, flow *v1.Flow, flowMetadata *FlowMe
 	// Get existing data or create new
 	fd, exists := s.FlowKeys[key]
 	if !exists {
+		// Initialize new label sets
+		srcLabels := make(map[string]struct{})
+		dstLabels := make(map[string]struct{})
+
+		// Add initial labels
+		for _, label := range flowMetadata.GetSourceLabelsAsSlice() {
+			srcLabels[label] = struct{}{}
+		}
+		for _, label := range flowMetadata.GetDestLabelsAsSlice() {
+			dstLabels[label] = struct{}{}
+		}
+
 		fd = FlowData{
-			Count: 0,
+			Count: 1,
 			Flow:  flow,
 			FlowMetadata: &FlowMetadata{
 				FirstSeen:    timestamppb.Now(),
 				LastSeen:     timestamppb.Now(),
-				SourceLabels: flowMetadata.SourceLabels,
-				DestLabels:   flowMetadata.DestLabels,
+				SourceLabels: srcLabels,
+				DestLabels:   dstLabels,
 			},
 		}
 	} else {
 		fd.Count += 1
 		fd.Flow = flow
 		fd.FlowMetadata.LastSeen = timestamppb.Now()
-		fd.FlowMetadata.SourceLabels = flowMetadata.SourceLabels
-		fd.FlowMetadata.DestLabels = flowMetadata.DestLabels
+
+		// Add new labels to existing sets
+		for _, label := range flowMetadata.GetSourceLabelsAsSlice() {
+			fd.FlowMetadata.SourceLabels[label] = struct{}{}
+		}
+		for _, label := range flowMetadata.GetDestLabelsAsSlice() {
+			fd.FlowMetadata.DestLabels[label] = struct{}{}
+		}
 	}
 	s.FlowKeys[key] = fd
 }
@@ -188,7 +206,7 @@ func (s *SmartCache) GetAllFlowKeys() map[FlowKey]FlowData {
 	return flowKeys
 }
 
-// GetFlowCount returns the count for a given flow key and a boolean indicating if the key exists
+// GetFlowCount returns the count for a given flow key and -1 if the key does not exist
 func (s *SmartCache) GetFlowCount(flowKey FlowKey) int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -207,4 +225,21 @@ func (s *SmartCache) GetFlowKeys() []FlowKey {
 		flowKeys = append(flowKeys, flowKey)
 	}
 	return flowKeys
+}
+
+// GetLabelsAsSlice returns the labels as a slice of strings
+func (fm *FlowMetadata) GetSourceLabelsAsSlice() []string {
+	labels := make([]string, 0, len(fm.SourceLabels))
+	for label := range fm.SourceLabels {
+		labels = append(labels, label)
+	}
+	return labels
+}
+
+func (fm *FlowMetadata) GetDestLabelsAsSlice() []string {
+	labels := make([]string, 0, len(fm.DestLabels))
+	for label := range fm.DestLabels {
+		labels = append(labels, label)
+	}
+	return labels
 }
