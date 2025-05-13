@@ -13,6 +13,10 @@ spec:
     metadata:
       labels:
         app: {{ .Release.Name }}
+        {{- include "autonp-operator.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ .Release.Name }}
       containers:
