@@ -129,7 +129,8 @@ func (s *SmartCache) purgeCache() {
 			Flow:         flowData.Flow,
 			FlowMetadata: flowData.FlowMetadata,
 		}:
-		default:
+		case <-s.stopCh: // allow graceful shutdown
+			return
 		}
 	}
 	// Clear the cache regardless of whether we could send all flows

@@ -122,7 +122,9 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	defer cancel()
 
 	// Create a channel for flow data
-	flowChan := make(chan smartcache.FlowCount)
+	// Buffer large enough for one purge-cycle (~60 s) worth of flows.
+	// 10 000 is arbitrary — need to tune.
+	flowChan := make(chan smartcache.FlowCount, 10_000)
 
 	// Initialize flow cache
 	cache := smartcache.InitFlowCache(ctx, flowChan)
