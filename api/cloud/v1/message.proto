@@ -76,6 +76,9 @@ message NetworkPolicy {
   // Standard Kubernetes metadata
   ObjectMeta metadata = 1;
   NetworkPolicySpec spec = 2;
+
+  // zero-or-more "target" workloads protected by this policy
+  repeated string target_workloads = 3;
 }
 
 // Kubernetes ObjectMeta
