@@ -179,10 +179,12 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			default:
 			}
 
+			targetWorkloads := networkPolicyIngester.ResolveTargetWorkloads(ctx, policy)
+
 			// Convert to proto message and send
 			policyMsg := &v1.StreamDataRequest{
 				Request: &v1.StreamDataRequest_NetworkPolicy{
-					NetworkPolicy: convertToProtoNetworkPolicy(policy),
+					NetworkPolicy: convertToProtoNetworkPolicy(policy, targetWorkloads),
 				},
 			}
 			if err := stream.Send(policyMsg); err != nil {
@@ -303,7 +305,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 // convertToProtoNetworkPolicy converts a native K8s NetworkPolicy
 // (k8s.io/api/networking/v1) to our cloud.v1 proto representation.
-func convertToProtoNetworkPolicy(np networkingv1.NetworkPolicy) *v1.NetworkPolicy {
+func convertToProtoNetworkPolicy(np networkingv1.NetworkPolicy, targetWorkloads []string) *v1.NetworkPolicy {
 	return &v1.NetworkPolicy{
 		Metadata: &v1.ObjectMeta{
 			Name:        np.Name,
@@ -317,6 +319,7 @@ func convertToProtoNetworkPolicy(np networkingv1.NetworkPolicy) *v1.NetworkPolic
 			Egress:      convertEgressRules(np.Spec.Egress),
 			PolicyTypes: convertPolicyTypes(np.Spec.PolicyTypes),
 		},
+		TargetWorkloads: targetWorkloads,
 	}
 }
 
