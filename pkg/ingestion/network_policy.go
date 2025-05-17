@@ -11,7 +11,9 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -47,6 +49,40 @@ func (npi *NetworkPolicyIngester) IngestNetworkPolicies(ctx context.Context) ([]
 // GetNetworkPolicy fetches a specific network policy by name and namespace
 func (npi *NetworkPolicyIngester) GetNetworkPolicy(ctx context.Context, namespace, name string) (*networkingv1.NetworkPolicy, error) {
 	return npi.clientset.NetworkingV1().NetworkPolicies(namespace).Get(ctx, name, metav1.GetOptions{})
+}
+
+// ResolveTargetWorkloads resolves a network policy to the target workloads to which it applies
+func (npi *NetworkPolicyIngester) ResolveTargetWorkloads(ctx context.Context, np networkingv1.NetworkPolicy) []string {
+	podList, err := npi.clientset.CoreV1().Pods(np.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labels.Set(np.Spec.PodSelector.MatchLabels).String(),
+	})
+	if err != nil {
+		return nil
+	}
+
+	out := sets.New[string]()
+	for _, p := range podList.Items {
+		out.Insert(fmt.Sprintf("%s.Pod.%s", np.Namespace, p.Name)) // Bare Pod key
+
+		// Every owner of the Pod in the chain
+		for _, ref := range p.OwnerReferences {
+			key := fmt.Sprintf("%s.%s.%s", np.Namespace, ref.Kind, ref.Name)
+			out.Insert(key)
+
+			// Special handling for ReplicaSet->Deployment and Job->CronJob relationships
+			switch ref.Kind {
+			case "ReplicaSet":
+				if d := deploymentName(ref.Name); d != "" {
+					out.Insert(fmt.Sprintf("%s.%s.%s", np.Namespace, "Deployment", d))
+				}
+			case "Job":
+				if cj := cronJobName(ref.Name); cj != "" {
+					out.Insert(fmt.Sprintf("%s.%s.%s", np.Namespace, "CronJob", cj))
+				}
+			}
+		}
+	}
+	return out.UnsortedList()
 }
 
 // applyNetworkPolicy applies a network policy received from the server to the cluster
@@ -212,4 +248,30 @@ func convertToK8sIPBlockPtr(b *v1.IPBlock) *networkingv1.IPBlock {
 		CIDR:   b.Cidr,
 		Except: b.Except,
 	}
+}
+
+// deploymentName strips the hash suffix from a ReplicaSet name.
+func deploymentName(rs string) string {
+	if i := lastDash(rs); i > 0 {
+		return rs[:i]
+	}
+	return ""
+}
+
+// cronJobName strips the timestamp suffix from a Job name.
+func cronJobName(job string) string {
+	if i := lastDash(job); i > 0 {
+		return job[:i]
+	}
+	return ""
+}
+
+// lastDash returns the index of the last '-' in s, or -1.
+func lastDash(s string) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == '-' {
+			return i
+		}
+	}
+	return -1
 }
