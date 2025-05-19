@@ -92,16 +92,17 @@ func ParseToken(tokenString string) (jwt.MapClaims, error) {
 	return claims, err
 }
 
-func getTenantIdFromToken(logger *zap.Logger, claims jwt.MapClaims) (string, error) {
-	sub, ok := claims["sub"].([]interface{})
-	if !ok {
-		return "", errors.New("sub not found in token")
-	}
+// Commented out for now as we don't need it
+// func getTenantIdFromToken(logger *zap.Logger, claims jwt.MapClaims) (string, error) {
+// 	sub, ok := claims["sub"].([]interface{})
+// 	if !ok {
+// 		return "", errors.New("sub not found in token")
+// 	}
 
-	tenantId, ok := sub[0].(string)
-	if !ok {
-		return "", errors.New("first sub not found in token")
-	}
+// 	tenantId, ok := sub[0].(string)
+// 	if !ok {
+// 		return "", errors.New("first sub not found in token")
+// 	}
 
-	return tenantId, nil
-}
+// 	return tenantId, nil
+// }

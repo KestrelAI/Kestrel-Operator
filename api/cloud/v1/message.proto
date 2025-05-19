@@ -11,7 +11,17 @@ message StreamDataRequest {
   oneof request {
     Flow flow = 1;
     NetworkPolicy network_policy = 2;
+    ErrorNetworkPolicyList error_network_policies = 3;
   }
+}
+
+message ErrorNetworkPolicyList {
+  repeated ErrorNetworkPolicy policies = 1;
+}
+
+message ErrorNetworkPolicy {
+  string error_network_policy = 1;
+  string error_message = 2;
 }
 
 message Flow {
@@ -64,7 +74,7 @@ message StreamDataResponse {
     // Simple acknowledgment when message is received
     Ack ack = 1;
     // Network policy when computation is complete
-    NetworkPolicy network_policy = 2;
+    ErrorNetworkPolicy network_policy = 2;
   }
 }
 

@@ -11,7 +11,10 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -50,23 +53,20 @@ func (npi *NetworkPolicyIngester) GetNetworkPolicy(ctx context.Context, namespac
 }
 
 // applyNetworkPolicy applies a network policy received from the server to the cluster
-func ApplyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, policy *v1.NetworkPolicy) error {
-	// Convert proto policy to K8s policy
-	k8sPolicy := convertToK8sNetworkPolicy(policy)
-
+func ApplyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, policy *networkingv1.NetworkPolicy) error {
 	// Apply or update the policy
-	_, err := k8sClient.NetworkingV1().NetworkPolicies(k8sPolicy.Namespace).Create(ctx, k8sPolicy, metav1.CreateOptions{})
+	_, err := k8sClient.NetworkingV1().NetworkPolicies(policy.Namespace).Create(ctx, policy, metav1.CreateOptions{})
 	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			current, _ := k8sClient.NetworkingV1().
-				NetworkPolicies(k8sPolicy.Namespace).
-				Get(ctx, k8sPolicy.Name, metav1.GetOptions{})
+				NetworkPolicies(policy.Namespace).
+				Get(ctx, policy.Name, metav1.GetOptions{})
 
-			k8sPolicy.ResourceVersion = current.ResourceVersion
+			policy.ResourceVersion = current.ResourceVersion
 
 			_, err = k8sClient.NetworkingV1().
-				NetworkPolicies(k8sPolicy.Namespace).
-				Update(ctx, k8sPolicy, metav1.UpdateOptions{})
+				NetworkPolicies(policy.Namespace).
+				Update(ctx, policy, metav1.UpdateOptions{})
 
 			return err
 		}
@@ -76,21 +76,53 @@ func ApplyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, po
 	return nil
 }
 
-// convertToK8sNetworkPolicy converts our proto NetworkPolicy back to the
+func CheckNetworkPolicy(policy string) error {
+	// Check if the policy is empty
+	if policy == "" {
+		return fmt.Errorf("policy is empty")
+	}
+
+	// Parse the YAML into a NetworkPolicy object
+	networkPolicy, err := ParseNetworkPolicyYAML(policy)
+	if err != nil {
+		return fmt.Errorf("failed to parse policy: %v", err)
+	}
+
+	// Get a clientset for the dry run
+	clientset, err := k8s_helper.NewClientSet()
+	if err != nil {
+		return fmt.Errorf("failed to create k8s clientset: %v", err)
+	}
+
+	// Perform a dry run create
+	_, err = clientset.NetworkingV1().
+		NetworkPolicies(networkPolicy.Namespace).
+		Create(context.Background(), networkPolicy, metav1.CreateOptions{
+			DryRun: []string{"All"},
+		})
+
+	if err != nil {
+		return fmt.Errorf("dry run failed: %v", err)
+	}
+
+	return nil
+}
+
+// ConvertToK8sNetworkPolicy converts our proto NetworkPolicy back to the
 // Kubernetes API object (networking.k8s.io/v1).
-func convertToK8sNetworkPolicy(p *v1.NetworkPolicy) *networkingv1.NetworkPolicy {
+func ConvertToK8sNetworkPolicy(p *v1.NetworkPolicy) *networkingv1.NetworkPolicy {
 	return &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        p.Metadata.Name,
-			Namespace:   p.Metadata.Namespace,
-			Labels:      p.Metadata.Labels,
-			Annotations: p.Metadata.Annotations,
+			Name:        p.GetMetadata().GetName(),
+			Namespace:   p.GetMetadata().GetNamespace(),
+			Labels:      p.GetMetadata().GetLabels(),
+			Annotations: p.GetMetadata().GetAnnotations(),
 		},
 		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: convertToK8sLabelSelector(p.Spec.PodSelector),
-			PolicyTypes: convertToK8sPolicyTypes(p.Spec.PolicyTypes),
-			Ingress:     convertToK8sIngressRules(p.Spec.Ingress),
-			Egress:      convertToK8sEgressRules(p.Spec.Egress),
+			PodSelector: ConvertToK8sLabelSelector(p.GetSpec().GetPodSelector()),
+			PolicyTypes: convertToK8sPolicyTypes(p.GetSpec().GetPolicyTypes()),
+			Ingress:     convertToK8sIngressRules(p.GetSpec().GetIngress()),
+			Egress:      convertToK8sEgressRules(p.GetSpec().GetEgress()),
 		},
 	}
 }
@@ -131,8 +163,8 @@ func convertToK8sPeers(peers []*v1.NetworkPolicyPeer) []networkingv1.NetworkPoli
 	out := make([]networkingv1.NetworkPolicyPeer, 0, len(peers))
 	for _, p := range peers {
 		out = append(out, networkingv1.NetworkPolicyPeer{
-			PodSelector:       convertToK8sLabelSelectorPtr(p.PodSelector),
-			NamespaceSelector: convertToK8sLabelSelectorPtr(p.NamespaceSelector),
+			PodSelector:       ConvertToK8sLabelSelectorPtr(p.PodSelector),
+			NamespaceSelector: ConvertToK8sLabelSelectorPtr(p.NamespaceSelector),
 			IPBlock:           convertToK8sIPBlockPtr(p.IpBlock),
 		})
 	}
@@ -172,7 +204,8 @@ func convertToK8sPorts(ports []*v1.NetworkPolicyPort) []networkingv1.NetworkPoli
 
 /* ----- label / selector helpers ----- */
 
-func convertToK8sLabelSelector(sel *v1.LabelSelector) metav1.LabelSelector {
+// ConvertToK8sLabelSelector converts a proto LabelSelector to a K8s LabelSelector
+func ConvertToK8sLabelSelector(sel *v1.LabelSelector) metav1.LabelSelector {
 	if sel == nil {
 		return metav1.LabelSelector{}
 	}
@@ -182,11 +215,12 @@ func convertToK8sLabelSelector(sel *v1.LabelSelector) metav1.LabelSelector {
 	}
 }
 
-func convertToK8sLabelSelectorPtr(sel *v1.LabelSelector) *metav1.LabelSelector {
+// ConvertToK8sLabelSelectorPtr converts a proto LabelSelector to a K8s LabelSelector pointer
+func ConvertToK8sLabelSelectorPtr(sel *v1.LabelSelector) *metav1.LabelSelector {
 	if sel == nil {
 		return nil
 	}
-	tmp := convertToK8sLabelSelector(sel)
+	tmp := ConvertToK8sLabelSelector(sel)
 	return &tmp
 }
 
@@ -212,4 +246,39 @@ func convertToK8sIPBlockPtr(b *v1.IPBlock) *networkingv1.IPBlock {
 		CIDR:   b.Cidr,
 		Except: b.Except,
 	}
+}
+
+// ParseNetworkPolicyYAML parses a YAML string into a Kubernetes NetworkPolicy object
+func ParseNetworkPolicyYAML(yamlStr string) (*networkingv1.NetworkPolicy, error) {
+	// Create a new scheme and codec factory
+	scheme := runtime.NewScheme()
+	codecFactory := serializer.NewCodecFactory(scheme)
+
+	// Add the networking API group to the scheme
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to add networking scheme: %v", err)
+	}
+
+	// Convert YAML to JSON (Kubernetes API machinery works with JSON)
+	jsonBytes, err := yaml.ToJSON([]byte(yamlStr))
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert YAML to JSON: %v", err)
+	}
+
+	// Create a decoder
+	decoder := codecFactory.UniversalDeserializer()
+
+	// Decode the JSON into a runtime.Object
+	obj, _, err := decoder.Decode(jsonBytes, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode network policy: %v", err)
+	}
+
+	// Type assert to NetworkPolicy
+	networkPolicy, ok := obj.(*networkingv1.NetworkPolicy)
+	if !ok {
+		return nil, fmt.Errorf("decoded object is not a NetworkPolicy")
+	}
+
+	return networkPolicy, nil
 }
