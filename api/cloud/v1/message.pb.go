@@ -423,7 +423,7 @@ type NetworkPolicy struct {
 	// Standard Kubernetes metadata
 	Metadata *ObjectMeta        `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	Spec     *NetworkPolicySpec `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
-	// zero-or-more "target" workloads protected by this policy
+	// Zero-or-more "target" workloads protected by this policy
 	TargetWorkloads []string `protobuf:"bytes,3,rep,name=target_workloads,json=targetWorkloads,proto3" json:"target_workloads,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -1162,8 +1162,8 @@ const file_cloud_v1_message_proto_rawDesc = "" +
 	"port_value2^\n" +
 	"\rStreamService\x12M\n" +
 	"\n" +
-	"StreamData\x12\x1b.cloud.v1.StreamDataRequest\x1a\x1c.cloud.v1.StreamDataResponse\"\x00(\x010\x01B\x85\x01\n" +
-	"\fcom.cloud.v1B\fMessageProtoP\x01Z&github.com/auto-np/client/api/cloud/v1\xa2\x02\x03CXX\xaa\x02\bCloud.V1\xca\x02\bCloud\\V1\xe2\x02\x14Cloud\\V1\\GPBMetadata\xea\x02\tCloud::V1b\x06proto3"
+	"StreamData\x12\x1b.cloud.v1.StreamDataRequest\x1a\x1c.cloud.v1.StreamDataResponse\"\x00(\x010\x01Bt\n" +
+	"\fcom.cloud.v1B\fMessageProtoP\x01Z\x15operator/api/cloud/v1\xa2\x02\x03CXX\xaa\x02\bCloud.V1\xca\x02\bCloud\\V1\xe2\x02\x14Cloud\\V1\\GPBMetadata\xea\x02\tCloud::V1b\x06proto3"
 
 var (
 	file_cloud_v1_message_proto_rawDescOnce sync.Once

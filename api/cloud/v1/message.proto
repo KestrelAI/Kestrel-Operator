@@ -4,7 +4,7 @@ package cloud.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/auto-np/client/api/cloud/v1";
+option go_package = "operator/api/cloud/v1";
 
 // Request message for flow stream
 message StreamDataRequest {
