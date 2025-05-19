@@ -22,6 +22,7 @@ message ErrorNetworkPolicyList {
 message ErrorNetworkPolicy {
   string error_network_policy = 1;
   string error_message = 2;
+  string policy_id = 3; // Unique identifier for tracking policies
 }
 
 message Flow {

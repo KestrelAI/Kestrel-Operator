@@ -54,6 +54,15 @@ func (npi *NetworkPolicyIngester) GetNetworkPolicy(ctx context.Context, namespac
 
 // applyNetworkPolicy applies a network policy received from the server to the cluster
 func ApplyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, policy *networkingv1.NetworkPolicy) error {
+	// Check for nil policy or client
+	if policy == nil {
+		return fmt.Errorf("policy cannot be nil")
+	}
+
+	if k8sClient == nil {
+		return fmt.Errorf("k8s client cannot be nil")
+	}
+
 	// Apply or update the policy
 	_, err := k8sClient.NetworkingV1().NetworkPolicies(policy.Namespace).Create(ctx, policy, metav1.CreateOptions{})
 	if err != nil {
@@ -250,6 +259,11 @@ func convertToK8sIPBlockPtr(b *v1.IPBlock) *networkingv1.IPBlock {
 
 // ParseNetworkPolicyYAML parses a YAML string into a Kubernetes NetworkPolicy object
 func ParseNetworkPolicyYAML(yamlStr string) (*networkingv1.NetworkPolicy, error) {
+	// Check for empty input
+	if yamlStr == "" {
+		return nil, fmt.Errorf("empty network policy YAML")
+	}
+
 	// Create a new scheme and codec factory
 	scheme := runtime.NewScheme()
 	codecFactory := serializer.NewCodecFactory(scheme)
@@ -278,6 +292,18 @@ func ParseNetworkPolicyYAML(yamlStr string) (*networkingv1.NetworkPolicy, error)
 	networkPolicy, ok := obj.(*networkingv1.NetworkPolicy)
 	if !ok {
 		return nil, fmt.Errorf("decoded object is not a NetworkPolicy")
+	}
+
+	// Validate the network policy
+	if networkPolicy.Spec.PodSelector.MatchLabels == nil && len(networkPolicy.Spec.PodSelector.MatchExpressions) == 0 {
+		// Pod selector is empty, which is valid but worth checking
+	}
+
+	// Validate policy types
+	for _, policyType := range networkPolicy.Spec.PolicyTypes {
+		if policyType != networkingv1.PolicyTypeIngress && policyType != networkingv1.PolicyTypeEgress {
+			return nil, fmt.Errorf("invalid policy type: %s", policyType)
+		}
 	}
 
 	return networkPolicy, nil

@@ -1,12 +1,20 @@
 package ingestion
 
 import (
+	"testing"
+
 	v1 "operator/api/cloud/v1"
 	testhelper "operator/pkg/test_helper"
 
+	"github.com/stretchr/testify/suite"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// TestNetworkPolicySuite runs the NetworkPolicyTestSuite
+func TestNetworkPolicySuite(t *testing.T) {
+	suite.Run(t, new(NetworkPolicyTestSuite))
+}
 
 type NetworkPolicyTestSuite struct {
 	testhelper.ControllerTestSuite
@@ -55,7 +63,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: test-policy
+  name: test-policy-invalid
   namespace: default
 spec:
   podSelector:
@@ -94,7 +102,7 @@ func (suite *NetworkPolicyTestSuite) TestCheckNetworkPolicy() {
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: test-policy
+  name: test-policy-evan
   namespace: default
 spec:
   podSelector:
@@ -124,7 +132,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: test-policy
+  name: test-policy-2
   namespace: default
 spec:
   podSelector:
@@ -151,7 +159,7 @@ func (suite *NetworkPolicyTestSuite) TestApplyNetworkPolicy() {
 	// Create a test network policy
 	testPolicy := &v1.NetworkPolicy{
 		Metadata: &v1.ObjectMeta{
-			Name:      "test-policy",
+			Name:      "test-policy-raman",
 			Namespace: "default",
 		},
 		Spec: &v1.NetworkPolicySpec{
@@ -207,7 +215,7 @@ func (suite *NetworkPolicyTestSuite) TestApplyNetworkPolicy() {
 			name: "policy with invalid namespace",
 			policy: &networkingv1.NetworkPolicy{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-policy",
+					Name:      "test-policy-random",
 					Namespace: "invalid-namespace",
 				},
 				Spec: networkingv1.NetworkPolicySpec{
@@ -231,7 +239,7 @@ func (suite *NetworkPolicyTestSuite) TestApplyNetworkPolicy() {
 func (suite *NetworkPolicyTestSuite) TestConvertToK8sNetworkPolicy() {
 	testPolicy := &v1.NetworkPolicy{
 		Metadata: &v1.ObjectMeta{
-			Name:      "test-policy",
+			Name:      "test-policy-1",
 			Namespace: "default",
 			Labels: map[string]string{
 				"app": "test",
@@ -385,4 +393,50 @@ func stringSlicesEqual(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func (suite *NetworkPolicyTestSuite) TestErrorNetworkPolicyWithID() {
+	// Test policy with a specific ID
+	errorPolicy := &v1.ErrorNetworkPolicy{
+		ErrorNetworkPolicy: `
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: test-policy-with-id
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          role: frontend
+    ports:
+    - protocol: TCP
+      port: 80
+`,
+		PolicyId: "test-policy-id-12345",
+	}
+
+	// First, check that the policy is valid
+	err := CheckNetworkPolicy(errorPolicy.ErrorNetworkPolicy)
+	suite.NoError(err, "Policy should be valid")
+
+	// Make sure the ID is preserved
+	suite.Equal("test-policy-id-12345", errorPolicy.PolicyId, "Policy ID should be preserved")
+
+	// Parse the policy and verify its contents
+	k8sPolicy, err := ParseNetworkPolicyYAML(errorPolicy.ErrorNetworkPolicy)
+	suite.NoError(err, "Should parse without error")
+	suite.Equal("test-policy-with-id", k8sPolicy.Name, "Policy name should match")
+	suite.Equal("default", k8sPolicy.Namespace, "Namespace should match")
+
+	// Verify the policy specifies the expected labels
+	podSelector := k8sPolicy.Spec.PodSelector
+	suite.Contains(podSelector.MatchLabels, "app", "Pod selector should contain 'app' label")
+	suite.Equal("web", podSelector.MatchLabels["app"], "App label should be 'web'")
 }

@@ -364,6 +364,7 @@ func (s *StreamClient) handleInvalidPolicy(
 	failedNetworkPolicy := &v1.ErrorNetworkPolicy{
 		ErrorNetworkPolicy: policy.ErrorNetworkPolicy,
 		ErrorMessage:       validationErr.Error(),
+		PolicyId:           policy.PolicyId, // Preserve the policy_id field
 	}
 
 	// Send the error immediately
@@ -395,6 +396,7 @@ func (s *StreamClient) sendPolicyValidationAck(stream v1.StreamService_StreamDat
 					{
 						ErrorNetworkPolicy: policy.ErrorNetworkPolicy,
 						ErrorMessage:       "",
+						PolicyId:           policy.PolicyId, // Preserve the policy_id field
 					},
 				},
 			},

@@ -169,6 +169,7 @@ type ErrorNetworkPolicy struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	ErrorNetworkPolicy string                 `protobuf:"bytes,1,opt,name=error_network_policy,json=errorNetworkPolicy,proto3" json:"error_network_policy,omitempty"`
 	ErrorMessage       string                 `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	PolicyId           string                 `protobuf:"bytes,3,opt,name=policy_id,json=policyId,proto3" json:"policy_id,omitempty"` // Unique identifier for tracking policies
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -213,6 +214,13 @@ func (x *ErrorNetworkPolicy) GetErrorNetworkPolicy() string {
 func (x *ErrorNetworkPolicy) GetErrorMessage() string {
 	if x != nil {
 		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *ErrorNetworkPolicy) GetPolicyId() string {
+	if x != nil {
+		return x.PolicyId
 	}
 	return ""
 }
@@ -1190,10 +1198,11 @@ const file_cloud_v1_message_proto_rawDesc = "" +
 	"\x16error_network_policies\x18\x03 \x01(\v2 .cloud.v1.ErrorNetworkPolicyListH\x00R\x14errorNetworkPoliciesB\t\n" +
 	"\arequest\"R\n" +
 	"\x16ErrorNetworkPolicyList\x128\n" +
-	"\bpolicies\x18\x01 \x03(\v2\x1c.cloud.v1.ErrorNetworkPolicyR\bpolicies\"k\n" +
+	"\bpolicies\x18\x01 \x03(\v2\x1c.cloud.v1.ErrorNetworkPolicyR\bpolicies\"\x88\x01\n" +
 	"\x12ErrorNetworkPolicy\x120\n" +
 	"\x14error_network_policy\x18\x01 \x01(\tR\x12errorNetworkPolicy\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\xc4\x02\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12\x1b\n" +
+	"\tpolicy_id\x18\x03 \x01(\tR\bpolicyId\"\xc4\x02\n" +
 	"\x04Flow\x12$\n" +
 	"\x03src\x18\x01 \x01(\v2\x12.cloud.v1.EndpointR\x03src\x12$\n" +
 	"\x03dst\x18\x02 \x01(\v2\x12.cloud.v1.EndpointR\x03dst\x12\x1c\n" +
