@@ -77,7 +77,8 @@ message NetworkPolicy {
   ObjectMeta metadata = 1;
   NetworkPolicySpec spec = 2;
 
-  // Zero-or-more "target" workloads protected by this policy
+  // Zero-or-more "target" workloads protected by this policy;
+  // each entry in the target_workloads list is of the format: "<Namespace>.<Kind>.<Name>".
   repeated string target_workloads = 3;
 }
 
