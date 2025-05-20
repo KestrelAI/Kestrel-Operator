@@ -274,9 +274,6 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 		return
 	}
 
-	// Maintain a list of policies ready to be applied
-	policyToBeApplied := []*v1.ErrorNetworkPolicy{}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -292,53 +289,23 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 			// Handle the response based on its type
 			switch resp := response.Response.(type) {
 			case *v1.StreamDataResponse_Ack:
-				s.handleServerAck(ctx, k8sClient, policyToBeApplied)
-				// Clear the list after applying
-				policyToBeApplied = []*v1.ErrorNetworkPolicy{}
+				// Server ACK is no longer needed for policy application
+				s.Logger.Debug("Received acknowledgment from server")
 			case *v1.StreamDataResponse_NetworkPolicy:
-				s.handleNetworkPolicy(stream, resp.NetworkPolicy, &policyToBeApplied)
+				s.handleNetworkPolicy(ctx, stream, k8sClient, resp.NetworkPolicy)
 			}
 		}
 	}
 }
 
-// handleServerAck processes server acknowledgments and applies all validated policies
-func (s *StreamClient) handleServerAck(ctx context.Context, k8sClient *kubernetes.Clientset, policies []*v1.ErrorNetworkPolicy) {
-	s.Logger.Debug("Received acknowledgment from server")
-	// Apply all validated network policies at once
-	s.Logger.Info("Received server ACK - applying all validated policies", zap.Int("count", len(policies)))
-
-	// Apply the network policy with context
-	for _, policy := range policies {
-		s.applyNetworkPolicy(ctx, k8sClient, policy)
-	}
-}
-
-// applyNetworkPolicy applies a single network policy
-func (s *StreamClient) applyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, policy *v1.ErrorNetworkPolicy) {
-	policyParsed, err := ingestion.ParseNetworkPolicyYAML(policy.ErrorNetworkPolicy)
-	if err != nil {
-		s.Logger.Error("Failed to parse network policy YAML", zap.Error(err))
-		return
-	}
-
-	err = ingestion.ApplyNetworkPolicy(ctx, k8sClient, policyParsed)
-	if err != nil {
-		s.Logger.Error("Failed to apply network policy", zap.Error(err))
-	} else {
-		s.Logger.Info("Successfully applied network policy from server",
-			zap.String("name", policyParsed.Name),
-			zap.String("namespace", policyParsed.Namespace))
-	}
-}
-
 // handleNetworkPolicy validates network policies from the server and sends appropriate responses
 func (s *StreamClient) handleNetworkPolicy(
+	ctx context.Context,
 	stream v1.StreamService_StreamDataClient,
+	k8sClient *kubernetes.Clientset,
 	policy *v1.ErrorNetworkPolicy,
-	policyList *[]*v1.ErrorNetworkPolicy,
 ) {
-	s.Logger.Info("Received network policy from server", zap.String("name", policy.String()))
+	s.Logger.Info("Received network policy from server", zap.String("policy_id", policy.PolicyId))
 
 	// Check if network policy is correct and can be applied
 	err := ingestion.CheckNetworkPolicy(policy.ErrorNetworkPolicy)
@@ -347,8 +314,29 @@ func (s *StreamClient) handleNetworkPolicy(
 		return
 	}
 
-	// Policy is valid - add to list to be applied later
-	*policyList = append(*policyList, policy)
+	// Policy is valid - apply it immediately
+	policyParsed, err := ingestion.ParseNetworkPolicyYAML(policy.ErrorNetworkPolicy)
+	if err != nil {
+		s.Logger.Error("Failed to parse network policy YAML", zap.Error(err))
+		s.handleInvalidPolicy(stream, policy, err)
+		return
+	}
+
+	// Apply the valid policy directly
+	err = ingestion.ApplyNetworkPolicy(ctx, k8sClient, policyParsed)
+	if err != nil {
+		s.Logger.Error("Failed to apply network policy", zap.Error(err))
+		// Send back as an invalid policy with the application error
+		s.handleInvalidPolicy(stream, policy, err)
+		return
+	}
+
+	s.Logger.Info("Successfully applied network policy from server",
+		zap.String("name", policyParsed.Name),
+		zap.String("namespace", policyParsed.Namespace),
+		zap.String("policy_id", policy.PolicyId))
+
+	// Send ACK back to server to indicate this policy was valid and applied
 	s.sendPolicyValidationAck(stream, policy)
 }
 
