@@ -60,29 +60,33 @@ func (npi *NetworkPolicyIngester) ResolveTargetWorkloads(ctx context.Context, np
 		return nil
 	}
 
-	out := sets.New[string]()
+	targetWorkloads := sets.New[string]()
 	for _, p := range podList.Items {
-		out.Insert(fmt.Sprintf("%s.Pod.%s", np.Namespace, p.Name)) // Bare Pod key
+		targetWorkloads.Insert(fmt.Sprintf("%s.Pod.%s", np.Namespace, p.Name)) // Bare Pod key
 
 		// Every owner of the Pod in the chain
 		for _, ref := range p.OwnerReferences {
 			key := fmt.Sprintf("%s.%s.%s", np.Namespace, ref.Kind, ref.Name)
-			out.Insert(key)
+			targetWorkloads.Insert(key)
 
-			// Special handling for ReplicaSet->Deployment and Job->CronJob relationships
+			// Special handling for ReplicaSet->Deployment and Job->CronJob relationships;
+			// this is necessary because ReplicaSets and Jobs are not the root controllers – the root controllers
+			// are Deployments and CronJobs, respectively, so we need to also include these "grandparent"
+			// controllers of the Pod in the targetWorkloads set. This ensures that, no matter what controller
+			// Cilium chooses for the Pod traffic, we will always be able to do this stitching.
 			switch ref.Kind {
 			case "ReplicaSet":
 				if d := deploymentName(ref.Name); d != "" {
-					out.Insert(fmt.Sprintf("%s.%s.%s", np.Namespace, "Deployment", d))
+					targetWorkloads.Insert(fmt.Sprintf("%s.%s.%s", np.Namespace, "Deployment", d))
 				}
 			case "Job":
 				if cj := cronJobName(ref.Name); cj != "" {
-					out.Insert(fmt.Sprintf("%s.%s.%s", np.Namespace, "CronJob", cj))
+					targetWorkloads.Insert(fmt.Sprintf("%s.%s.%s", np.Namespace, "CronJob", cj))
 				}
 			}
 		}
 	}
-	return out.UnsortedList()
+	return targetWorkloads.UnsortedList()
 }
 
 // applyNetworkPolicy applies a network policy received from the server to the cluster
