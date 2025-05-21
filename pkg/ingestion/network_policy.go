@@ -7,6 +7,7 @@ import (
 	v1 "operator/api/cloud/v1"
 	"operator/pkg/k8s_helper"
 
+	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -85,14 +86,14 @@ func ApplyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, po
 	return nil
 }
 
-func CheckNetworkPolicy(policy string) error {
+func CheckNetworkPolicy(logger *zap.Logger, policy string) error {
 	// Check if the policy is empty
 	if policy == "" {
 		return fmt.Errorf("policy is empty")
 	}
 
 	// Parse the YAML into a NetworkPolicy object
-	networkPolicy, err := ParseNetworkPolicyYAML(policy)
+	networkPolicy, err := ParseNetworkPolicyYAML(logger, policy)
 	if err != nil {
 		return fmt.Errorf("failed to parse policy: %v", err)
 	}
@@ -258,7 +259,7 @@ func convertToK8sIPBlockPtr(b *v1.IPBlock) *networkingv1.IPBlock {
 }
 
 // ParseNetworkPolicyYAML parses a YAML string into a Kubernetes NetworkPolicy object
-func ParseNetworkPolicyYAML(yamlStr string) (*networkingv1.NetworkPolicy, error) {
+func ParseNetworkPolicyYAML(logger *zap.Logger, yamlStr string) (*networkingv1.NetworkPolicy, error) {
 	// Check for empty input
 	if yamlStr == "" {
 		return nil, fmt.Errorf("empty network policy YAML")
@@ -297,6 +298,7 @@ func ParseNetworkPolicyYAML(yamlStr string) (*networkingv1.NetworkPolicy, error)
 	// Validate the network policy
 	if networkPolicy.Spec.PodSelector.MatchLabels == nil && len(networkPolicy.Spec.PodSelector.MatchExpressions) == 0 {
 		// Pod selector is empty, which is valid but worth checking
+		logger.Warn("Pod selector is empty")
 	}
 
 	// Validate policy types

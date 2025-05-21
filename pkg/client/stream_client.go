@@ -308,7 +308,7 @@ func (s *StreamClient) handleNetworkPolicy(
 	s.Logger.Info("Received network policy from server", zap.String("policy_id", policy.PolicyId))
 
 	// Check if network policy is correct and can be applied
-	err := ingestion.CheckNetworkPolicy(policy.ErrorNetworkPolicy)
+	err := ingestion.CheckNetworkPolicy(s.Logger, policy.ErrorNetworkPolicy)
 	if err != nil {
 		s.handleInvalidPolicy(stream, policy, err)
 		return

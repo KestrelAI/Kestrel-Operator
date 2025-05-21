@@ -29,7 +29,7 @@ type StreamDataRequest struct {
 	//
 	//	*StreamDataRequest_Flow
 	//	*StreamDataRequest_NetworkPolicy
-	//	*StreamDataRequest_ErrorNetworkPolicies
+	//	*StreamDataRequest_NetworkPolicyWithErrors
 	Request       isStreamDataRequest_Request `protobuf_oneof:"request"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -90,10 +90,10 @@ func (x *StreamDataRequest) GetNetworkPolicy() *NetworkPolicy {
 	return nil
 }
 
-func (x *StreamDataRequest) GetErrorNetworkPolicies() *ErrorNetworkPolicyList {
+func (x *StreamDataRequest) GetNetworkPolicyWithErrors() *NetworkPolicyWithErrorList {
 	if x != nil {
-		if x, ok := x.Request.(*StreamDataRequest_ErrorNetworkPolicies); ok {
-			return x.ErrorNetworkPolicies
+		if x, ok := x.Request.(*StreamDataRequest_NetworkPolicyWithErrors); ok {
+			return x.NetworkPolicyWithErrors
 		}
 	}
 	return nil
@@ -111,37 +111,37 @@ type StreamDataRequest_NetworkPolicy struct {
 	NetworkPolicy *NetworkPolicy `protobuf:"bytes,2,opt,name=network_policy,json=networkPolicy,proto3,oneof"`
 }
 
-type StreamDataRequest_ErrorNetworkPolicies struct {
-	ErrorNetworkPolicies *ErrorNetworkPolicyList `protobuf:"bytes,3,opt,name=error_network_policies,json=errorNetworkPolicies,proto3,oneof"`
+type StreamDataRequest_NetworkPolicyWithErrors struct {
+	NetworkPolicyWithErrors *NetworkPolicyWithErrorList `protobuf:"bytes,3,opt,name=network_policy_with_errors,json=networkPolicyWithErrors,proto3,oneof"`
 }
 
 func (*StreamDataRequest_Flow) isStreamDataRequest_Request() {}
 
 func (*StreamDataRequest_NetworkPolicy) isStreamDataRequest_Request() {}
 
-func (*StreamDataRequest_ErrorNetworkPolicies) isStreamDataRequest_Request() {}
+func (*StreamDataRequest_NetworkPolicyWithErrors) isStreamDataRequest_Request() {}
 
-type ErrorNetworkPolicyList struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Policies      []*ErrorNetworkPolicy  `protobuf:"bytes,1,rep,name=policies,proto3" json:"policies,omitempty"`
+type NetworkPolicyWithErrorList struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Policies      []*NetworkPolicyWithError `protobuf:"bytes,1,rep,name=policies,proto3" json:"policies,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ErrorNetworkPolicyList) Reset() {
-	*x = ErrorNetworkPolicyList{}
+func (x *NetworkPolicyWithErrorList) Reset() {
+	*x = NetworkPolicyWithErrorList{}
 	mi := &file_cloud_v1_message_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ErrorNetworkPolicyList) String() string {
+func (x *NetworkPolicyWithErrorList) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ErrorNetworkPolicyList) ProtoMessage() {}
+func (*NetworkPolicyWithErrorList) ProtoMessage() {}
 
-func (x *ErrorNetworkPolicyList) ProtoReflect() protoreflect.Message {
+func (x *NetworkPolicyWithErrorList) ProtoReflect() protoreflect.Message {
 	mi := &file_cloud_v1_message_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -153,41 +153,41 @@ func (x *ErrorNetworkPolicyList) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ErrorNetworkPolicyList.ProtoReflect.Descriptor instead.
-func (*ErrorNetworkPolicyList) Descriptor() ([]byte, []int) {
+// Deprecated: Use NetworkPolicyWithErrorList.ProtoReflect.Descriptor instead.
+func (*NetworkPolicyWithErrorList) Descriptor() ([]byte, []int) {
 	return file_cloud_v1_message_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *ErrorNetworkPolicyList) GetPolicies() []*ErrorNetworkPolicy {
+func (x *NetworkPolicyWithErrorList) GetPolicies() []*NetworkPolicyWithError {
 	if x != nil {
 		return x.Policies
 	}
 	return nil
 }
 
-type ErrorNetworkPolicy struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	ErrorNetworkPolicy string                 `protobuf:"bytes,1,opt,name=error_network_policy,json=errorNetworkPolicy,proto3" json:"error_network_policy,omitempty"`
-	ErrorMessage       string                 `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
-	PolicyId           string                 `protobuf:"bytes,3,opt,name=policy_id,json=policyId,proto3" json:"policy_id,omitempty"` // Unique identifier for tracking policies
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+type NetworkPolicyWithError struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NetworkPolicy string                 `protobuf:"bytes,1,opt,name=network_policy,json=networkPolicy,proto3" json:"network_policy,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	PolicyId      string                 `protobuf:"bytes,3,opt,name=policy_id,json=policyId,proto3" json:"policy_id,omitempty"` // Unique identifier for tracking policies
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ErrorNetworkPolicy) Reset() {
-	*x = ErrorNetworkPolicy{}
+func (x *NetworkPolicyWithError) Reset() {
+	*x = NetworkPolicyWithError{}
 	mi := &file_cloud_v1_message_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ErrorNetworkPolicy) String() string {
+func (x *NetworkPolicyWithError) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ErrorNetworkPolicy) ProtoMessage() {}
+func (*NetworkPolicyWithError) ProtoMessage() {}
 
-func (x *ErrorNetworkPolicy) ProtoReflect() protoreflect.Message {
+func (x *NetworkPolicyWithError) ProtoReflect() protoreflect.Message {
 	mi := &file_cloud_v1_message_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -199,26 +199,26 @@ func (x *ErrorNetworkPolicy) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ErrorNetworkPolicy.ProtoReflect.Descriptor instead.
-func (*ErrorNetworkPolicy) Descriptor() ([]byte, []int) {
+// Deprecated: Use NetworkPolicyWithError.ProtoReflect.Descriptor instead.
+func (*NetworkPolicyWithError) Descriptor() ([]byte, []int) {
 	return file_cloud_v1_message_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *ErrorNetworkPolicy) GetErrorNetworkPolicy() string {
+func (x *NetworkPolicyWithError) GetNetworkPolicy() string {
 	if x != nil {
-		return x.ErrorNetworkPolicy
+		return x.NetworkPolicy
 	}
 	return ""
 }
 
-func (x *ErrorNetworkPolicy) GetErrorMessage() string {
+func (x *NetworkPolicyWithError) GetErrorMessage() string {
 	if x != nil {
 		return x.ErrorMessage
 	}
 	return ""
 }
 
-func (x *ErrorNetworkPolicy) GetPolicyId() string {
+func (x *NetworkPolicyWithError) GetPolicyId() string {
 	if x != nil {
 		return x.PolicyId
 	}
@@ -473,7 +473,7 @@ func (x *StreamDataResponse) GetAck() *Ack {
 	return nil
 }
 
-func (x *StreamDataResponse) GetNetworkPolicy() *ErrorNetworkPolicy {
+func (x *StreamDataResponse) GetNetworkPolicy() *NetworkPolicyWithError {
 	if x != nil {
 		if x, ok := x.Response.(*StreamDataResponse_NetworkPolicy); ok {
 			return x.NetworkPolicy
@@ -493,7 +493,7 @@ type StreamDataResponse_Ack struct {
 
 type StreamDataResponse_NetworkPolicy struct {
 	// Network policy when computation is complete
-	NetworkPolicy *ErrorNetworkPolicy `protobuf:"bytes,2,opt,name=network_policy,json=networkPolicy,proto3,oneof"`
+	NetworkPolicy *NetworkPolicyWithError `protobuf:"bytes,2,opt,name=network_policy,json=networkPolicy,proto3,oneof"`
 }
 
 func (*StreamDataResponse_Ack) isStreamDataResponse_Response() {}
@@ -1191,16 +1191,16 @@ var File_cloud_v1_message_proto protoreflect.FileDescriptor
 
 const file_cloud_v1_message_proto_rawDesc = "" +
 	"\n" +
-	"\x16cloud/v1/message.proto\x12\bcloud.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe0\x01\n" +
+	"\x16cloud/v1/message.proto\x12\bcloud.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xeb\x01\n" +
 	"\x11StreamDataRequest\x12$\n" +
 	"\x04flow\x18\x01 \x01(\v2\x0e.cloud.v1.FlowH\x00R\x04flow\x12@\n" +
-	"\x0enetwork_policy\x18\x02 \x01(\v2\x17.cloud.v1.NetworkPolicyH\x00R\rnetworkPolicy\x12X\n" +
-	"\x16error_network_policies\x18\x03 \x01(\v2 .cloud.v1.ErrorNetworkPolicyListH\x00R\x14errorNetworkPoliciesB\t\n" +
-	"\arequest\"R\n" +
-	"\x16ErrorNetworkPolicyList\x128\n" +
-	"\bpolicies\x18\x01 \x03(\v2\x1c.cloud.v1.ErrorNetworkPolicyR\bpolicies\"\x88\x01\n" +
-	"\x12ErrorNetworkPolicy\x120\n" +
-	"\x14error_network_policy\x18\x01 \x01(\tR\x12errorNetworkPolicy\x12#\n" +
+	"\x0enetwork_policy\x18\x02 \x01(\v2\x17.cloud.v1.NetworkPolicyH\x00R\rnetworkPolicy\x12c\n" +
+	"\x1anetwork_policy_with_errors\x18\x03 \x01(\v2$.cloud.v1.NetworkPolicyWithErrorListH\x00R\x17networkPolicyWithErrorsB\t\n" +
+	"\arequest\"Z\n" +
+	"\x1aNetworkPolicyWithErrorList\x12<\n" +
+	"\bpolicies\x18\x01 \x03(\v2 .cloud.v1.NetworkPolicyWithErrorR\bpolicies\"\x81\x01\n" +
+	"\x16NetworkPolicyWithError\x12%\n" +
+	"\x0enetwork_policy\x18\x01 \x01(\tR\rnetworkPolicy\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12\x1b\n" +
 	"\tpolicy_id\x18\x03 \x01(\tR\bpolicyId\"\xc4\x02\n" +
 	"\x04Flow\x12$\n" +
@@ -1218,10 +1218,10 @@ const file_cloud_v1_message_proto_rawDesc = "" +
 	"\x02ns\x18\x01 \x01(\tR\x02ns\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x16\n" +
-	"\x06labels\x18\x04 \x03(\tR\x06labels\"\x8a\x01\n" +
+	"\x06labels\x18\x04 \x03(\tR\x06labels\"\x8e\x01\n" +
 	"\x12StreamDataResponse\x12!\n" +
-	"\x03ack\x18\x01 \x01(\v2\r.cloud.v1.AckH\x00R\x03ack\x12E\n" +
-	"\x0enetwork_policy\x18\x02 \x01(\v2\x1c.cloud.v1.ErrorNetworkPolicyH\x00R\rnetworkPolicyB\n" +
+	"\x03ack\x18\x01 \x01(\v2\r.cloud.v1.AckH\x00R\x03ack\x12I\n" +
+	"\x0enetwork_policy\x18\x02 \x01(\v2 .cloud.v1.NetworkPolicyWithErrorH\x00R\rnetworkPolicyB\n" +
 	"\n" +
 	"\bresponse\"\x05\n" +
 	"\x03Ack\"r\n" +
@@ -1296,39 +1296,39 @@ func file_cloud_v1_message_proto_rawDescGZIP() []byte {
 
 var file_cloud_v1_message_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_cloud_v1_message_proto_goTypes = []any{
-	(*StreamDataRequest)(nil),        // 0: cloud.v1.StreamDataRequest
-	(*ErrorNetworkPolicyList)(nil),   // 1: cloud.v1.ErrorNetworkPolicyList
-	(*ErrorNetworkPolicy)(nil),       // 2: cloud.v1.ErrorNetworkPolicy
-	(*Flow)(nil),                     // 3: cloud.v1.Flow
-	(*Endpoint)(nil),                 // 4: cloud.v1.Endpoint
-	(*StreamDataResponse)(nil),       // 5: cloud.v1.StreamDataResponse
-	(*Ack)(nil),                      // 6: cloud.v1.Ack
-	(*NetworkPolicy)(nil),            // 7: cloud.v1.NetworkPolicy
-	(*ObjectMeta)(nil),               // 8: cloud.v1.ObjectMeta
-	(*NetworkPolicySpec)(nil),        // 9: cloud.v1.NetworkPolicySpec
-	(*LabelSelector)(nil),            // 10: cloud.v1.LabelSelector
-	(*LabelSelectorRequirement)(nil), // 11: cloud.v1.LabelSelectorRequirement
-	(*NetworkPolicyIngressRule)(nil), // 12: cloud.v1.NetworkPolicyIngressRule
-	(*NetworkPolicyEgressRule)(nil),  // 13: cloud.v1.NetworkPolicyEgressRule
-	(*NetworkPolicyPeer)(nil),        // 14: cloud.v1.NetworkPolicyPeer
-	(*IPBlock)(nil),                  // 15: cloud.v1.IPBlock
-	(*NetworkPolicyPort)(nil),        // 16: cloud.v1.NetworkPolicyPort
-	nil,                              // 17: cloud.v1.ObjectMeta.LabelsEntry
-	nil,                              // 18: cloud.v1.ObjectMeta.AnnotationsEntry
-	nil,                              // 19: cloud.v1.LabelSelector.MatchLabelsEntry
-	(*timestamppb.Timestamp)(nil),    // 20: google.protobuf.Timestamp
+	(*StreamDataRequest)(nil),          // 0: cloud.v1.StreamDataRequest
+	(*NetworkPolicyWithErrorList)(nil), // 1: cloud.v1.NetworkPolicyWithErrorList
+	(*NetworkPolicyWithError)(nil),     // 2: cloud.v1.NetworkPolicyWithError
+	(*Flow)(nil),                       // 3: cloud.v1.Flow
+	(*Endpoint)(nil),                   // 4: cloud.v1.Endpoint
+	(*StreamDataResponse)(nil),         // 5: cloud.v1.StreamDataResponse
+	(*Ack)(nil),                        // 6: cloud.v1.Ack
+	(*NetworkPolicy)(nil),              // 7: cloud.v1.NetworkPolicy
+	(*ObjectMeta)(nil),                 // 8: cloud.v1.ObjectMeta
+	(*NetworkPolicySpec)(nil),          // 9: cloud.v1.NetworkPolicySpec
+	(*LabelSelector)(nil),              // 10: cloud.v1.LabelSelector
+	(*LabelSelectorRequirement)(nil),   // 11: cloud.v1.LabelSelectorRequirement
+	(*NetworkPolicyIngressRule)(nil),   // 12: cloud.v1.NetworkPolicyIngressRule
+	(*NetworkPolicyEgressRule)(nil),    // 13: cloud.v1.NetworkPolicyEgressRule
+	(*NetworkPolicyPeer)(nil),          // 14: cloud.v1.NetworkPolicyPeer
+	(*IPBlock)(nil),                    // 15: cloud.v1.IPBlock
+	(*NetworkPolicyPort)(nil),          // 16: cloud.v1.NetworkPolicyPort
+	nil,                                // 17: cloud.v1.ObjectMeta.LabelsEntry
+	nil,                                // 18: cloud.v1.ObjectMeta.AnnotationsEntry
+	nil,                                // 19: cloud.v1.LabelSelector.MatchLabelsEntry
+	(*timestamppb.Timestamp)(nil),      // 20: google.protobuf.Timestamp
 }
 var file_cloud_v1_message_proto_depIdxs = []int32{
 	3,  // 0: cloud.v1.StreamDataRequest.flow:type_name -> cloud.v1.Flow
 	7,  // 1: cloud.v1.StreamDataRequest.network_policy:type_name -> cloud.v1.NetworkPolicy
-	1,  // 2: cloud.v1.StreamDataRequest.error_network_policies:type_name -> cloud.v1.ErrorNetworkPolicyList
-	2,  // 3: cloud.v1.ErrorNetworkPolicyList.policies:type_name -> cloud.v1.ErrorNetworkPolicy
+	1,  // 2: cloud.v1.StreamDataRequest.network_policy_with_errors:type_name -> cloud.v1.NetworkPolicyWithErrorList
+	2,  // 3: cloud.v1.NetworkPolicyWithErrorList.policies:type_name -> cloud.v1.NetworkPolicyWithError
 	4,  // 4: cloud.v1.Flow.src:type_name -> cloud.v1.Endpoint
 	4,  // 5: cloud.v1.Flow.dst:type_name -> cloud.v1.Endpoint
 	20, // 6: cloud.v1.Flow.first_seen:type_name -> google.protobuf.Timestamp
 	20, // 7: cloud.v1.Flow.last_seen:type_name -> google.protobuf.Timestamp
 	6,  // 8: cloud.v1.StreamDataResponse.ack:type_name -> cloud.v1.Ack
-	2,  // 9: cloud.v1.StreamDataResponse.network_policy:type_name -> cloud.v1.ErrorNetworkPolicy
+	2,  // 9: cloud.v1.StreamDataResponse.network_policy:type_name -> cloud.v1.NetworkPolicyWithError
 	8,  // 10: cloud.v1.NetworkPolicy.metadata:type_name -> cloud.v1.ObjectMeta
 	9,  // 11: cloud.v1.NetworkPolicy.spec:type_name -> cloud.v1.NetworkPolicySpec
 	17, // 12: cloud.v1.ObjectMeta.labels:type_name -> cloud.v1.ObjectMeta.LabelsEntry
@@ -1362,7 +1362,7 @@ func file_cloud_v1_message_proto_init() {
 	file_cloud_v1_message_proto_msgTypes[0].OneofWrappers = []any{
 		(*StreamDataRequest_Flow)(nil),
 		(*StreamDataRequest_NetworkPolicy)(nil),
-		(*StreamDataRequest_ErrorNetworkPolicies)(nil),
+		(*StreamDataRequest_NetworkPolicyWithErrors)(nil),
 	}
 	file_cloud_v1_message_proto_msgTypes[5].OneofWrappers = []any{
 		(*StreamDataResponse_Ack)(nil),
