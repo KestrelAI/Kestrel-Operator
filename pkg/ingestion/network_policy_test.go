@@ -7,6 +7,7 @@ import (
 	testhelper "operator/pkg/test_helper"
 
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/zap"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -78,7 +79,7 @@ spec:
 
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
-			got, err := ParseNetworkPolicyYAML(tt.yaml)
+			got, err := ParseNetworkPolicyYAML(zap.NewNop(), tt.yaml)
 			if (err != nil) != tt.wantErr {
 				suite.T().Errorf("ParseNetworkPolicyYAML() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -147,7 +148,7 @@ spec:
 
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
-			err := CheckNetworkPolicy(tt.policy)
+			err := CheckNetworkPolicy(zap.NewNop(), tt.policy)
 			if (err != nil) != tt.wantErr {
 				suite.T().Errorf("CheckNetworkPolicy() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -397,8 +398,8 @@ func stringSlicesEqual(a, b []string) bool {
 
 func (suite *NetworkPolicyTestSuite) TestErrorNetworkPolicyWithID() {
 	// Test policy with a specific ID
-	errorPolicy := &v1.ErrorNetworkPolicy{
-		ErrorNetworkPolicy: `
+	errorPolicy := &v1.NetworkPolicyWithError{
+		NetworkPolicy: `
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -423,14 +424,14 @@ spec:
 	}
 
 	// First, check that the policy is valid
-	err := CheckNetworkPolicy(errorPolicy.ErrorNetworkPolicy)
+	err := CheckNetworkPolicy(zap.NewNop(), errorPolicy.NetworkPolicy)
 	suite.NoError(err, "Policy should be valid")
 
 	// Make sure the ID is preserved
 	suite.Equal("test-policy-id-12345", errorPolicy.PolicyId, "Policy ID should be preserved")
 
 	// Parse the policy and verify its contents
-	k8sPolicy, err := ParseNetworkPolicyYAML(errorPolicy.ErrorNetworkPolicy)
+	k8sPolicy, err := ParseNetworkPolicyYAML(zap.NewNop(), errorPolicy.NetworkPolicy)
 	suite.NoError(err, "Should parse without error")
 	suite.Equal("test-policy-with-id", k8sPolicy.Name, "Policy name should match")
 	suite.Equal("default", k8sPolicy.Namespace, "Namespace should match")

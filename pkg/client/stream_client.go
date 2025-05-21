@@ -303,19 +303,19 @@ func (s *StreamClient) handleNetworkPolicy(
 	ctx context.Context,
 	stream v1.StreamService_StreamDataClient,
 	k8sClient *kubernetes.Clientset,
-	policy *v1.ErrorNetworkPolicy,
+	policy *v1.NetworkPolicyWithError,
 ) {
 	s.Logger.Info("Received network policy from server", zap.String("policy_id", policy.PolicyId))
 
 	// Check if network policy is correct and can be applied
-	err := ingestion.CheckNetworkPolicy(s.Logger, policy.ErrorNetworkPolicy)
+	err := ingestion.CheckNetworkPolicy(s.Logger, policy.NetworkPolicy)
 	if err != nil {
 		s.handleInvalidPolicy(stream, policy, err)
 		return
 	}
 
 	// Policy is valid - apply it immediately
-	policyParsed, err := ingestion.ParseNetworkPolicyYAML(policy.ErrorNetworkPolicy)
+	policyParsed, err := ingestion.ParseNetworkPolicyYAML(s.Logger, policy.NetworkPolicy)
 	if err != nil {
 		s.Logger.Error("Failed to parse network policy YAML", zap.Error(err))
 		s.handleInvalidPolicy(stream, policy, err)
@@ -343,27 +343,27 @@ func (s *StreamClient) handleNetworkPolicy(
 // handleInvalidPolicy sends error feedback for invalid policies
 func (s *StreamClient) handleInvalidPolicy(
 	stream v1.StreamService_StreamDataClient,
-	policy *v1.ErrorNetworkPolicy,
+	policy *v1.NetworkPolicyWithError,
 	validationErr error,
 ) {
 	s.Logger.Error("Failed to check network policy", zap.Error(validationErr))
 
 	// Create error policy structure
-	failedNetworkPolicy := &v1.ErrorNetworkPolicy{
-		ErrorNetworkPolicy: policy.ErrorNetworkPolicy,
-		ErrorMessage:       validationErr.Error(),
-		PolicyId:           policy.PolicyId, // Preserve the policy_id field
+	failedNetworkPolicy := &v1.NetworkPolicyWithError{
+		NetworkPolicy: policy.NetworkPolicy,
+		ErrorMessage:  validationErr.Error(),
+		PolicyId:      policy.PolicyId, // Preserve the policy_id field
 	}
 
 	// Send the error immediately
-	errorPoliciesList := &v1.ErrorNetworkPolicyList{
-		Policies: []*v1.ErrorNetworkPolicy{failedNetworkPolicy},
+	errorPoliciesList := &v1.NetworkPoliciesWithErrors{
+		Policies: []*v1.NetworkPolicyWithError{failedNetworkPolicy},
 	}
 
 	// Send error back to server
 	if err := stream.Send(&v1.StreamDataRequest{
-		Request: &v1.StreamDataRequest_ErrorNetworkPolicies{
-			ErrorNetworkPolicies: errorPoliciesList,
+		Request: &v1.StreamDataRequest_NetworkPolicyWithErrors{
+			NetworkPolicyWithErrors: errorPoliciesList,
 		},
 	}); err != nil {
 		s.Logger.Error("Failed to send policy validation errors", zap.Error(err))
@@ -373,18 +373,18 @@ func (s *StreamClient) handleInvalidPolicy(
 }
 
 // sendPolicyValidationAck sends acknowledgment for a valid policy
-func (s *StreamClient) sendPolicyValidationAck(stream v1.StreamService_StreamDataClient, policy *v1.ErrorNetworkPolicy) {
+func (s *StreamClient) sendPolicyValidationAck(stream v1.StreamService_StreamDataClient, policy *v1.NetworkPolicyWithError) {
 	s.Logger.Info("Policy validation successful - sending ACK to server")
 
 	// Send ACK back to server to indicate this policy is valid
 	if err := stream.Send(&v1.StreamDataRequest{
-		Request: &v1.StreamDataRequest_ErrorNetworkPolicies{
-			ErrorNetworkPolicies: &v1.ErrorNetworkPolicyList{
-				Policies: []*v1.ErrorNetworkPolicy{
+		Request: &v1.StreamDataRequest_NetworkPolicyWithErrors{
+			NetworkPolicyWithErrors: &v1.NetworkPoliciesWithErrors{
+				Policies: []*v1.NetworkPolicyWithError{
 					{
-						ErrorNetworkPolicy: policy.ErrorNetworkPolicy,
-						ErrorMessage:       "",
-						PolicyId:           policy.PolicyId, // Preserve the policy_id field
+						NetworkPolicy: policy.NetworkPolicy,
+						ErrorMessage:  "",
+						PolicyId:      policy.PolicyId, // Preserve the policy_id field
 					},
 				},
 			},
