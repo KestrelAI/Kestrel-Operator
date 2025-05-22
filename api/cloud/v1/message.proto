@@ -4,7 +4,7 @@ package cloud.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/auto-np/client/api/cloud/v1";
+option go_package = "operator/api/cloud/v1";
 
 // Request message for flow stream
 message StreamDataRequest {
@@ -87,6 +87,10 @@ message NetworkPolicy {
   // Standard Kubernetes metadata
   ObjectMeta metadata = 1;
   NetworkPolicySpec spec = 2;
+
+  // Zero-or-more "target" workloads protected by this policy;
+  // each entry in the target_workloads list is of the format: "<Namespace>.<Kind>.<Name>".
+  repeated string target_workloads = 3;
 }
 
 // Kubernetes ObjectMeta

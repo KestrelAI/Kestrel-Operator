@@ -541,10 +541,12 @@ func (*Ack) Descriptor() ([]byte, []int) {
 type NetworkPolicy struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Standard Kubernetes metadata
-	Metadata      *ObjectMeta        `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	Spec          *NetworkPolicySpec `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Metadata *ObjectMeta        `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	Spec     *NetworkPolicySpec `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
+	// Zero-or-more "target" workloads protected by this policy
+	TargetWorkloads []string `protobuf:"bytes,3,rep,name=target_workloads,json=targetWorkloads,proto3" json:"target_workloads,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *NetworkPolicy) Reset() {
@@ -587,6 +589,13 @@ func (x *NetworkPolicy) GetMetadata() *ObjectMeta {
 func (x *NetworkPolicy) GetSpec() *NetworkPolicySpec {
 	if x != nil {
 		return x.Spec
+	}
+	return nil
+}
+
+func (x *NetworkPolicy) GetTargetWorkloads() []string {
+	if x != nil {
+		return x.TargetWorkloads
 	}
 	return nil
 }
@@ -1224,10 +1233,11 @@ const file_cloud_v1_message_proto_rawDesc = "" +
 	"\x0enetwork_policy\x18\x02 \x01(\v2 .cloud.v1.NetworkPolicyWithErrorH\x00R\rnetworkPolicyB\n" +
 	"\n" +
 	"\bresponse\"\x05\n" +
-	"\x03Ack\"r\n" +
+	"\x03Ack\"\x9d\x01\n" +
 	"\rNetworkPolicy\x120\n" +
 	"\bmetadata\x18\x01 \x01(\v2\x14.cloud.v1.ObjectMetaR\bmetadata\x12/\n" +
-	"\x04spec\x18\x02 \x01(\v2\x1b.cloud.v1.NetworkPolicySpecR\x04spec\"\xf9\x02\n" +
+	"\x04spec\x18\x02 \x01(\v2\x1b.cloud.v1.NetworkPolicySpecR\x04spec\x12)\n" +
+	"\x10target_workloads\x18\x03 \x03(\tR\x0ftargetWorkloads\"\xf9\x02\n" +
 	"\n" +
 	"ObjectMeta\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
@@ -1279,8 +1289,8 @@ const file_cloud_v1_message_proto_rawDesc = "" +
 	"port_value2^\n" +
 	"\rStreamService\x12M\n" +
 	"\n" +
-	"StreamData\x12\x1b.cloud.v1.StreamDataRequest\x1a\x1c.cloud.v1.StreamDataResponse\"\x00(\x010\x01B\x85\x01\n" +
-	"\fcom.cloud.v1B\fMessageProtoP\x01Z&github.com/auto-np/client/api/cloud/v1\xa2\x02\x03CXX\xaa\x02\bCloud.V1\xca\x02\bCloud\\V1\xe2\x02\x14Cloud\\V1\\GPBMetadata\xea\x02\tCloud::V1b\x06proto3"
+	"StreamData\x12\x1b.cloud.v1.StreamDataRequest\x1a\x1c.cloud.v1.StreamDataResponse\"\x00(\x010\x01Bt\n" +
+	"\fcom.cloud.v1B\fMessageProtoP\x01Z\x15operator/api/cloud/v1\xa2\x02\x03CXX\xaa\x02\bCloud.V1\xca\x02\bCloud\\V1\xe2\x02\x14Cloud\\V1\\GPBMetadata\xea\x02\tCloud::V1b\x06proto3"
 
 var (
 	file_cloud_v1_message_proto_rawDescOnce sync.Once

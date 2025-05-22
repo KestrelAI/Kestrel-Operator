@@ -93,6 +93,15 @@ func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
 			fm.logger.Warn("Failed to get flow log from stream", zap.Error(err))
 			return err
 		}
+
+		// Skip reply-direction packets; they never need a NetworkPolicy rule.
+		// K8s NetworkPolicy is state-aware: once the policy allows the initiating packet,
+		// all packets in the reverse / reply direction of that connection are automatically accepted.
+		// We only write policies for the request direction (reply traffic matches conntrack and is allowed implicitly).
+		if ir := flow.GetFlow().GetIsReply(); ir != nil && ir.GetValue() {
+			continue
+		}
+
 		flowKey := createFlowKey(flow.GetFlow())
 
 		// Convert string slice labels to map[string]struct{}
