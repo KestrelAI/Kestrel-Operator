@@ -4,14 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"os"
-	"strconv"
-
 	v1 "operator/api/cloud/v1"
 	"operator/pkg/cilium"
 	"operator/pkg/ingestion"
 	"operator/pkg/k8s_helper"
 	smartcache "operator/pkg/smart_cache"
+	"os"
+	"strconv"
+	"strings"
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -220,7 +220,7 @@ func (s *StreamClient) sendInitialNetworkPolicies(ctx context.Context, stream v1
 		default:
 		}
 
-			targetWorkloads := networkPolicyIngester.ResolveTargetWorkloads(ctx, policy)
+		targetWorkloads := networkPolicyIngester.ResolveTargetWorkloads(ctx, policy)
 
 		// Convert to proto message and send
 		policyMsg := &v1.StreamDataRequest{
@@ -308,10 +308,15 @@ func (s *StreamClient) handleNetworkPolicy(
 	policy *v1.NetworkPolicyWithError,
 ) {
 	s.Logger.Info("Received network policy from server", zap.String("policy_id", policy.PolicyId))
-
+	s.Logger.Info("Network policy YAML", zap.String("yaml", policy.NetworkPolicy))
 	// Check if network policy is correct and can be applied
 	err := ingestion.CheckNetworkPolicy(s.Logger, policy.NetworkPolicy)
 	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			s.Logger.Info("Network policy already exists, skipping", zap.String("policy_id", policy.PolicyId))
+			s.sendPolicyValidationAck(stream, policy)
+			return
+		}
 		s.handleInvalidPolicy(stream, policy, err)
 		return
 	}
