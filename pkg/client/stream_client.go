@@ -3,19 +3,25 @@ package client
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 
 	v1 "operator/api/cloud/v1"
+	"operator/pkg/auth"
 	"operator/pkg/cilium"
 	"operator/pkg/ingestion"
 	"operator/pkg/k8s_helper"
 	smartcache "operator/pkg/smart_cache"
 
+	serverv1 "server/api/server/v1"
+
 	"go.uber.org/zap"
+	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/metadata"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,7 +43,7 @@ type StreamClient struct {
 }
 
 // NewStreamClient creates a new StreamClient with the given configuration
-func NewStreamClient(logger *zap.Logger, config ServerConfig) (*StreamClient, error) {
+func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfig) (*StreamClient, error) {
 	var opts []grpc.DialOption
 	var creds credentials.TransportCredentials
 
@@ -58,18 +64,33 @@ func NewStreamClient(logger *zap.Logger, config ServerConfig) (*StreamClient, er
 	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
-	// TODO: Add JWT token-based authentication if needed
-	// if config.Token != "" {
-	//     opts = append(opts, grpc.WithPerRPCCredentials(...))
-	// }
-
 	// Create the connection to the server
-
 	serverAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	logger.Info("Connecting to server at", zap.String("serverAddr", serverAddr))
 	conn, err := grpc.NewClient(serverAddr, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to server at %s: %w", serverAddr, err)
+	}
+
+	if config.Token != "" {
+		// Build TokenSource backed by RenewClusterToken RPC (implements OAuth2.0 access token renewal flow)
+		logger.Info("Onboarding/initial token is not empty, creating per-RPC OAuth2.0 token source")
+
+		authzClient := serverv1.NewAutonpServerServiceClient(conn)
+		ts, err := auth.NewTokenSource(ctx, authzClient, config.Token)
+		if err != nil {
+			_ = conn.Close()
+			logger.Error("Failed to create new token source", zap.Error(err))
+			return nil, fmt.Errorf("init TokenSource: %w", err)
+		}
+		perRPC := oauth.TokenSource{TokenSource: oauth2.ReuseTokenSource(nil, ts)}
+
+		conn, err = grpc.NewClient(serverAddr, append(opts, grpc.WithPerRPCCredentials(perRPC))...)
+		if err != nil {
+			_ = conn.Close()
+			logger.Error("Failed to create a new connection to the server with the per-RPC token source", zap.Error(err))
+			return nil, fmt.Errorf("dial secured: %w", err)
+		}
 	}
 
 	return &StreamClient{
@@ -80,12 +101,16 @@ func NewStreamClient(logger *zap.Logger, config ServerConfig) (*StreamClient, er
 }
 
 // LoadConfigFromEnv loads server configuration from environment variables
-func LoadConfigFromEnv() ServerConfig {
+func LoadConfigFromEnv() (*ServerConfig, error) {
 	// Get server configuration from environment variables (set by Helm)
 	host := getEnvOrDefault("SERVER_HOST", "auto-np-server")
 	portStr := getEnvOrDefault("SERVER_PORT", "50051")
 	useTLSStr := getEnvOrDefault("SERVER_USE_TLS", "true")
 	token := getEnvOrDefault("AUTH_TOKEN", "")
+
+	if token == "" {
+		return nil, fmt.Errorf("onboarding jwt token secret does not exist")
+	}
 
 	// Parse port as integer
 	port, err := strconv.Atoi(portStr)
@@ -99,12 +124,12 @@ func LoadConfigFromEnv() ServerConfig {
 		useTLS = false
 	}
 
-	return ServerConfig{
+	return &ServerConfig{
 		Host:   host,
 		Port:   port,
 		UseTLS: useTLS,
 		Token:  token,
-	}
+	}, nil
 }
 
 // Helper function to get environment variable with default value
@@ -461,4 +486,36 @@ func convertToProtoFlow(flowData smartcache.FlowCount) *v1.Flow {
 		FirstSeen: flowData.FlowMetadata.FirstSeen,
 		LastSeen:  flowData.FlowMetadata.LastSeen,
 	}
+}
+
+// ReadJWTTokenFromSecret reads a JWT token from a Kubernetes secret
+func ReadJWTTokenFromSecret(ctx context.Context, logger *zap.Logger, secretName string, podNamespace string) (string, error) {
+	// Get the secret key name from environment or use default
+	secretKey := os.Getenv("AUTH_SECRET_KEY")
+	if secretKey == "" {
+		secretKey = "token"
+	}
+
+	clientset, err := k8s_helper.NewClientSet()
+	if err != nil {
+		logger.Error("Failed to create clientSet", zap.Error(err))
+		return "", err
+	}
+
+	secret, err := clientset.CoreV1().Secrets(podNamespace).Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		logger.Error("Failed to get secret", zap.Error(err))
+		return "", err
+	}
+
+	token := string(secret.Data["token"])
+	if token == "" {
+		logger.Error("JWT token not found in secret",
+			zap.String("secretName", secretName),
+			zap.String("namespace", podNamespace),
+			zap.String("expectedKey", secretKey))
+		return "", errors.New("JWT token not found in secret")
+	}
+
+	return token, nil
 }
