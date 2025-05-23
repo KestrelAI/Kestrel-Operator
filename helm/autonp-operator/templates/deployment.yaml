@@ -39,17 +39,10 @@ spec:
                   fieldPath: metadata.namespace
                   
             # JWT Authentication configuration
-            {{- if .Values.auth.existingSecret }}
-            - name: AUTH_SECRET_NAME
-              value: "{{ .Values.auth.existingSecret }}"
-            - name: AUTH_SECRET_KEY
-              value: "{{ .Values.auth.secretKey | default "token" }}"
-            {{- else if .Values.auth.token }}
             - name: AUTH_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ .Release.Name }}-jwt
                   key: token
-            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

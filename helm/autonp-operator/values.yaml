@@ -21,9 +21,7 @@ server:
 
 # JWT Authentication configuration
 auth:
-  # If using a secret instead of direct token value
-  existingSecret: ""
-  secretKey: "token"
+  token: ""
 
 # Resource limits and requests
 resources:
