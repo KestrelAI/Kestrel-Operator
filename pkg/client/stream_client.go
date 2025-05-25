@@ -4,15 +4,15 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"os"
-	"strconv"
-
 	v1 "operator/api/cloud/v1"
 	"operator/pkg/auth"
 	"operator/pkg/cilium"
 	"operator/pkg/ingestion"
 	"operator/pkg/k8s_helper"
 	smartcache "operator/pkg/smart_cache"
+	"os"
+	"strconv"
+	"strings"
 
 	serverv1 "server/api/server/v1"
 
@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 // ServerConfig holds the configuration for connecting to the server
@@ -145,18 +146,9 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Create a channel for flow data
-	// Buffer large enough for one purge-cycle (~60 s) worth of flows.
-	// 10 000 is arbitrary — need to tune.
-	flowChan := make(chan smartcache.FlowCount, 10_000)
-
-	// Initialize flow cache
-	cache := smartcache.InitFlowCache(ctx, flowChan)
-
-	// Set up the flow collector to monitor Cilium flows
-	flowCollector, err := cilium.NewFlowCollector(ctx, s.Logger, "kube-system", cache)
+	// Create flow components
+	flowChan, _, flowCollector, err := s.setupFlowComponents(ctx)
 	if err != nil {
-		s.Logger.Error("Failed to create flow collector", zap.Error(err))
 		return err
 	}
 
@@ -172,159 +164,306 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 	// Define the stream function that will be retried
 	streamFunc := func(ctx context.Context) error {
-		// Add tenant ID to the context metadata
-		// Temp until we implement multi-tenancy
-		md := metadata.New(map[string]string{
-			"autonp-tenantid": "default",
-		})
-		ctx = metadata.NewOutgoingContext(ctx, md)
-
-		// Start the bidirectional stream
-		stream, err := streamClient.StreamData(ctx)
+		// Create stream with tenant context
+		stream, ctx, err := s.createStreamWithTenantContext(ctx, streamClient)
 		if err != nil {
-			s.Logger.Error("Failed to establish stream", zap.Error(err))
 			return err
 		}
 
-		// First, fetch and send current network policies
-		s.Logger.Info("Fetching current network policies from the cluster")
-		policies, err := networkPolicyIngester.IngestNetworkPolicies(ctx)
-		if err != nil {
-			s.Logger.Error("Failed to ingest network policies", zap.Error(err))
+		// Send initial network policies
+		if err := s.sendInitialNetworkPolicies(ctx, stream, networkPolicyIngester); err != nil {
 			return err
 		}
-
-		// Send initial network policies to the server
-		for _, policy := range policies {
-			// Check context before each send
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-
-			targetWorkloads := networkPolicyIngester.ResolveTargetWorkloads(ctx, policy)
-
-			// Convert to proto message and send
-			policyMsg := &v1.StreamDataRequest{
-				Request: &v1.StreamDataRequest_NetworkPolicy{
-					NetworkPolicy: convertToProtoNetworkPolicy(policy, targetWorkloads),
-				},
-			}
-			if err := stream.Send(policyMsg); err != nil {
-				s.Logger.Error("Failed to send network policy", zap.Error(err))
-				return err
-			}
-		}
-		s.Logger.Info("Sent initial network policies to server", zap.Int("count", len(policies)))
 
 		// Start exporting Cilium flows with context
 		flowCtx, flowCancel := context.WithCancel(ctx)
 		defer flowCancel() // Ensure flowCollector stops if this function exits
 
-		go func() {
-			// If ExportCiliumFlows returns, consider it an error and cancel the parent context
-			err := flowCollector.ExportCiliumFlows(flowCtx)
-			if err != nil && flowCtx.Err() == nil {
-				s.Logger.Error("Flow collector failed unexpectedly", zap.Error(err))
-				flowCancel() // Cancel this context to signal other components
-			}
-		}()
+		go s.exportCiliumFlows(flowCtx, flowCollector, flowCancel)
 		s.Logger.Info("Started exporting Cilium flows")
 
-		// Create a channel to handle stream closure
-		done := make(chan error, 1)
-
-		// Start goroutine to handle incoming messages (network policies from server)
-		go func() {
-			k8sClient, err := k8s_helper.NewClientSet()
-			if err != nil {
-				s.Logger.Error("Failed to create k8s client", zap.Error(err))
-				done <- err
-				return
-			}
-			for {
-				select {
-				case <-ctx.Done():
-					done <- ctx.Err()
-					return
-				default:
-					// Attempt to receive with a timeout to allow checking context
-					// This is a non-blocking receive attempt
-					response, err := stream.Recv()
-					if err != nil {
-						done <- err
-						return
-					}
-
-					// Handle the response based on its type
-					switch resp := response.Response.(type) {
-					case *v1.StreamDataResponse_Ack:
-						s.Logger.Debug("Received acknowledgment from server")
-					case *v1.StreamDataResponse_NetworkPolicy:
-						s.Logger.Info("Received network policy from server", zap.String("name", resp.NetworkPolicy.String()))
-
-						// Apply the network policy with context
-						err := ingestion.ApplyNetworkPolicy(ctx, k8sClient, resp.NetworkPolicy)
-						if err != nil {
-							s.Logger.Error("Failed to apply network policy", zap.Error(err))
-							// Continue processing other messages, don't fail the whole stream
-						} else {
-							s.Logger.Info("Successfully applied network policy from server")
-						}
-					}
-				}
-			}
-		}()
-
-		// Start goroutine to collect flow data and send to server
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					// Context is done, exit the goroutine
-					return
-				case flowData, ok := <-flowChan:
-					// Check if channel was closed
-					if !ok {
-						s.Logger.Warn("Flow channel closed unexpectedly")
-						done <- fmt.Errorf("flow channel closed")
-						return
-					}
-
-					// Check context again before sending
-					select {
-					case <-ctx.Done():
-						return
-					default:
-						fmt.Println("Sending flow data to server")
-						// Convert flow data to proto message and send
-						flowMsg := &v1.StreamDataRequest{
-							Request: &v1.StreamDataRequest_Flow{
-								Flow: convertToProtoFlow(flowData),
-							},
-						}
-						if err := stream.Send(flowMsg); err != nil {
-							s.Logger.Error("Failed to send flow data", zap.Error(err))
-							done <- err
-							return
-						}
-					}
-				}
-			}
-		}()
-
-		// Wait for stream to end or context cancellation
-		select {
-		case err := <-done:
-			return err
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+		// Handle bidirectional streaming
+		return s.handleBidirectionalStream(ctx, stream, flowChan)
 	}
 
 	// Use the retry logic to handle stream reconnection
 	return WithReconnect(ctx, streamFunc)
+}
+
+// setupFlowComponents creates and initializes the flow cache and collector
+func (s *StreamClient) setupFlowComponents(ctx context.Context) (chan smartcache.FlowCount, *smartcache.SmartCache, *cilium.FlowCollector, error) {
+	// Create a channel for flow data - buffer large enough for one purge-cycle (~60 s) worth of flows
+	flowChan := make(chan smartcache.FlowCount, 10_000)
+
+	// Initialize flow cache
+	cache := smartcache.InitFlowCache(ctx, flowChan)
+
+	// Set up the flow collector to monitor Cilium flows
+	flowCollector, err := cilium.NewFlowCollector(ctx, s.Logger, "kube-system", cache)
+	if err != nil {
+		s.Logger.Error("Failed to create flow collector", zap.Error(err))
+		return nil, nil, nil, err
+	}
+
+	return flowChan, cache, flowCollector, nil
+}
+
+// createStreamWithTenantContext creates a new stream with tenant context
+func (s *StreamClient) createStreamWithTenantContext(ctx context.Context, streamClient v1.StreamServiceClient) (v1.StreamService_StreamDataClient, context.Context, error) {
+	// Add tenant ID to the context metadata (temp until we implement multi-tenancy)
+	md := metadata.New(map[string]string{
+		"autonp-tenantid": "default",
+	})
+	ctxWithMetadata := metadata.NewOutgoingContext(ctx, md)
+
+	// Start the bidirectional stream
+	stream, err := streamClient.StreamData(ctxWithMetadata)
+	if err != nil {
+		s.Logger.Error("Failed to establish stream", zap.Error(err))
+		return nil, nil, err
+	}
+
+	return stream, ctxWithMetadata, nil
+}
+
+// sendInitialNetworkPolicies fetches and sends existing network policies to the server
+func (s *StreamClient) sendInitialNetworkPolicies(ctx context.Context, stream v1.StreamService_StreamDataClient, networkPolicyIngester *ingestion.NetworkPolicyIngester) error {
+	s.Logger.Info("Fetching current network policies from the cluster")
+	policies, err := networkPolicyIngester.IngestNetworkPolicies(ctx)
+	if err != nil {
+		s.Logger.Error("Failed to ingest network policies", zap.Error(err))
+		return err
+	}
+
+	// Send initial network policies to the server
+	for _, policy := range policies {
+		// Check context before each send
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		targetWorkloads := networkPolicyIngester.ResolveTargetWorkloads(ctx, policy)
+
+		// Convert to proto message and send
+		policyMsg := &v1.StreamDataRequest{
+			Request: &v1.StreamDataRequest_NetworkPolicy{
+				NetworkPolicy: convertToProtoNetworkPolicy(policy, targetWorkloads),
+			},
+		}
+		if err := stream.Send(policyMsg); err != nil {
+			s.Logger.Error("Failed to send network policy", zap.Error(err))
+			return err
+		}
+	}
+	s.Logger.Info("Sent initial network policies to server", zap.Int("count", len(policies)))
+	return nil
+}
+
+// exportCiliumFlows starts the flow collector in a background goroutine
+func (s *StreamClient) exportCiliumFlows(ctx context.Context, flowCollector *cilium.FlowCollector, cancel context.CancelFunc) {
+	// If ExportCiliumFlows returns, consider it an error and cancel the parent context
+	err := flowCollector.ExportCiliumFlows(ctx)
+	if err != nil && ctx.Err() == nil {
+		s.Logger.Error("Flow collector failed unexpectedly", zap.Error(err))
+		cancel() // Cancel this context to signal other components
+	}
+}
+
+// handleBidirectionalStream manages the bidirectional streaming between client and server
+func (s *StreamClient) handleBidirectionalStream(ctx context.Context, stream v1.StreamService_StreamDataClient, flowChan chan smartcache.FlowCount) error {
+	// Create a channel to handle stream closure
+	done := make(chan error, 1)
+
+	// Start goroutine to handle incoming network policies from server
+	go s.handleServerMessages(ctx, stream, done)
+
+	// Start goroutine to collect flow data and send to server
+	go s.sendFlowData(ctx, stream, flowChan, done)
+
+	// Wait for stream to end or context cancellation
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// handleServerMessages processes incoming messages from the server
+func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.StreamService_StreamDataClient, done chan<- error) {
+	k8sClient, err := k8s_helper.NewClientSet()
+	if err != nil {
+		s.Logger.Error("Failed to create k8s client", zap.Error(err))
+		done <- err
+		return
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			done <- ctx.Err()
+			return
+		default:
+			response, err := stream.Recv()
+			if err != nil {
+				done <- err
+				return
+			}
+
+			// Handle the response based on its type
+			switch resp := response.Response.(type) {
+			case *v1.StreamDataResponse_Ack:
+				// Server ACK is no longer needed for policy application
+				s.Logger.Debug("Received acknowledgment from server")
+			case *v1.StreamDataResponse_NetworkPolicy:
+				s.handleNetworkPolicy(ctx, stream, k8sClient, resp.NetworkPolicy)
+			}
+		}
+	}
+}
+
+// handleNetworkPolicy validates network policies from the server and sends appropriate responses
+func (s *StreamClient) handleNetworkPolicy(
+	ctx context.Context,
+	stream v1.StreamService_StreamDataClient,
+	k8sClient *kubernetes.Clientset,
+	policy *v1.NetworkPolicyWithError,
+) {
+	s.Logger.Info("Received network policy from server", zap.String("policy_id", policy.PolicyId))
+	s.Logger.Info("Network policy YAML", zap.String("yaml", policy.NetworkPolicy))
+	// Check if network policy is correct and can be applied
+	err := ingestion.CheckNetworkPolicy(s.Logger, policy.NetworkPolicy)
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			s.Logger.Info("Network policy already exists, skipping", zap.String("policy_id", policy.PolicyId))
+			s.sendPolicyValidationAck(stream, policy)
+			return
+		}
+		s.handleInvalidPolicy(stream, policy, err)
+		return
+	}
+
+	// Policy is valid - apply it immediately
+	policyParsed, err := ingestion.ParseNetworkPolicyYAML(s.Logger, policy.NetworkPolicy)
+	if err != nil {
+		s.Logger.Error("Failed to parse network policy YAML", zap.Error(err))
+		s.handleInvalidPolicy(stream, policy, err)
+		return
+	}
+
+	// Apply the valid policy directly
+	err = ingestion.ApplyNetworkPolicy(ctx, k8sClient, policyParsed)
+	if err != nil {
+		s.Logger.Error("Failed to apply network policy", zap.Error(err))
+		// Send back as an invalid policy with the application error
+		s.handleInvalidPolicy(stream, policy, err)
+		return
+	}
+
+	s.Logger.Info("Successfully applied network policy from server",
+		zap.String("name", policyParsed.Name),
+		zap.String("namespace", policyParsed.Namespace),
+		zap.String("policy_id", policy.PolicyId))
+
+	// Send ACK back to server to indicate this policy was valid and applied
+	s.sendPolicyValidationAck(stream, policy)
+}
+
+// handleInvalidPolicy sends error feedback for invalid policies
+func (s *StreamClient) handleInvalidPolicy(
+	stream v1.StreamService_StreamDataClient,
+	policy *v1.NetworkPolicyWithError,
+	validationErr error,
+) {
+	s.Logger.Error("Failed to check network policy", zap.Error(validationErr))
+
+	// Create error policy structure
+	failedNetworkPolicy := &v1.NetworkPolicyWithError{
+		NetworkPolicy: policy.NetworkPolicy,
+		ErrorMessage:  validationErr.Error(),
+		PolicyId:      policy.PolicyId, // Preserve the policy_id field
+	}
+
+	// Send the error immediately
+	policiesWithErrors := &v1.NetworkPoliciesWithErrors{
+		Policies: []*v1.NetworkPolicyWithError{failedNetworkPolicy},
+	}
+
+	// Send error back to server
+	if err := stream.Send(&v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_NetworkPolicyWithErrors{
+			NetworkPolicyWithErrors: policiesWithErrors,
+		},
+	}); err != nil {
+		s.Logger.Error("Failed to send policy validation errors", zap.Error(err))
+	} else {
+		s.Logger.Debug("Successfully sent policy validation errors to server")
+	}
+}
+
+// sendPolicyValidationAck sends acknowledgment for a valid policy
+func (s *StreamClient) sendPolicyValidationAck(stream v1.StreamService_StreamDataClient, policy *v1.NetworkPolicyWithError) {
+	s.Logger.Info("Policy validation successful - sending ACK to server")
+
+	// Send ACK back to server to indicate this policy is valid
+	if err := stream.Send(&v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_NetworkPolicyWithErrors{
+			NetworkPolicyWithErrors: &v1.NetworkPoliciesWithErrors{
+				Policies: []*v1.NetworkPolicyWithError{
+					{
+						NetworkPolicy: policy.NetworkPolicy,
+						ErrorMessage:  "",
+						PolicyId:      policy.PolicyId, // Preserve the policy_id field
+					},
+				},
+			},
+		},
+	}); err != nil {
+		s.Logger.Error("Failed to send policy validation ACK", zap.Error(err))
+	}
+}
+
+// sendFlowData collects flow data and sends it to the server
+func (s *StreamClient) sendFlowData(ctx context.Context, stream v1.StreamService_StreamDataClient, flowChan <-chan smartcache.FlowCount, done chan<- error) {
+	for {
+		select {
+		case <-ctx.Done():
+			// Context is done, exit the goroutine
+			return
+		case flowData, ok := <-flowChan:
+			// Check if channel was closed
+			if !ok {
+				s.Logger.Warn("Flow channel closed unexpectedly")
+				done <- fmt.Errorf("flow channel closed")
+				return
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendFlowToServer(stream, flowData); err != nil {
+					s.Logger.Error("Failed to send flow data", zap.Error(err))
+					done <- err
+					return
+				}
+			}
+		}
+	}
+}
+
+// sendFlowToServer sends a single flow to the server
+func (s *StreamClient) sendFlowToServer(stream v1.StreamService_StreamDataClient, flowData smartcache.FlowCount) error {
+	// Convert flow data to proto message and send
+	flowMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_Flow{
+			Flow: convertToProtoFlow(flowData),
+		},
+	}
+	return stream.Send(flowMsg)
 }
 
 // convertToProtoNetworkPolicy converts a native K8s NetworkPolicy
