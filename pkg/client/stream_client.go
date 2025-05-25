@@ -363,14 +363,14 @@ func (s *StreamClient) handleInvalidPolicy(
 	}
 
 	// Send the error immediately
-	errorPoliciesList := &v1.NetworkPoliciesWithErrors{
+	policiesWithErrors := &v1.NetworkPoliciesWithErrors{
 		Policies: []*v1.NetworkPolicyWithError{failedNetworkPolicy},
 	}
 
 	// Send error back to server
 	if err := stream.Send(&v1.StreamDataRequest{
 		Request: &v1.StreamDataRequest_NetworkPolicyWithErrors{
-			NetworkPolicyWithErrors: errorPoliciesList,
+			NetworkPolicyWithErrors: policiesWithErrors,
 		},
 	}); err != nil {
 		s.Logger.Error("Failed to send policy validation errors", zap.Error(err))
