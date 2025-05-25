@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -486,36 +485,4 @@ func convertToProtoFlow(flowData smartcache.FlowCount) *v1.Flow {
 		FirstSeen: flowData.FlowMetadata.FirstSeen,
 		LastSeen:  flowData.FlowMetadata.LastSeen,
 	}
-}
-
-// ReadJWTTokenFromSecret reads a JWT token from a Kubernetes secret
-func ReadJWTTokenFromSecret(ctx context.Context, logger *zap.Logger, secretName string, podNamespace string) (string, error) {
-	// Get the secret key name from environment or use default
-	secretKey := os.Getenv("AUTH_SECRET_KEY")
-	if secretKey == "" {
-		secretKey = "token"
-	}
-
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		logger.Error("Failed to create clientSet", zap.Error(err))
-		return "", err
-	}
-
-	secret, err := clientset.CoreV1().Secrets(podNamespace).Get(ctx, secretName, metav1.GetOptions{})
-	if err != nil {
-		logger.Error("Failed to get secret", zap.Error(err))
-		return "", err
-	}
-
-	token := string(secret.Data["token"])
-	if token == "" {
-		logger.Error("JWT token not found in secret",
-			zap.String("secretName", secretName),
-			zap.String("namespace", podNamespace),
-			zap.String("expectedKey", secretKey))
-		return "", errors.New("JWT token not found in secret")
-	}
-
-	return token, nil
 }
