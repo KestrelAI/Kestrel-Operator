@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	serverv1 "server/api/server/v1"
+	serverv1 "server/api/gen/server/v1"
 
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
