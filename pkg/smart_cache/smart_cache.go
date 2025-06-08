@@ -107,7 +107,7 @@ func (s *SmartCache) startPurging(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			fmt.Println("Purging cache")
+			fmt.Printf("Purging cache, num flows in cache=%d\n", len(s.FlowKeys))
 			s.purgeCache()
 		case <-s.stopCh:
 			return
