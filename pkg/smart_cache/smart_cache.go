@@ -3,6 +3,7 @@ package smartcache
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"sync"
 	"time"
@@ -107,7 +108,7 @@ func (s *SmartCache) startPurging(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			fmt.Println("Purging cache")
+			log.Println("Purging cache")
 			s.purgeCache()
 		case <-s.stopCh:
 			return
