@@ -192,8 +192,8 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 // setupFlowComponents creates and initializes the flow cache and collector
 func (s *StreamClient) setupFlowComponents(ctx context.Context) (chan smartcache.FlowCount, *smartcache.SmartCache, *cilium.FlowCollector, error) {
-	// Create a channel for flow data - buffer large enough for one purge-cycle (~60 s) worth of flows
-	flowChan := make(chan smartcache.FlowCount, 10_000)
+	// Create a channel for flow data - buffer large enough for one purge-cycle (~5 min) worth of flows
+	flowChan := make(chan smartcache.FlowCount, 20_000)
 
 	// Initialize flow cache
 	cache := smartcache.InitFlowCache(ctx, flowChan)
@@ -399,7 +399,8 @@ func (s *StreamClient) handleInvalidPolicy(
 	}); err != nil {
 		s.Logger.Error("Failed to send policy validation errors", zap.Error(err))
 	} else {
-		s.Logger.Debug("Successfully sent policy validation errors to server")
+		s.Logger.Info("Successfully sent policy validation errors to server",
+			zap.Int("num_validation_errors", len(policiesWithErrors.Policies)))
 	}
 }
 
