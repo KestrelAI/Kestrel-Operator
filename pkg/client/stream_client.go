@@ -16,6 +16,7 @@ import (
 
 	serverv1 "server/api/gen/server/v1"
 
+	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
@@ -208,11 +209,37 @@ func (s *StreamClient) setupFlowComponents(ctx context.Context) (chan smartcache
 	return flowChan, cache, flowCollector, nil
 }
 
+// extractTenantFromToken extracts the tenant ID from a JWT token
+func extractTenantFromToken(tokenString string) (string, error) {
+	// Parse the token without verification to extract claims
+	claims := jwt.MapClaims{}
+	_, _, err := new(jwt.Parser).ParseUnverified(tokenString, claims)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse JWT token: %w", err)
+	}
+
+	// Extract tenant from claims
+	tenant, ok := claims["tenant"].(string)
+	if !ok || tenant == "" {
+		return "", fmt.Errorf("tenant claim not found or empty in JWT token")
+	}
+
+	return tenant, nil
+}
+
 // createStreamWithTenantContext creates a new stream with tenant context
 func (s *StreamClient) createStreamWithTenantContext(ctx context.Context, streamClient v1.StreamServiceClient) (v1.StreamService_StreamDataClient, context.Context, error) {
-	// Add tenant ID to the context metadata (temp until we implement multi-tenancy)
+	tenantID, err := extractTenantFromToken(s.Config.Token)
+	if err != nil {
+		s.Logger.Error("Failed to extract tenant ID from JWT token", zap.Error(err))
+		return nil, nil, fmt.Errorf("failed to extract tenant from token: %w", err)
+	}
+
+	s.Logger.Info("Using tenant ID from JWT token", zap.String("tenantID", tenantID))
+
+	// Add tenant ID to the context metadata
 	md := metadata.New(map[string]string{
-		"autonp-tenantid": "default",
+		"autonp-tenantid": tenantID,
 	})
 	ctxWithMetadata := metadata.NewOutgoingContext(ctx, md)
 
