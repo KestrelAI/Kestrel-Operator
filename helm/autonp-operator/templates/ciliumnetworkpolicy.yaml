@@ -1,0 +1,24 @@
+{{- if .Values.useCiliumNetworkPolicy }}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-egress-to-host-workloads
+  namespace: autonp-operator
+spec:
+  endpointSelector:
+    matchLabels:
+      app: autonp-operator
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: {{ .Values.k8sApiServer.port | quote | default "443" }}
+              protocol: TCP
+    - toEntities:
+        - unmanaged  # allows traffic to reserved:unmanaged (covers unmanaged IPs like hubble relay on hostNet)
+      toPorts:
+        - ports:
+            - port: "4245"
+              protocol: TCP
+{{- end }}
