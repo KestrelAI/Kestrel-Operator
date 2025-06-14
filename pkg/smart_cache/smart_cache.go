@@ -101,7 +101,7 @@ func (s *SmartCache) startPurging(ctx context.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {
