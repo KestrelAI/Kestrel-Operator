@@ -9,18 +9,7 @@ spec:
     matchLabels:
       app: {{ .Release.Name }}
   policyTypes:
-    - Ingress
     - Egress
-
-  ingress:
-    # Allow ingress from the Server on gRPC port (bidi gRPC stream)
-    - from:
-      - namespaceSelector:
-          matchLabels:
-            kubernetes.io/metadata.name: autonp-server
-      ports:
-        - port: {{ .Values.server.port | default 50051 }}
-          protocol: TCP
 
   egress:
     # Allow egress to the Server on gRPC port (bidi gRPC stream)
