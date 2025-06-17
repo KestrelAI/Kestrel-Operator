@@ -101,14 +101,14 @@ func (s *SmartCache) startPurging(ctx context.Context) {
 		// Context was cancelled during initial jitter
 		return
 	}
-	// Setting timer to 1 minute to make local testing easier
-	ticker := time.NewTicker(1 * time.Minute)
+
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			log.Println("Purging cache")
+			fmt.Printf("Purging cache, num flows in cache=%d\n", len(s.FlowKeys))
 			s.purgeCache()
 		case <-s.stopCh:
 			return
@@ -122,6 +122,7 @@ func (s *SmartCache) startPurging(ctx context.Context) {
 func (s *SmartCache) purgeCache() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	for flowKey, flowData := range s.FlowKeys {
 		select {
 		case s.flowChan <- FlowCount{

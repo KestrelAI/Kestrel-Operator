@@ -1,0 +1,69 @@
+{{- if .Values.networkPolicy.create }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "autonp-operator.fullname" . }}-default
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  policyTypes:
+    - Egress
+
+  egress:
+    # Allow egress to the Server on gRPC port (bidi gRPC stream)
+    - to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: autonp-server
+      ports:
+        - port: {{ .Values.server.port | default 50051 }}
+          protocol: TCP
+
+    {{- if not .Values.useCiliumNetworkPolicy }}
+    # Allow egress to Kubernetes API server by allowing egress to everything inside the cluster
+    # The better approach is to use a CiliumNetworkPolicy to allow egress specifically to the kube-apiserver entity,
+    # which is not possible with vanilla NetworkPolicy with Cilium.
+    - to:
+      - ipBlock:
+          cidr: {{ .Values.k8sApiServer.cidr | default "10.0.0.0/8" }}
+      ports:
+        - port: {{ .Values.k8sApiServer.port | default 443 }}
+          protocol: TCP
+
+    # Allow egress to Hubble Relay
+    - to:
+        - ipBlock:
+            cidr: {{ .Values.hubble.cidr | default 443 }}
+      ports:
+        - port: 4245
+          protocol: TCP
+    {{- end }}
+
+    # Allow egress to CoreDNS (kube-dns)
+    - to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # Allow egress to Hubble Peer
+    - to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: cilium
+      ports:
+        - port: 443
+          protocol: TCP
+{{- end }}

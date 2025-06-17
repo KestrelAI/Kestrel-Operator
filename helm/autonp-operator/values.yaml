@@ -31,3 +31,17 @@ resources:
   requests:
     cpu: 50m
     memory: 64Mi 
+
+networkPolicy:
+  create: true
+
+k8sApiServer:
+  cidr: 10.0.0.0/8 # Cilium does not evaluate ipBlock rules for traffic to reserved:host identities unless the host is represented with a remote node identity.
+                   # So can't set to 192.168.49.2/32 (i.e. the kube-apiserver running on the node).
+  port: 8443 # Also commonly 443, in minikube it's 8443
+
+hubble:
+  cidr: 10.244.0.3/32 # Not constant, so the better approach is to set useCiliumNetworkPolicy to true below
+
+# The clean way is to define a CiliumNetworkPolicy or CiliumClusterwideNetworkPolicy that explicitly allows egress to reserved:host (kube-apiserver entity, use for hubble relay as well)
+useCiliumNetworkPolicy: true
