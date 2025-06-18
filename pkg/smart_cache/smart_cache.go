@@ -3,7 +3,6 @@ package smartcache
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/rand"
 	"sync"
 	"time"
