@@ -16,6 +16,7 @@ import (
 
 	serverv1 "server/api/server/v1"
 
+	"github.com/cilium/cilium/api/v1/flow"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
@@ -604,7 +605,27 @@ func convertToProtoFlow(flowData smartcache.FlowCount) *v1.Flow {
 		dstLabels = append(dstLabels, label)
 	}
 
+	convertPolicy := func(p *flow.Policy) *v1.Policy {
+		return &v1.Policy{
+			Name:      p.Name,
+			Namespace: p.Namespace,
+			Labels:    p.Labels,
+			Revision:  p.Revision,
+			Kind:      p.Kind,
+		}
+	}
+	ingressAllowedBy := make([]*v1.Policy, 0, len(flowData.FlowMetadata.IngressAllowedBy))
+	for _, policy := range flowData.FlowMetadata.IngressAllowedBy {
+		ingressAllowedBy = append(ingressAllowedBy, convertPolicy(policy))
+	}
+	egressAllowedBy := make([]*v1.Policy, 0, len(flowData.FlowMetadata.EgressAllowedBy))
+	for _, policy := range flowData.FlowMetadata.EgressAllowedBy {
+		egressAllowedBy = append(egressAllowedBy, convertPolicy(policy))
+	}
+
 	return &v1.Flow{
+		SrcIp: flowKey.SourceIPAddress,
+		DstIp: flowKey.DestinationIPAddress,
 		Src: &v1.Endpoint{
 			Ns:     flowKey.SourceNamespace,
 			Kind:   flowKey.SourceKind,
@@ -617,12 +638,14 @@ func convertToProtoFlow(flowData smartcache.FlowCount) *v1.Flow {
 			Name:   flowKey.DestinationName,
 			Labels: dstLabels,
 		},
-		Direction: flowKey.Direction,
-		Port:      flowKey.DestinationPort,
-		Protocol:  flowKey.Protocol,
-		Allowed:   flowKey.Verdict == "FORWARDED", // Assuming "FORWARDED" means allowed
-		Count:     flowData.Count,
-		FirstSeen: flowData.FlowMetadata.FirstSeen,
-		LastSeen:  flowData.FlowMetadata.LastSeen,
+		Direction:        flowKey.Direction,
+		Port:             flowKey.DestinationPort,
+		Protocol:         flowKey.Protocol,
+		Allowed:          flowKey.Verdict == "FORWARDED", // Assuming "FORWARDED" means allowed
+		Count:            flowData.Count,
+		FirstSeen:        flowData.FlowMetadata.FirstSeen,
+		LastSeen:         flowData.FlowMetadata.LastSeen,
+		IngressAllowedBy: ingressAllowedBy,
+		EgressAllowedBy:  egressAllowedBy,
 	}
 }
