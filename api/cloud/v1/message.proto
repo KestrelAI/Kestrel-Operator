@@ -26,32 +26,38 @@ message NetworkPolicyWithError {
 }
 
 message Flow {
+  string srcIp = 1;
+  string dstIp = 2;
+
   // Source endpoint details
-  Endpoint src = 1;
+  Endpoint src = 3;
 
   // Destination endpoint details
-  Endpoint dst = 2;
+  Endpoint dst = 4;
 
   // Direction from source's viewpoint (ingress or egress)
-  string direction = 3;
+  string direction = 5;
 
-  // Port number
-  uint32 port = 4;
+  // Dst port number
+  uint32 port = 6;
 
   // Protocol (TCP, UDP, etc.)
-  string protocol = 5;
+  string protocol = 7;
 
   // Whether the connection was allowed
-  bool allowed = 6;
+  bool allowed = 8;
 
   // Count of times this flow was observed
-  int64 count = 7;
+  int64 count = 9;
 
   // When this flow was first seen
-  google.protobuf.Timestamp first_seen = 8;
+  google.protobuf.Timestamp first_seen = 10;
 
   // When this flow was last seen
-  google.protobuf.Timestamp last_seen = 9;
+  google.protobuf.Timestamp last_seen = 11;
+
+  repeated Policy ingress_allowed_by = 12;
+  repeated Policy egress_allowed_by = 13;
 }
 
 // Endpoint definition for source or destination
@@ -67,6 +73,15 @@ message Endpoint {
 
   // Digest of labels attached to the resource
   repeated string labels = 4;
+}
+
+// Policy definition used in Cilium flows
+message Policy {
+  string name = 1;
+  string namespace = 2;
+  repeated string labels = 3;
+  uint64 revision = 4;
+  string kind = 5;
 }
 
 // Response message
