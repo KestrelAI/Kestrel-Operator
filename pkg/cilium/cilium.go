@@ -88,7 +88,7 @@ func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
-		flow, err := stream.Recv()
+		f, err := stream.Recv()
 		if err != nil {
 			fm.logger.Warn("Failed to get flow log from stream", zap.Error(err))
 			return err
@@ -98,29 +98,40 @@ func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
 		// K8s NetworkPolicy is state-aware: once the policy allows the initiating packet,
 		// all packets in the reverse / reply direction of that connection are automatically accepted.
 		// We only write policies for the request direction (reply traffic matches conntrack and is allowed implicitly).
-		if ir := flow.GetFlow().GetIsReply(); ir != nil && ir.GetValue() {
+		if ir := f.GetFlow().GetIsReply(); ir != nil && ir.GetValue() {
 			continue
 		}
 
-		flowKey := createFlowKey(flow.GetFlow())
+		flowKey := createFlowKey(f.GetFlow())
 
 		// Convert string slice labels to map[string]struct{}
 		srcLabels := make(map[string]struct{})
 		dstLabels := make(map[string]struct{})
-		for _, label := range flow.GetFlow().GetSource().GetLabels() {
+		for _, label := range f.GetFlow().GetSource().GetLabels() {
 			srcLabels[label] = struct{}{}
 		}
-		for _, label := range flow.GetFlow().GetDestination().GetLabels() {
+		for _, label := range f.GetFlow().GetDestination().GetLabels() {
 			dstLabels[label] = struct{}{}
 		}
 
-		flowMetadata := &smartcache.FlowMetadata{
-			FirstSeen:    &timestamppb.Timestamp{},
-			LastSeen:     &timestamppb.Timestamp{},
-			SourceLabels: srcLabels,
-			DestLabels:   dstLabels,
+		ingressAllowedBy := make(map[string]*flow.Policy)
+		egressAllowedBy := make(map[string]*flow.Policy)
+		for _, policy := range f.GetFlow().GetIngressAllowedBy() {
+			ingressAllowedBy[smartcache.PolicyKey(policy)] = policy
 		}
-		fm.cache.AddFlowKey(*flowKey, flow.GetFlow(), flowMetadata)
+		for _, policy := range f.GetFlow().GetEgressAllowedBy() {
+			egressAllowedBy[smartcache.PolicyKey(policy)] = policy
+		}
+
+		flowMetadata := &smartcache.FlowMetadata{
+			FirstSeen:        &timestamppb.Timestamp{},
+			LastSeen:         &timestamppb.Timestamp{},
+			SourceLabels:     srcLabels,
+			DestLabels:       dstLabels,
+			IngressAllowedBy: ingressAllowedBy,
+			EgressAllowedBy:  egressAllowedBy,
+		}
+		fm.cache.AddFlowKey(*flowKey, f.GetFlow(), flowMetadata)
 	}
 }
 
