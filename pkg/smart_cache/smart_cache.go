@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
 	"maps"
 
+	"github.com/cilium/cilium/api/v1/flow"
 	v1 "github.com/cilium/cilium/api/v1/flow"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -16,10 +18,12 @@ import (
 //TODO:  I think this cache needs to have an in and out channel to avoid blocking operations.
 
 type FlowMetadata struct {
-	FirstSeen    *timestamppb.Timestamp
-	LastSeen     *timestamppb.Timestamp
-	SourceLabels map[string]struct{}
-	DestLabels   map[string]struct{}
+	FirstSeen        *timestamppb.Timestamp
+	LastSeen         *timestamppb.Timestamp
+	SourceLabels     map[string]struct{}
+	DestLabels       map[string]struct{}
+	IngressAllowedBy map[string]*flow.Policy
+	EgressAllowedBy  map[string]*flow.Policy
 }
 
 type FlowData struct {
@@ -62,10 +66,12 @@ type FlowCount struct {
 
 // String returns a string representation of the FlowKey
 func (f FlowKey) String() string {
-	return fmt.Sprintf("%s.%s.%s.%s.%s.%s.%d.%d.%s.%s.%s",
+	return fmt.Sprintf("%s.%s.%s.%s.%s.%s.%s.%s.%d.%d.%s.%s.%s",
+		f.SourceIPAddress,
 		f.SourceNamespace,
 		f.SourceKind,
 		f.SourceName,
+		f.DestinationIPAddress,
 		f.DestinationNamespace,
 		f.DestinationKind,
 		f.DestinationName,
@@ -74,6 +80,10 @@ func (f FlowKey) String() string {
 		f.Protocol,
 		f.Direction,
 		f.Verdict)
+}
+
+func PolicyKey(p *flow.Policy) string {
+	return fmt.Sprintf("%s|%s|%s|%d|%s", p.Namespace, p.Name, p.Kind, p.Revision, strings.Join(p.Labels, ","))
 }
 
 // InitFlowCache initializes a new SmartCache with the given flow channel
@@ -142,7 +152,7 @@ func (s *SmartCache) Stop() {
 	close(s.stopCh)
 }
 
-func (s *SmartCache) AddFlowKey(key FlowKey, flow *v1.Flow, flowMetadata *FlowMetadata) {
+func (s *SmartCache) AddFlowKey(key FlowKey, f *v1.Flow, flowMetadata *FlowMetadata) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -161,19 +171,33 @@ func (s *SmartCache) AddFlowKey(key FlowKey, flow *v1.Flow, flowMetadata *FlowMe
 			dstLabels[label] = struct{}{}
 		}
 
+		// Initialize new network policy maps
+		ingressAllowedBy := make(map[string]*flow.Policy)
+		egressAllowedBy := make(map[string]*flow.Policy)
+
+		// Add initial network policies that allow the flow, if any
+		for _, policy := range flowMetadata.GetIngressAllowedByAsSlice() {
+			ingressAllowedBy[PolicyKey(policy)] = policy
+		}
+		for _, policy := range flowMetadata.GetEgressAllowedByAsSlice() {
+			egressAllowedBy[PolicyKey(policy)] = policy
+		}
+
 		fd = FlowData{
 			Count: 1,
-			Flow:  flow,
+			Flow:  f,
 			FlowMetadata: &FlowMetadata{
-				FirstSeen:    timestamppb.Now(),
-				LastSeen:     timestamppb.Now(),
-				SourceLabels: srcLabels,
-				DestLabels:   dstLabels,
+				FirstSeen:        timestamppb.Now(),
+				LastSeen:         timestamppb.Now(),
+				SourceLabels:     srcLabels,
+				DestLabels:       dstLabels,
+				IngressAllowedBy: ingressAllowedBy,
+				EgressAllowedBy:  egressAllowedBy,
 			},
 		}
 	} else {
 		fd.Count += 1
-		fd.Flow = flow
+		fd.Flow = f
 		fd.FlowMetadata.LastSeen = timestamppb.Now()
 
 		// Add new labels to existing sets
@@ -182,6 +206,14 @@ func (s *SmartCache) AddFlowKey(key FlowKey, flow *v1.Flow, flowMetadata *FlowMe
 		}
 		for _, label := range flowMetadata.GetDestLabelsAsSlice() {
 			fd.FlowMetadata.DestLabels[label] = struct{}{}
+		}
+
+		// Add new network policies to existing sets
+		for _, policy := range flowMetadata.GetIngressAllowedByAsSlice() {
+			fd.FlowMetadata.IngressAllowedBy[PolicyKey(policy)] = policy
+		}
+		for _, policy := range flowMetadata.GetEgressAllowedByAsSlice() {
+			fd.FlowMetadata.EgressAllowedBy[PolicyKey(policy)] = policy
 		}
 	}
 	s.FlowKeys[key] = fd
@@ -244,4 +276,22 @@ func (fm *FlowMetadata) GetDestLabelsAsSlice() []string {
 		labels = append(labels, label)
 	}
 	return labels
+}
+
+// GetIngressAllowedByAsSlice returns the ingress network policies as a slice of *flow.Policy
+func (fm *FlowMetadata) GetIngressAllowedByAsSlice() []*flow.Policy {
+	policies := make([]*flow.Policy, 0, len(fm.IngressAllowedBy))
+	for _, policy := range fm.IngressAllowedBy {
+		policies = append(policies, policy)
+	}
+	return policies
+}
+
+// GetEgressAllowedByAsSlice returns the egress network policies as a slice of *flow.Policy
+func (fm *FlowMetadata) GetEgressAllowedByAsSlice() []*flow.Policy {
+	policies := make([]*flow.Policy, 0, len(fm.EgressAllowedBy))
+	for _, policy := range fm.EgressAllowedBy {
+		policies = append(policies, policy)
+	}
+	return policies
 }
