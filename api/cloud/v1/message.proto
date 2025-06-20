@@ -12,6 +12,9 @@ message StreamDataRequest {
     Flow flow = 1;
     NetworkPolicy network_policy = 2;
     NetworkPoliciesWithErrors network_policy_with_errors = 3;
+    Workload workload = 4;
+    Namespace namespace = 5;
+    InventoryCommit inventory_commit = 6;
   }
 }
 
@@ -81,6 +84,31 @@ message StreamDataResponse {
 
 // Simple acknowledgment message
 message Ack {}
+
+// Workload definition for streaming workload inventory
+message Workload {
+  string name = 1;
+  string namespace = 2;
+  string uid = 3;
+  string kind = 4; // Deployment, StatefulSet, DaemonSet, etc.
+  map<string, string> labels = 5;
+  google.protobuf.Timestamp created_at = 6;
+  string action = 7; // CREATE, UPDATE, DELETE
+}
+
+// Namespace definition for streaming namespace inventory
+message Namespace {
+  string name = 1;
+  string uid = 2;
+  map<string, string> labels = 3;
+  google.protobuf.Timestamp created_at = 4;
+  string action = 5; // CREATE, UPDATE, DELETE
+}
+
+// InventoryCommit signals that the operator has finished sending initial inventory
+// and the server can now commit the staged changes and start processing incremental updates
+message InventoryCommit {
+}
 
 // Network policy definition matching Kubernetes NetworkPolicy format
 message NetworkPolicy {

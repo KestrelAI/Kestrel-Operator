@@ -26,4 +26,19 @@ rules:
   # Allow access to the Cilium APIs
   - apiGroups: ["cilium.io"]
     resources: ["ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"] 
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # Allow reading workloads for ingestion (apps API group)
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  
+  # Allow reading batch workloads for ingestion 
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  
+  # Allow reading pods for ingestion
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"] 

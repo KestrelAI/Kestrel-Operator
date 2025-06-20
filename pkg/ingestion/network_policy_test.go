@@ -3,7 +3,7 @@ package ingestion
 import (
 	"testing"
 
-	v1 "operator/api/cloud/v1"
+	v1 "operator/api/gen/cloud/v1"
 	testhelper "operator/pkg/test_helper"
 
 	"github.com/stretchr/testify/suite"

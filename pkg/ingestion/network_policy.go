@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	v1 "operator/api/cloud/v1"
+	v1 "operator/api/gen/cloud/v1"
 	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
