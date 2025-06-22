@@ -227,15 +227,15 @@ func (x *NetworkPolicyWithError) GetPolicyId() string {
 
 type Flow struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	SrcIp string                 `protobuf:"bytes,1,opt,name=srcIp,proto3" json:"srcIp,omitempty"`
-	DstIp string                 `protobuf:"bytes,2,opt,name=dstIp,proto3" json:"dstIp,omitempty"`
+	SrcIp string                 `protobuf:"bytes,1,opt,name=src_ip,json=srcIp,proto3" json:"src_ip,omitempty"`
+	DstIp string                 `protobuf:"bytes,2,opt,name=dst_ip,json=dstIp,proto3" json:"dst_ip,omitempty"`
 	// Source endpoint details
 	Src *Endpoint `protobuf:"bytes,3,opt,name=src,proto3" json:"src,omitempty"`
 	// Destination endpoint details
 	Dst *Endpoint `protobuf:"bytes,4,opt,name=dst,proto3" json:"dst,omitempty"`
 	// Direction from source's viewpoint (ingress or egress)
 	Direction string `protobuf:"bytes,5,opt,name=direction,proto3" json:"direction,omitempty"`
-	// Port number
+	// Dst port number
 	Port uint32 `protobuf:"varint,6,opt,name=port,proto3" json:"port,omitempty"`
 	// Protocol (TCP, UDP, etc.)
 	Protocol string `protobuf:"bytes,7,opt,name=protocol,proto3" json:"protocol,omitempty"`
@@ -1321,10 +1321,10 @@ const file_cloud_v1_message_proto_rawDesc = "" +
 	"\x16NetworkPolicyWithError\x12%\n" +
 	"\x0enetwork_policy\x18\x01 \x01(\tR\rnetworkPolicy\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12\x1b\n" +
-	"\tpolicy_id\x18\x03 \x01(\tR\bpolicyId\"\xee\x03\n" +
-	"\x04Flow\x12\x14\n" +
-	"\x05srcIp\x18\x01 \x01(\tR\x05srcIp\x12\x14\n" +
-	"\x05dstIp\x18\x02 \x01(\tR\x05dstIp\x12$\n" +
+	"\tpolicy_id\x18\x03 \x01(\tR\bpolicyId\"\xf0\x03\n" +
+	"\x04Flow\x12\x15\n" +
+	"\x06src_ip\x18\x01 \x01(\tR\x05srcIp\x12\x15\n" +
+	"\x06dst_ip\x18\x02 \x01(\tR\x05dstIp\x12$\n" +
 	"\x03src\x18\x03 \x01(\v2\x12.cloud.v1.EndpointR\x03src\x12$\n" +
 	"\x03dst\x18\x04 \x01(\v2\x12.cloud.v1.EndpointR\x03dst\x12\x1c\n" +
 	"\tdirection\x18\x05 \x01(\tR\tdirection\x12\x12\n" +

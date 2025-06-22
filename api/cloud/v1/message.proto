@@ -26,8 +26,8 @@ message NetworkPolicyWithError {
 }
 
 message Flow {
-  string srcIp = 1;
-  string dstIp = 2;
+  string src_ip = 1;
+  string dst_ip = 2;
 
   // Source endpoint details
   Endpoint src = 3;
