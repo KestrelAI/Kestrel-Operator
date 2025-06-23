@@ -55,7 +55,7 @@ func (npi *NetworkPolicyIngester) GetNetworkPolicy(ctx context.Context, namespac
 	return npi.clientset.NetworkingV1().NetworkPolicies(namespace).Get(ctx, name, metav1.GetOptions{})
 }
 
-// ResolveTargetWorkloads resolves a network policy to the target workloads to which it applies
+// ResolveTargetWorkloads resolves a network policy to the target workloads to which it applies.
 func (npi *NetworkPolicyIngester) ResolveTargetWorkloads(ctx context.Context, np networkingv1.NetworkPolicy) []string {
 	podList, err := npi.clientset.CoreV1().Pods(np.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: labels.Set(np.Spec.PodSelector.MatchLabels).String(),
@@ -66,30 +66,32 @@ func (npi *NetworkPolicyIngester) ResolveTargetWorkloads(ctx context.Context, np
 
 	targetWorkloads := sets.New[string]()
 	for _, p := range podList.Items {
-		targetWorkloads.Insert(fmt.Sprintf("%s.Pod.%s", np.Namespace, p.Name)) // Bare Pod key
-
-		// Every owner of the Pod in the chain
 		for _, ref := range p.OwnerReferences {
-			key := fmt.Sprintf("%s.%s.%s", np.Namespace, ref.Kind, ref.Name)
-			targetWorkloads.Insert(key)
+			switch ref.Kind {
+			case "Deployment", "StatefulSet", "DaemonSet", "CronJob":
+				targetWorkloads.Insert(fmt.Sprintf("%s.%s.%s", np.Namespace, ref.Kind, ref.Name))
 
 			// Special handling for ReplicaSet->Deployment and Job->CronJob relationships;
 			// this is necessary because ReplicaSets and Jobs are not the root controllers – the root controllers
 			// are Deployments and CronJobs, respectively, so we need to also include these "grandparent"
 			// controllers of the Pod in the targetWorkloads set. This ensures that, no matter what controller
 			// Cilium chooses for the Pod traffic, we will always be able to do this stitching.
-			switch ref.Kind {
 			case "ReplicaSet":
 				if d := deploymentName(ref.Name); d != "" {
 					targetWorkloads.Insert(fmt.Sprintf("%s.%s.%s", np.Namespace, "Deployment", d))
+				} else {
+					targetWorkloads.Insert(fmt.Sprintf("%s.%s.%s", np.Namespace, ref.Kind, ref.Name))
 				}
 			case "Job":
 				if cj := cronJobName(ref.Name); cj != "" {
 					targetWorkloads.Insert(fmt.Sprintf("%s.%s.%s", np.Namespace, "CronJob", cj))
+				} else {
+					targetWorkloads.Insert(fmt.Sprintf("%s.%s.%s", np.Namespace, ref.Kind, ref.Name))
 				}
 			}
 		}
 	}
+
 	return targetWorkloads.UnsortedList()
 }
 
