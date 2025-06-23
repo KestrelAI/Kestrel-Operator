@@ -26,4 +26,9 @@ rules:
   # Allow access to the Cilium APIs
   - apiGroups: ["cilium.io"]
     resources: ["ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"] 
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Allow reading Pods for NetworkPolicy to Target Workload resolution
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
