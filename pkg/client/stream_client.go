@@ -471,7 +471,13 @@ func (s *StreamClient) sendFlowToServer(stream v1.StreamService_StreamDataClient
 // convertToProtoNetworkPolicy converts a native K8s NetworkPolicy
 // (k8s.io/api/networking/v1) to our cloud.v1 proto representation.
 func convertToProtoNetworkPolicy(np networkingv1.NetworkPolicy, targetWorkloads []string) *v1.NetworkPolicy {
+	kind := np.Kind
+	if kind == "" {
+		kind = "NetworkPolicy"
+	}
+
 	return &v1.NetworkPolicy{
+		Kind: kind,
 		Metadata: &v1.ObjectMeta{
 			Name:        np.Name,
 			Namespace:   np.Namespace,
