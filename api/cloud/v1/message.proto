@@ -99,13 +99,15 @@ message Ack {}
 
 // Network policy definition matching Kubernetes NetworkPolicy format
 message NetworkPolicy {
+  string kind = 1;
+
   // Standard Kubernetes metadata
-  ObjectMeta metadata = 1;
-  NetworkPolicySpec spec = 2;
+  ObjectMeta metadata = 2;
+  NetworkPolicySpec spec = 3;
 
   // Zero-or-more "target" workloads protected by this policy;
   // each entry in the target_workloads list is of the format: "<Namespace>.<Kind>.<Name>".
-  repeated string target_workloads = 3;
+  repeated string target_workloads = 4;
 }
 
 // Kubernetes ObjectMeta

@@ -649,12 +649,13 @@ func (*Ack) Descriptor() ([]byte, []int) {
 // Network policy definition matching Kubernetes NetworkPolicy format
 type NetworkPolicy struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	Kind  string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	// Standard Kubernetes metadata
-	Metadata *ObjectMeta        `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
-	Spec     *NetworkPolicySpec `protobuf:"bytes,2,opt,name=spec,proto3" json:"spec,omitempty"`
+	Metadata *ObjectMeta        `protobuf:"bytes,2,opt,name=metadata,proto3" json:"metadata,omitempty"`
+	Spec     *NetworkPolicySpec `protobuf:"bytes,3,opt,name=spec,proto3" json:"spec,omitempty"`
 	// Zero-or-more "target" workloads protected by this policy;
 	// each entry in the target_workloads list is of the format: "<Namespace>.<Kind>.<Name>".
-	TargetWorkloads []string `protobuf:"bytes,3,rep,name=target_workloads,json=targetWorkloads,proto3" json:"target_workloads,omitempty"`
+	TargetWorkloads []string `protobuf:"bytes,4,rep,name=target_workloads,json=targetWorkloads,proto3" json:"target_workloads,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -687,6 +688,13 @@ func (x *NetworkPolicy) ProtoReflect() protoreflect.Message {
 // Deprecated: Use NetworkPolicy.ProtoReflect.Descriptor instead.
 func (*NetworkPolicy) Descriptor() ([]byte, []int) {
 	return file_cloud_v1_message_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *NetworkPolicy) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
 }
 
 func (x *NetworkPolicy) GetMetadata() *ObjectMeta {
@@ -1354,11 +1362,12 @@ const file_cloud_v1_message_proto_rawDesc = "" +
 	"\x0enetwork_policy\x18\x02 \x01(\v2 .cloud.v1.NetworkPolicyWithErrorH\x00R\rnetworkPolicyB\n" +
 	"\n" +
 	"\bresponse\"\x05\n" +
-	"\x03Ack\"\x9d\x01\n" +
-	"\rNetworkPolicy\x120\n" +
-	"\bmetadata\x18\x01 \x01(\v2\x14.cloud.v1.ObjectMetaR\bmetadata\x12/\n" +
-	"\x04spec\x18\x02 \x01(\v2\x1b.cloud.v1.NetworkPolicySpecR\x04spec\x12)\n" +
-	"\x10target_workloads\x18\x03 \x03(\tR\x0ftargetWorkloads\"\xf9\x02\n" +
+	"\x03Ack\"\xb1\x01\n" +
+	"\rNetworkPolicy\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x120\n" +
+	"\bmetadata\x18\x02 \x01(\v2\x14.cloud.v1.ObjectMetaR\bmetadata\x12/\n" +
+	"\x04spec\x18\x03 \x01(\v2\x1b.cloud.v1.NetworkPolicySpecR\x04spec\x12)\n" +
+	"\x10target_workloads\x18\x04 \x03(\tR\x0ftargetWorkloads\"\xf9\x02\n" +
 	"\n" +
 	"ObjectMeta\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
