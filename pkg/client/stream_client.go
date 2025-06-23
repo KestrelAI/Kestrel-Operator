@@ -385,7 +385,7 @@ func (s *StreamClient) exportCiliumFlows(ctx context.Context, flowCollector *cil
 // (inventory data is already being handled by a separate goroutine)
 func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, stream v1.StreamService_StreamDataClient, flowChan chan smartcache.FlowCount, inventoryDone <-chan error) error {
 	// Create a channel to handle stream closure
-	done := make(chan error, 3) // Buffer for 3 goroutines
+	done := make(chan error, 1)
 
 	// Start goroutine to handle incoming network policies from server
 	go s.handleServerMessages(ctx, stream, done)
