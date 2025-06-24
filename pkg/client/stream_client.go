@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	serverv1 "server/api/gen/server/v1"
 
@@ -41,6 +42,14 @@ type StreamClient struct {
 	Logger *zap.Logger
 	Client *grpc.ClientConn
 	Config ServerConfig
+	sendMu sync.Mutex // Protects concurrent stream.Send calls
+}
+
+// protectedSend ensures thread-safe sending on the gRPC stream
+func (s *StreamClient) protectedSend(stream v1.StreamService_StreamDataClient, req *v1.StreamDataRequest) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	return stream.Send(req)
 }
 
 // NewStreamClient creates a new StreamClient with the given configuration
@@ -206,7 +215,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		workloadCtx, workloadCancel := context.WithCancel(ctx)
 		defer workloadCancel()
 		go func() {
-			if err := workloadIngester.StartWithInitialSync(workloadCtx, workloadSyncDone); err != nil {
+			if err := workloadIngester.StartSync(workloadCtx, workloadSyncDone); err != nil {
 				s.Logger.Error("Workload ingester failed", zap.Error(err))
 				workloadSyncDone <- err
 			}
@@ -215,7 +224,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		namespaceCtx, namespaceCancel := context.WithCancel(ctx)
 		defer namespaceCancel()
 		go func() {
-			if err := namespaceIngester.StartWithInitialSync(namespaceCtx, namespaceSyncDone); err != nil {
+			if err := namespaceIngester.StartSync(namespaceCtx, namespaceSyncDone); err != nil {
 				s.Logger.Error("Namespace ingester failed", zap.Error(err))
 				namespaceSyncDone <- err
 			}
@@ -253,7 +262,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 				InventoryCommit: &v1.InventoryCommit{},
 			},
 		}
-		if err := stream.Send(commitMsg); err != nil {
+		if err := s.protectedSend(stream, commitMsg); err != nil {
 			s.Logger.Error("Failed to send inventory commit message", zap.Error(err))
 			return err
 		}
@@ -362,7 +371,7 @@ func (s *StreamClient) sendInitialNetworkPolicies(ctx context.Context, stream v1
 				NetworkPolicy: convertToProtoNetworkPolicy(policy, targetWorkloads),
 			},
 		}
-		if err := stream.Send(policyMsg); err != nil {
+		if err := s.protectedSend(stream, policyMsg); err != nil {
 			s.Logger.Error("Failed to send network policy", zap.Error(err))
 			return err
 		}
@@ -399,7 +408,10 @@ func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, s
 		case err := <-inventoryDone:
 			if err != nil {
 				s.Logger.Error("Inventory data sending failed", zap.Error(err))
-				done <- err
+				select {
+				case done <- err:
+				default:
+				}
 			}
 		case <-ctx.Done():
 			return
@@ -420,19 +432,28 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 	k8sClient, err := k8s_helper.NewClientSet()
 	if err != nil {
 		s.Logger.Error("Failed to create k8s client", zap.Error(err))
-		done <- err
+		select {
+		case done <- err:
+		default:
+		}
 		return
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			done <- ctx.Err()
+			select {
+			case done <- ctx.Err():
+			default:
+			}
 			return
 		default:
 			response, err := stream.Recv()
 			if err != nil {
-				done <- err
+				select {
+				case done <- err:
+				default:
+				}
 				return
 			}
 
@@ -516,7 +537,7 @@ func (s *StreamClient) handleInvalidPolicy(
 	}
 
 	// Send error back to server
-	if err := stream.Send(&v1.StreamDataRequest{
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
 		Request: &v1.StreamDataRequest_NetworkPolicyWithErrors{
 			NetworkPolicyWithErrors: policiesWithErrors,
 		},
@@ -533,7 +554,7 @@ func (s *StreamClient) sendPolicyValidationAck(stream v1.StreamService_StreamDat
 	s.Logger.Info("Policy validation successful - sending ACK to server")
 
 	// Send ACK back to server to indicate this policy is valid
-	if err := stream.Send(&v1.StreamDataRequest{
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
 		Request: &v1.StreamDataRequest_NetworkPolicyWithErrors{
 			NetworkPolicyWithErrors: &v1.NetworkPoliciesWithErrors{
 				Policies: []*v1.NetworkPolicyWithError{
@@ -561,7 +582,10 @@ func (s *StreamClient) sendFlowData(ctx context.Context, stream v1.StreamService
 			// Check if channel was closed
 			if !ok {
 				s.Logger.Warn("Flow channel closed unexpectedly")
-				done <- fmt.Errorf("flow channel closed")
+				select {
+				case done <- fmt.Errorf("flow channel closed"):
+				default:
+				}
 				return
 			}
 
@@ -572,7 +596,10 @@ func (s *StreamClient) sendFlowData(ctx context.Context, stream v1.StreamService
 			default:
 				if err := s.sendFlowToServer(stream, flowData); err != nil {
 					s.Logger.Error("Failed to send flow data", zap.Error(err))
-					done <- err
+					select {
+					case done <- err:
+					default:
+					}
 					return
 				}
 			}
@@ -588,7 +615,7 @@ func (s *StreamClient) sendFlowToServer(stream v1.StreamService_StreamDataClient
 			Flow: convertToProtoFlow(flowData),
 		},
 	}
-	return stream.Send(flowMsg)
+	return s.protectedSend(stream, flowMsg)
 }
 
 // sendInventoryData collects workload and namespace data and sends it to the server
@@ -602,7 +629,10 @@ func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamSe
 			// Check if workload channel was closed
 			if !ok {
 				s.Logger.Warn("Workload channel closed unexpectedly")
-				done <- fmt.Errorf("workload channel closed")
+				select {
+				case done <- fmt.Errorf("workload channel closed"):
+				default:
+				}
 				return
 			}
 
@@ -613,7 +643,10 @@ func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamSe
 			default:
 				if err := s.sendWorkloadToServer(stream, workload); err != nil {
 					s.Logger.Error("Failed to send workload data", zap.Error(err))
-					done <- err
+					select {
+					case done <- err:
+					default:
+					}
 					return
 				}
 			}
@@ -621,7 +654,10 @@ func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamSe
 			// Check if namespace channel was closed
 			if !ok {
 				s.Logger.Warn("Namespace channel closed unexpectedly")
-				done <- fmt.Errorf("namespace channel closed")
+				select {
+				case done <- fmt.Errorf("namespace channel closed"):
+				default:
+				}
 				return
 			}
 
@@ -632,7 +668,10 @@ func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamSe
 			default:
 				if err := s.sendNamespaceToServer(stream, namespace); err != nil {
 					s.Logger.Error("Failed to send namespace data", zap.Error(err))
-					done <- err
+					select {
+					case done <- err:
+					default:
+					}
 					return
 				}
 			}
@@ -648,7 +687,7 @@ func (s *StreamClient) sendWorkloadToServer(stream v1.StreamService_StreamDataCl
 			Workload: workload,
 		},
 	}
-	return stream.Send(workloadMsg)
+	return s.protectedSend(stream, workloadMsg)
 }
 
 // sendNamespaceToServer sends a single namespace to the server
@@ -659,7 +698,7 @@ func (s *StreamClient) sendNamespaceToServer(stream v1.StreamService_StreamDataC
 			Namespace: namespace,
 		},
 	}
-	return stream.Send(namespaceMsg)
+	return s.protectedSend(stream, namespaceMsg)
 }
 
 // convertToProtoNetworkPolicy converts a native K8s NetworkPolicy

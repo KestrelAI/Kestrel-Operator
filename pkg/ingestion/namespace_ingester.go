@@ -17,6 +17,20 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
+// Helper function to convert string action to enum
+func stringToAction(action string) v1.Action {
+	switch action {
+	case "CREATE":
+		return v1.Action_ACTION_CREATE
+	case "UPDATE":
+		return v1.Action_ACTION_UPDATE
+	case "DELETE":
+		return v1.Action_ACTION_DELETE
+	default:
+		return v1.Action_ACTION_UNSPECIFIED
+	}
+}
+
 type NamespaceIngester struct {
 	clientset       *kubernetes.Clientset
 	logger          *zap.Logger
@@ -45,13 +59,8 @@ func NewNamespaceIngester(logger *zap.Logger, namespaceChan chan *v1.Namespace) 
 	}, nil
 }
 
-// Start begins watching for namespace changes using modern informer factory
-func (ni *NamespaceIngester) Start(ctx context.Context) error {
-	return ni.StartWithInitialSync(ctx, nil)
-}
-
-// StartWithInitialSync starts the namespace ingester and signals when initial sync is complete
-func (ni *NamespaceIngester) StartWithInitialSync(ctx context.Context, syncDone chan<- error) error {
+// StartSync starts the namespace ingester and signals when initial sync is complete
+func (ni *NamespaceIngester) StartSync(ctx context.Context, syncDone chan<- error) error {
 	ni.logger.Info("Starting namespace ingester with modern informer factory")
 
 	// Set up namespace informer
@@ -145,17 +154,17 @@ func (ni *NamespaceIngester) sendNamespace(meta metav1.ObjectMeta, action string
 		Uid:       string(meta.UID),
 		Labels:    meta.Labels,
 		CreatedAt: timestamppb.New(meta.CreationTimestamp.Time),
-		Action:    action,
+		Action:    stringToAction(action),
 	}
 
 	select {
 	case ni.namespaceChan <- namespace:
 		ni.logger.Debug("Sent namespace event",
 			zap.String("name", namespace.Name),
-			zap.String("action", namespace.Action))
+			zap.String("action", namespace.Action.String()))
 	default:
 		ni.logger.Warn("Namespace channel full, dropping event",
 			zap.String("name", namespace.Name),
-			zap.String("action", namespace.Action))
+			zap.String("action", namespace.Action.String()))
 	}
 }

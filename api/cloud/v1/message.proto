@@ -6,6 +6,14 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "operator/api/cloud/v1";
 
+// Action types for resource operations
+enum Action {
+  ACTION_UNSPECIFIED = 0;
+  ACTION_CREATE = 1;
+  ACTION_UPDATE = 2;
+  ACTION_DELETE = 3;
+}
+
 // Request message for flow stream
 message StreamDataRequest {
   oneof request {
@@ -93,7 +101,7 @@ message Workload {
   string kind = 4; // Deployment, StatefulSet, DaemonSet, etc.
   map<string, string> labels = 5;
   google.protobuf.Timestamp created_at = 6;
-  string action = 7; // CREATE, UPDATE, DELETE
+  Action action = 7; // CREATE, UPDATE, DELETE
 }
 
 // Namespace definition for streaming namespace inventory
@@ -102,7 +110,7 @@ message Namespace {
   string uid = 2;
   map<string, string> labels = 3;
   google.protobuf.Timestamp created_at = 4;
-  string action = 5; // CREATE, UPDATE, DELETE
+  Action action = 5; // CREATE, UPDATE, DELETE
 }
 
 // InventoryCommit signals that the operator has finished sending initial inventory

@@ -47,13 +47,8 @@ func NewWorkloadIngester(logger *zap.Logger, workloadChan chan *v1.Workload) (*W
 	}, nil
 }
 
-// Start begins watching for workload changes using modern informer factory
-func (wi *WorkloadIngester) Start(ctx context.Context) error {
-	return wi.StartWithInitialSync(ctx, nil)
-}
-
-// StartWithInitialSync starts the workload ingester and signals when initial sync is complete
-func (wi *WorkloadIngester) StartWithInitialSync(ctx context.Context, syncDone chan<- error) error {
+// StartSync starts the workload ingester and signals when initial sync is complete
+func (wi *WorkloadIngester) StartSync(ctx context.Context, syncDone chan<- error) error {
 	wi.logger.Info("Starting workload ingester with modern informer factory")
 
 	// Set up informers for different workload types
@@ -301,7 +296,7 @@ func (wi *WorkloadIngester) sendWorkload(meta metav1.ObjectMeta, kind, action st
 		Kind:      kind,
 		Labels:    meta.Labels,
 		CreatedAt: timestamppb.New(meta.CreationTimestamp.Time),
-		Action:    action,
+		Action:    stringToAction(action),
 	}
 
 	select {
@@ -310,13 +305,13 @@ func (wi *WorkloadIngester) sendWorkload(meta metav1.ObjectMeta, kind, action st
 			zap.String("name", workload.Name),
 			zap.String("namespace", workload.Namespace),
 			zap.String("kind", workload.Kind),
-			zap.String("action", workload.Action))
+			zap.String("action", workload.Action.String()))
 	default:
 		wi.logger.Warn("Workload channel full, dropping event",
 			zap.String("name", workload.Name),
 			zap.String("namespace", workload.Namespace),
 			zap.String("kind", workload.Kind),
-			zap.String("action", workload.Action))
+			zap.String("action", workload.Action.String()))
 	}
 }
 
