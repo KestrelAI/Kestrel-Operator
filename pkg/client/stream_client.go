@@ -24,8 +24,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/metadata"
-	networkingv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -162,16 +160,17 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		return err
 	}
 
-	// Set up network policy ingestion
-	networkPolicyIngester, err := ingestion.NewNetworkPolicyIngester()
+	// Set up workload, namespace, and network policy ingestion channels
+	workloadChan := make(chan *v1.Workload, 1000)
+	namespaceChan := make(chan *v1.Namespace, 100)
+	networkPolicyChan := make(chan *v1.NetworkPolicy, 100)
+
+	// Create network policy ingester with new pattern
+	networkPolicyIngester, err := ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
 	if err != nil {
 		s.Logger.Error("Failed to create network policy ingester", zap.Error(err))
 		return err
 	}
-
-	// Set up workload and namespace ingestion channels
-	workloadChan := make(chan *v1.Workload, 1000)
-	namespaceChan := make(chan *v1.Namespace, 100)
 
 	// Create workload ingester
 	workloadIngester, err := ingestion.NewWorkloadIngester(s.Logger, workloadChan)
@@ -198,20 +197,16 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			return err
 		}
 
-		// Send initial network policies
-		if err := s.sendInitialNetworkPolicies(ctx, stream, networkPolicyIngester); err != nil {
-			return err
-		}
-
-		// Start sending inventory channel readers before ingestors start
+		// Start sending inventory channel readers before ingesters start
 		inventoryDone := make(chan error, 1)
-		go s.sendInventoryData(ctx, stream, workloadChan, namespaceChan, inventoryDone)
+		go s.sendInventoryData(ctx, stream, workloadChan, namespaceChan, networkPolicyChan, inventoryDone)
 
 		// Create channels to signal when initial inventory sync is complete
 		workloadSyncDone := make(chan error, 1)
 		namespaceSyncDone := make(chan error, 1)
+		networkPolicySyncDone := make(chan error, 1)
 
-		// Start workload and namespace ingesters
+		// Start workload ingester
 		workloadCtx, workloadCancel := context.WithCancel(ctx)
 		defer workloadCancel()
 		go func() {
@@ -221,6 +216,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			}
 		}()
 
+		// Start namespace ingester
 		namespaceCtx, namespaceCancel := context.WithCancel(ctx)
 		defer namespaceCancel()
 		go func() {
@@ -230,9 +226,20 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			}
 		}()
 
-		// Wait for both ingesters to complete their initial sync
+		// Start network policy ingester
+		networkPolicyCtx, networkPolicyCancel := context.WithCancel(ctx)
+		defer networkPolicyCancel()
+		go func() {
+			if err := networkPolicyIngester.StartSync(networkPolicyCtx, networkPolicySyncDone); err != nil {
+				s.Logger.Error("Network policy ingester failed", zap.Error(err))
+				networkPolicySyncDone <- err
+			}
+		}()
+
+		// Wait for all ingesters to complete their initial sync
 		s.Logger.Info("Waiting for initial inventory sync to complete...")
 
+		// Wait for workload sync
 		select {
 		case err := <-workloadSyncDone:
 			if err != nil {
@@ -244,6 +251,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			return ctx.Err()
 		}
 
+		// Wait for namespace sync
 		select {
 		case err := <-namespaceSyncDone:
 			if err != nil {
@@ -251,6 +259,18 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 				return err
 			}
 			s.Logger.Info("Namespace initial sync completed")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		// Wait for network policy sync
+		select {
+		case err := <-networkPolicySyncDone:
+			if err != nil {
+				s.Logger.Error("Network policy initial sync failed", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Network policy initial sync completed")
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -343,41 +363,6 @@ func (s *StreamClient) createStreamWithTenantContext(ctx context.Context, stream
 	}
 
 	return stream, ctxWithMetadata, nil
-}
-
-// sendInitialNetworkPolicies fetches and sends existing network policies to the server
-func (s *StreamClient) sendInitialNetworkPolicies(ctx context.Context, stream v1.StreamService_StreamDataClient, networkPolicyIngester *ingestion.NetworkPolicyIngester) error {
-	s.Logger.Info("Fetching current network policies from the cluster")
-	policies, err := networkPolicyIngester.IngestNetworkPolicies(ctx)
-	if err != nil {
-		s.Logger.Error("Failed to ingest network policies", zap.Error(err))
-		return err
-	}
-
-	// Send initial network policies to the server
-	for _, policy := range policies {
-		// Check context before each send
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		targetWorkloads := networkPolicyIngester.ResolveTargetWorkloads(ctx, policy)
-
-		// Convert to proto message and send
-		policyMsg := &v1.StreamDataRequest{
-			Request: &v1.StreamDataRequest_NetworkPolicy{
-				NetworkPolicy: convertToProtoNetworkPolicy(policy, targetWorkloads),
-			},
-		}
-		if err := s.protectedSend(stream, policyMsg); err != nil {
-			s.Logger.Error("Failed to send network policy", zap.Error(err))
-			return err
-		}
-	}
-	s.Logger.Info("Sent initial network policies to server", zap.Int("count", len(policies)))
-	return nil
 }
 
 // exportCiliumFlows starts the flow collector in a background goroutine
@@ -619,7 +604,7 @@ func (s *StreamClient) sendFlowToServer(stream v1.StreamService_StreamDataClient
 }
 
 // sendInventoryData collects workload and namespace data and sends it to the server
-func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamService_StreamDataClient, workloadChan <-chan *v1.Workload, namespaceChan <-chan *v1.Namespace, done chan<- error) {
+func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamService_StreamDataClient, workloadChan <-chan *v1.Workload, namespaceChan <-chan *v1.Namespace, networkPolicyChan <-chan *v1.NetworkPolicy, done chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -675,6 +660,31 @@ func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamSe
 					return
 				}
 			}
+		case networkPolicy, ok := <-networkPolicyChan:
+			// Check if network policy channel was closed
+			if !ok {
+				s.Logger.Warn("Network policy channel closed unexpectedly")
+				select {
+				case done <- fmt.Errorf("network policy channel closed"):
+				default:
+				}
+				return
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendNetworkPolicyToServer(stream, networkPolicy); err != nil {
+					s.Logger.Error("Failed to send network policy data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
 		}
 	}
 }
@@ -701,126 +711,15 @@ func (s *StreamClient) sendNamespaceToServer(stream v1.StreamService_StreamDataC
 	return s.protectedSend(stream, namespaceMsg)
 }
 
-// convertToProtoNetworkPolicy converts a native K8s NetworkPolicy
-// (k8s.io/api/networking/v1) to our cloud.v1 proto representation.
-func convertToProtoNetworkPolicy(np networkingv1.NetworkPolicy, targetWorkloads []string) *v1.NetworkPolicy {
-	return &v1.NetworkPolicy{
-		Metadata: &v1.ObjectMeta{
-			Name:        np.Name,
-			Namespace:   np.Namespace,
-			Labels:      np.Labels,      // maybe unnecessary
-			Annotations: np.Annotations, // maybe unnecessary
+// sendNetworkPolicyToServer sends a single network policy to the server
+func (s *StreamClient) sendNetworkPolicyToServer(stream v1.StreamService_StreamDataClient, networkPolicy *v1.NetworkPolicy) error {
+	// Convert network policy data to proto message and send
+	networkPolicyMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_NetworkPolicy{
+			NetworkPolicy: networkPolicy,
 		},
-		Spec: &v1.NetworkPolicySpec{
-			PodSelector: convertLabelSelector(np.Spec.PodSelector),
-			Ingress:     convertIngressRules(np.Spec.Ingress),
-			Egress:      convertEgressRules(np.Spec.Egress),
-			PolicyTypes: convertPolicyTypes(np.Spec.PolicyTypes),
-		},
-		TargetWorkloads: targetWorkloads,
 	}
-}
-
-// ---------- helpers ----------
-
-func convertPolicyTypes(t []networkingv1.PolicyType) []string {
-	out := make([]string, 0, len(t))
-	for _, pt := range t {
-		out = append(out, string(pt)) // "Ingress" / "Egress"
-	}
-	return out
-}
-
-func convertIngressRules(rules []networkingv1.NetworkPolicyIngressRule) []*v1.NetworkPolicyIngressRule {
-	out := make([]*v1.NetworkPolicyIngressRule, 0, len(rules))
-	for _, r := range rules {
-		out = append(out, &v1.NetworkPolicyIngressRule{
-			From:  convertPeers(r.From),
-			Ports: convertPorts(r.Ports),
-		})
-	}
-	return out
-}
-
-func convertEgressRules(rules []networkingv1.NetworkPolicyEgressRule) []*v1.NetworkPolicyEgressRule {
-	out := make([]*v1.NetworkPolicyEgressRule, 0, len(rules))
-	for _, r := range rules {
-		out = append(out, &v1.NetworkPolicyEgressRule{
-			To:    convertPeers(r.To),
-			Ports: convertPorts(r.Ports),
-		})
-	}
-	return out
-}
-
-func convertPeers(peers []networkingv1.NetworkPolicyPeer) []*v1.NetworkPolicyPeer {
-	out := make([]*v1.NetworkPolicyPeer, 0, len(peers))
-	for _, p := range peers {
-		out = append(out, &v1.NetworkPolicyPeer{
-			PodSelector:       convertLabelSelectorPtr(p.PodSelector),
-			NamespaceSelector: convertLabelSelectorPtr(p.NamespaceSelector),
-			IpBlock:           convertIPBlockPtr(p.IPBlock),
-		})
-	}
-	return out
-}
-
-func convertPorts(ports []networkingv1.NetworkPolicyPort) []*v1.NetworkPolicyPort {
-	out := make([]*v1.NetworkPolicyPort, 0, len(ports))
-	for _, p := range ports {
-		pp := &v1.NetworkPolicyPort{}
-		if p.Protocol != nil {
-			pp.Protocol = string(*p.Protocol)
-		}
-		if p.Port != nil {
-			if intPort := p.Port.IntVal; intPort != 0 {
-				pp.PortValue = &v1.NetworkPolicyPort_Port{Port: int32(intPort)}
-			} else {
-				pp.PortValue = &v1.NetworkPolicyPort_PortName{PortName: p.Port.StrVal}
-			}
-		}
-		if p.EndPort != nil {
-			pp.EndPort = *p.EndPort
-		}
-		out = append(out, pp)
-	}
-	return out
-}
-
-func convertLabelSelector(ls metav1.LabelSelector) *v1.LabelSelector {
-	return &v1.LabelSelector{
-		MatchLabels:      ls.MatchLabels,
-		MatchExpressions: convertLabelExprs(ls.MatchExpressions),
-	}
-}
-
-func convertLabelSelectorPtr(ls *metav1.LabelSelector) *v1.LabelSelector {
-	if ls == nil {
-		return nil
-	}
-	return convertLabelSelector(*ls)
-}
-
-func convertLabelExprs(exprs []metav1.LabelSelectorRequirement) []*v1.LabelSelectorRequirement {
-	out := make([]*v1.LabelSelectorRequirement, 0, len(exprs))
-	for _, e := range exprs {
-		out = append(out, &v1.LabelSelectorRequirement{
-			Key:      e.Key,
-			Operator: string(e.Operator),
-			Values:   e.Values,
-		})
-	}
-	return out
-}
-
-func convertIPBlockPtr(block *networkingv1.IPBlock) *v1.IPBlock {
-	if block == nil {
-		return nil
-	}
-	return &v1.IPBlock{
-		Cidr:   block.CIDR,
-		Except: block.Except,
-	}
+	return s.protectedSend(stream, networkPolicyMsg)
 }
 
 // convertToProtoFlow converts a FlowCount to our proto Flow

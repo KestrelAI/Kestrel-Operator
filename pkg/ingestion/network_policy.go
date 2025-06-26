@@ -3,6 +3,7 @@ package ingestion
 import (
 	"context"
 	"fmt"
+	"time"
 
 	v1 "operator/api/gen/cloud/v1"
 	"operator/pkg/k8s_helper"
@@ -18,22 +19,36 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 )
 
 // NetworkPolicyIngester handles the ingestion of network policies from a Kubernetes cluster
 type NetworkPolicyIngester struct {
-	clientset *kubernetes.Clientset
+	clientset         *kubernetes.Clientset
+	logger            *zap.Logger
+	networkPolicyChan chan *v1.NetworkPolicy
+	informerFactory   informers.SharedInformerFactory
+	stopCh            chan struct{}
 }
 
-// NewNetworkPolicyIngester creates a new NetworkPolicyIngester instance
-func NewNetworkPolicyIngester() (*NetworkPolicyIngester, error) {
+// NewNetworkPolicyIngester creates a new NetworkPolicyIngester instance with channel support
+func NewNetworkPolicyIngester(logger *zap.Logger, networkPolicyChan chan *v1.NetworkPolicy) (*NetworkPolicyIngester, error) {
 	clientset, err := k8s_helper.NewClientSet()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create k8s clientset: %v", err)
+		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
+
+	// Create shared informer factory
+	informerFactory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
+
 	return &NetworkPolicyIngester{
-		clientset: clientset,
+		clientset:         clientset,
+		logger:            logger,
+		networkPolicyChan: networkPolicyChan,
+		informerFactory:   informerFactory,
+		stopCh:            make(chan struct{}),
 	}, nil
 }
 
@@ -53,6 +68,247 @@ func (npi *NetworkPolicyIngester) IngestNetworkPolicies(ctx context.Context) ([]
 // GetNetworkPolicy fetches a specific network policy by name and namespace
 func (npi *NetworkPolicyIngester) GetNetworkPolicy(ctx context.Context, namespace, name string) (*networkingv1.NetworkPolicy, error) {
 	return npi.clientset.NetworkingV1().NetworkPolicies(namespace).Get(ctx, name, metav1.GetOptions{})
+}
+
+// StartSync starts the network policy ingester and signals when initial sync is complete
+func (npi *NetworkPolicyIngester) StartSync(ctx context.Context, syncDone chan<- error) error {
+	if npi.logger == nil || npi.networkPolicyChan == nil {
+		return fmt.Errorf("ingester not initialized with channel support, use NewNetworkPolicyIngesterWithChannel")
+	}
+
+	npi.logger.Info("Starting network policy ingester with modern informer factory")
+
+	// Set up network policy informer
+	npi.setupNetworkPolicyInformer()
+
+	// Send initial inventory before starting informers
+	if err := npi.sendInitialNetworkPolicyInventory(ctx); err != nil {
+		npi.logger.Error("Failed to send initial network policy inventory", zap.Error(err))
+		if syncDone != nil {
+			syncDone <- err
+		}
+		return err
+	}
+
+	// Signal that initial sync is complete
+	if syncDone != nil {
+		syncDone <- nil
+	}
+
+	// Start all informers
+	npi.informerFactory.Start(npi.stopCh)
+
+	// Wait for all caches to sync before processing events
+	npi.logger.Info("Waiting for network policy informer cache to sync...")
+	if !cache.WaitForCacheSync(npi.stopCh,
+		npi.informerFactory.Networking().V1().NetworkPolicies().Informer().HasSynced,
+	) {
+		return fmt.Errorf("failed to wait for network policy informer cache to sync")
+	}
+	npi.logger.Info("Network policy informer cache synced successfully")
+
+	// Wait for context cancellation
+	<-ctx.Done()
+	close(npi.stopCh)
+	npi.logger.Info("Stopped network policy ingester")
+	return nil
+}
+
+// Stop stops the network policy ingester
+func (npi *NetworkPolicyIngester) Stop() {
+	if npi.stopCh != nil {
+		close(npi.stopCh)
+	}
+}
+
+// setupNetworkPolicyInformer sets up the modern network policy informer
+func (npi *NetworkPolicyIngester) setupNetworkPolicyInformer() {
+	networkPolicyInformer := npi.informerFactory.Networking().V1().NetworkPolicies().Informer()
+
+	_, err := networkPolicyInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			if np, ok := obj.(*networkingv1.NetworkPolicy); ok {
+				npi.sendNetworkPolicy(np, "CREATE")
+			}
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			if np, ok := newObj.(*networkingv1.NetworkPolicy); ok {
+				npi.sendNetworkPolicy(np, "UPDATE")
+			}
+		},
+		DeleteFunc: func(obj interface{}) {
+			if np, ok := obj.(*networkingv1.NetworkPolicy); ok {
+				npi.sendNetworkPolicy(np, "DELETE")
+			}
+		},
+	})
+	if err != nil {
+		npi.logger.Error("Failed to add network policy event handler", zap.Error(err))
+	}
+}
+
+// sendInitialNetworkPolicyInventory sends all existing network policies to the server
+func (npi *NetworkPolicyIngester) sendInitialNetworkPolicyInventory(ctx context.Context) error {
+	npi.logger.Info("Sending initial network policy inventory using direct API calls")
+
+	policies, err := npi.clientset.NetworkingV1().NetworkPolicies("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list network policies: %w", err)
+	}
+
+	for _, policy := range policies.Items {
+		npi.sendNetworkPolicy(&policy, "CREATE")
+	}
+
+	npi.logger.Info("Completed sending initial network policy inventory")
+	return nil
+}
+
+// sendNetworkPolicy converts a Kubernetes NetworkPolicy to protobuf and sends it to the stream
+func (npi *NetworkPolicyIngester) sendNetworkPolicy(np *networkingv1.NetworkPolicy, action string) {
+	// Resolve target workloads for this policy
+	targetWorkloads := npi.ResolveTargetWorkloads(context.Background(), *np)
+
+	// Convert to protobuf format
+	protoNP := &v1.NetworkPolicy{
+		Metadata: &v1.ObjectMeta{
+			Name:            np.Name,
+			Namespace:       np.Namespace,
+			Labels:          np.Labels,
+			Annotations:     np.Annotations,
+			ResourceVersion: np.ResourceVersion,
+			Uid:             string(np.UID),
+		},
+		Spec:            convertNetworkPolicySpecToProto(np.Spec),
+		TargetWorkloads: targetWorkloads,
+		Action:          stringToAction(action),
+	}
+
+	select {
+	case npi.networkPolicyChan <- protoNP:
+		npi.logger.Debug("Sent network policy event",
+			zap.String("name", protoNP.Metadata.Name),
+			zap.String("namespace", protoNP.Metadata.Namespace),
+			zap.String("action", protoNP.Action.String()),
+			zap.Int("target_workloads", len(targetWorkloads)))
+	default:
+		npi.logger.Warn("Network policy channel full, dropping event",
+			zap.String("name", protoNP.Metadata.Name),
+			zap.String("namespace", protoNP.Metadata.Namespace),
+			zap.String("action", protoNP.Action.String()))
+	}
+}
+
+// convertNetworkPolicySpecToProto converts a K8s NetworkPolicySpec to proto format
+func convertNetworkPolicySpecToProto(spec networkingv1.NetworkPolicySpec) *v1.NetworkPolicySpec {
+	protoSpec := &v1.NetworkPolicySpec{
+		PodSelector: convertLabelSelectorToProto(&spec.PodSelector),
+		PolicyTypes: convertPolicyTypesToStrings(spec.PolicyTypes),
+	}
+
+	// Convert ingress rules
+	for _, ingress := range spec.Ingress {
+		protoIngress := &v1.NetworkPolicyIngressRule{}
+		for _, from := range ingress.From {
+			protoPeer := &v1.NetworkPolicyPeer{}
+			if from.PodSelector != nil {
+				protoPeer.PodSelector = convertLabelSelectorToProto(from.PodSelector)
+			}
+			if from.NamespaceSelector != nil {
+				protoPeer.NamespaceSelector = convertLabelSelectorToProto(from.NamespaceSelector)
+			}
+			if from.IPBlock != nil {
+				protoPeer.IpBlock = &v1.IPBlock{
+					Cidr:   from.IPBlock.CIDR,
+					Except: from.IPBlock.Except,
+				}
+			}
+			protoIngress.From = append(protoIngress.From, protoPeer)
+		}
+		for _, port := range ingress.Ports {
+			protoIngress.Ports = append(protoIngress.Ports, convertNetworkPolicyPortToProto(&port))
+		}
+		protoSpec.Ingress = append(protoSpec.Ingress, protoIngress)
+	}
+
+	// Convert egress rules
+	for _, egress := range spec.Egress {
+		protoEgress := &v1.NetworkPolicyEgressRule{}
+		for _, to := range egress.To {
+			protoPeer := &v1.NetworkPolicyPeer{}
+			if to.PodSelector != nil {
+				protoPeer.PodSelector = convertLabelSelectorToProto(to.PodSelector)
+			}
+			if to.NamespaceSelector != nil {
+				protoPeer.NamespaceSelector = convertLabelSelectorToProto(to.NamespaceSelector)
+			}
+			if to.IPBlock != nil {
+				protoPeer.IpBlock = &v1.IPBlock{
+					Cidr:   to.IPBlock.CIDR,
+					Except: to.IPBlock.Except,
+				}
+			}
+			protoEgress.To = append(protoEgress.To, protoPeer)
+		}
+		for _, port := range egress.Ports {
+			protoEgress.Ports = append(protoEgress.Ports, convertNetworkPolicyPortToProto(&port))
+		}
+		protoSpec.Egress = append(protoSpec.Egress, protoEgress)
+	}
+
+	return protoSpec
+}
+
+// Helper functions for converting K8s to proto
+func convertLabelSelectorToProto(ls *metav1.LabelSelector) *v1.LabelSelector {
+	if ls == nil {
+		return nil
+	}
+	protoLS := &v1.LabelSelector{
+		MatchLabels: ls.MatchLabels,
+	}
+	for _, req := range ls.MatchExpressions {
+		protoReq := &v1.LabelSelectorRequirement{
+			Key:      req.Key,
+			Operator: string(req.Operator),
+			Values:   req.Values,
+		}
+		protoLS.MatchExpressions = append(protoLS.MatchExpressions, protoReq)
+	}
+	return protoLS
+}
+
+func convertPolicyTypesToStrings(types []networkingv1.PolicyType) []string {
+	var result []string
+	for _, t := range types {
+		result = append(result, string(t))
+	}
+	return result
+}
+
+func convertNetworkPolicyPortToProto(port *networkingv1.NetworkPolicyPort) *v1.NetworkPolicyPort {
+	if port == nil {
+		return nil
+	}
+	protoPort := &v1.NetworkPolicyPort{}
+	if port.Protocol != nil {
+		protoPort.Protocol = string(*port.Protocol)
+	}
+	if port.Port != nil {
+		if port.Port.Type == intstr.Int {
+			protoPort.PortValue = &v1.NetworkPolicyPort_Port{
+				Port: port.Port.IntVal,
+			}
+		} else {
+			protoPort.PortValue = &v1.NetworkPolicyPort_PortName{
+				PortName: port.Port.StrVal,
+			}
+		}
+	}
+	if port.EndPort != nil {
+		protoPort.EndPort = *port.EndPort
+	}
+	return protoPort
 }
 
 // ResolveTargetWorkloads resolves a network policy to the target workloads to which it applies
@@ -93,7 +349,7 @@ func (npi *NetworkPolicyIngester) ResolveTargetWorkloads(ctx context.Context, np
 	return targetWorkloads.UnsortedList()
 }
 
-// applyNetworkPolicy applies a network policy received from the server to the cluster
+// ApplyNetworkPolicy applies a network policy received from the server to the cluster
 func ApplyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, policy *networkingv1.NetworkPolicy) error {
 	// Check for nil policy or client
 	if policy == nil {
