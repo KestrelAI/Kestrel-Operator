@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	serverv1 "server/api/server/v1"
+	serverv1 "server/api/gen/server/v1"
 
 	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/oauth2"
