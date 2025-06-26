@@ -144,6 +144,9 @@ message NetworkPolicy {
   // Zero-or-more "target" workloads protected by this policy;
   // each entry in the target_workloads list is of the format: "<Namespace>.<Kind>.<Name>".
   repeated string target_workloads = 4;
+
+  // Action performed on this network policy
+  Action action = 5; // CREATE, UPDATE, DELETE
 }
 
 // Kubernetes ObjectMeta
