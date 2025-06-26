@@ -169,14 +169,20 @@ func (npi *NetworkPolicyIngester) sendNetworkPolicy(np *networkingv1.NetworkPoli
 	// Resolve target workloads for this policy
 	targetWorkloads := npi.ResolveTargetWorkloads(context.Background(), *np)
 
-	// Convert to protobuf format
 	kind := np.Kind
 	if kind == "" {
 		kind = "NetworkPolicy"
 	}
 
+	apiVersion := np.APIVersion
+	if apiVersion == "" {
+		apiVersion = "networking.k8s.io/v1"
+	}
+
+	// Convert to protobuf format
 	protoNP := &v1.NetworkPolicy{
-		Kind: kind,
+		ApiVersion: apiVersion,
+		Kind:       kind,
 		Metadata: &v1.ObjectMeta{
 			Name:            np.Name,
 			Namespace:       np.Namespace,
