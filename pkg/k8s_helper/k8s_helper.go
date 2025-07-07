@@ -10,8 +10,8 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
-// NewClientSet returns a new Kubernetes clientset based on the execution environment.
-func NewClientSet() (*kubernetes.Clientset, error) {
+// NewRestConfig returns a new Kubernetes REST configuration based on the execution environment.
+func NewRestConfig() (*rest.Config, error) {
 	var clusterConfig *rest.Config
 	var err error
 
@@ -24,6 +24,16 @@ func NewClientSet() (*kubernetes.Clientset, error) {
 	} else {
 		clusterConfig, err = rest.InClusterConfig()
 	}
+	if err != nil {
+		return nil, err
+	}
+
+	return clusterConfig, nil
+}
+
+// NewClientSet returns a new Kubernetes clientset based on the execution environment.
+func NewClientSet() (*kubernetes.Clientset, error) {
+	clusterConfig, err := NewRestConfig()
 	if err != nil {
 		return nil, err
 	}
