@@ -8,6 +8,7 @@ import (
 	"operator/pkg/auth"
 	"operator/pkg/cilium"
 	"operator/pkg/ingestion"
+	"operator/pkg/k8s_api"
 	"operator/pkg/k8s_helper"
 	smartcache "operator/pkg/smart_cache"
 	"os"
@@ -38,10 +39,11 @@ type ServerConfig struct {
 
 // StreamClient is the client for streaming data to and from the server
 type StreamClient struct {
-	Logger *zap.Logger
-	Client *grpc.ClientConn
-	Config ServerConfig
-	sendMu sync.Mutex // Protects concurrent stream.Send calls
+	Logger      *zap.Logger
+	Client      *grpc.ClientConn
+	Config      ServerConfig
+	sendMu      sync.Mutex // Protects concurrent stream.Send calls
+	apiExecutor *k8s_api.APIExecutor
 }
 
 // protectedSend ensures thread-safe sending on the gRPC stream
@@ -102,10 +104,29 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		}
 	}
 
+	// Initialize Kubernetes client for API execution
+	k8sClient, err := k8s_helper.NewClientSet()
+	if err != nil {
+		_ = conn.Close()
+		logger.Error("Failed to create Kubernetes clientset", zap.Error(err))
+		return nil, fmt.Errorf("failed to create k8s clientset: %w", err)
+	}
+
+	k8sConfig, err := k8s_helper.NewRestConfig()
+	if err != nil {
+		_ = conn.Close()
+		logger.Error("Failed to create Kubernetes rest config", zap.Error(err))
+		return nil, fmt.Errorf("failed to create k8s rest config: %w", err)
+	}
+
+	// Initialize API executor
+	apiExecutor := k8s_api.NewAPIExecutor(logger, k8sClient, k8sConfig)
+
 	return &StreamClient{
-		Logger: logger,
-		Client: conn,
-		Config: config,
+		Logger:      logger,
+		Client:      conn,
+		Config:      config,
+		apiExecutor: apiExecutor,
 	}, nil
 }
 
@@ -450,8 +471,41 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 				s.Logger.Debug("Received acknowledgment from server")
 			case *v1.StreamDataResponse_NetworkPolicy:
 				s.handleNetworkPolicy(ctx, stream, k8sClient, resp.NetworkPolicy)
+			case *v1.StreamDataResponse_KubernetesApiRequest:
+				s.handleKubernetesAPIRequest(ctx, stream, resp.KubernetesApiRequest)
 			}
 		}
+	}
+}
+
+// handleKubernetesAPIRequest processes Kubernetes API requests from the server
+func (s *StreamClient) handleKubernetesAPIRequest(
+	ctx context.Context,
+	stream v1.StreamService_StreamDataClient,
+	apiRequest *v1.KubernetesAPIRequest,
+) {
+	s.Logger.Info("Received Kubernetes API request from server",
+		zap.String("request_id", apiRequest.RequestId),
+		zap.Int("api_paths_count", len(apiRequest.ApiPaths)))
+
+	// Execute the API requests using our API executor
+	apiResponse := s.apiExecutor.ExecuteAPIRequests(ctx, apiRequest)
+
+	// Send the response back to the server
+	responseMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_KubernetesApiResponse{
+			KubernetesApiResponse: apiResponse,
+		},
+	}
+
+	if err := s.protectedSend(stream, responseMsg); err != nil {
+		s.Logger.Error("Failed to send Kubernetes API response to server",
+			zap.String("request_id", apiRequest.RequestId),
+			zap.Error(err))
+	} else {
+		s.Logger.Info("Successfully sent Kubernetes API response to server",
+			zap.String("request_id", apiRequest.RequestId),
+			zap.Int("results_count", len(apiResponse.Results)))
 	}
 }
 

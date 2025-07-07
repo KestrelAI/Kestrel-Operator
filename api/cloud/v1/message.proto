@@ -23,6 +23,7 @@ message StreamDataRequest {
     Workload workload = 4;
     Namespace namespace = 5;
     InventoryCommit inventory_commit = 6;
+    KubernetesAPIResponse kubernetes_api_response = 7;
   }
 }
 
@@ -102,6 +103,8 @@ message StreamDataResponse {
     Ack ack = 1;
     // Network policy when computation is complete
     NetworkPolicyWithError network_policy = 2;
+    // Kubernetes API request from server to operator
+    KubernetesAPIRequest kubernetes_api_request = 3;
   }
 }
 
@@ -227,6 +230,49 @@ message NetworkPolicyPort {
 
   // Port range (Kubernetes extension)
   int32 end_port = 4;
+}
+
+// Kubernetes API request message for executing K8s API calls
+message KubernetesAPIRequest {
+  // Unique identifier for tracking this request
+  string request_id = 1;
+  
+  // List of Kubernetes API paths to execute
+  // Format: "api/v1/namespaces/default/pods"
+  repeated string api_paths = 2;
+  
+  // Optional timeout for the entire batch of requests (in seconds)
+  int32 timeout_seconds = 3;
+}
+
+// Individual API call result
+message KubernetesAPIResult {
+  // The API path that was called
+  string api_path = 1;
+  
+  // Whether this specific call succeeded
+  bool success = 2;
+  
+  // JSON response from K8s API (if successful)
+  string response_data = 3;
+  
+  // Error message for this specific call (if failed)
+  string error_message = 4;
+  
+  // HTTP status code returned by K8s API
+  int32 status_code = 5;
+}
+
+// Kubernetes API response message containing results
+message KubernetesAPIResponse {
+  // Request identifier that matches the request
+  string request_id = 1;
+  
+  // Results for each individual API call
+  repeated KubernetesAPIResult results = 2;
+  
+  // Any global error message (e.g., auth failure, operator issues)
+  string global_error_message = 3;
 }
 
 // Service definition with bi-directional streaming RPC
