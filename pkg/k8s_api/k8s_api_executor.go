@@ -43,7 +43,7 @@ func (e *APIExecutor) ExecuteAPIRequests(ctx context.Context, request *v1.Kubern
 	if request.TimeoutSeconds > 0 {
 		timeout = time.Duration(request.TimeoutSeconds) * time.Second
 	}
-	
+
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -79,17 +79,17 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 
 	// Create REST client for the API call
 	restClient := e.ClientSet.RESTClient()
-	
+
 	// Execute the GET request
 	req := restClient.Get().AbsPath("/" + strings.TrimPrefix(apiPath, "/"))
-	
+
 	// Execute with context
 	resultBytes, err := req.DoRaw(ctx)
 	if err != nil {
 		result.Success = false
 		result.ErrorMessage = fmt.Sprintf("API call failed: %v", err)
 		result.StatusCode = http.StatusInternalServerError
-		
+
 		e.Logger.Error("Kubernetes API call failed",
 			zap.String("api_path", apiPath),
 			zap.Error(err))
@@ -102,7 +102,7 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 		result.Success = false
 		result.ErrorMessage = fmt.Sprintf("Invalid JSON response: %v", err)
 		result.StatusCode = http.StatusInternalServerError
-		
+
 		e.Logger.Error("Invalid JSON response from Kubernetes API",
 			zap.String("api_path", apiPath),
 			zap.Error(err))
@@ -125,12 +125,12 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 func (e *APIExecutor) isValidAPIPath(apiPath string) bool {
 	// Remove leading slash if present
 	path := strings.TrimPrefix(apiPath, "/")
-	
+
 	// Must not be empty
 	if path == "" {
 		return false
 	}
-	
+
 	// Must start with valid API prefixes
 	validPrefixes := []string{
 		"api/v1/",
@@ -139,13 +139,13 @@ func (e *APIExecutor) isValidAPIPath(apiPath string) bool {
 		"openapi/v2",
 		"version",
 	}
-	
+
 	for _, prefix := range validPrefixes {
 		if strings.HasPrefix(path, prefix) {
 			return true
 		}
 	}
-	
+
 	// Allow some common single-word endpoints
 	singleWordEndpoints := []string{
 		"api",
@@ -155,12 +155,12 @@ func (e *APIExecutor) isValidAPIPath(apiPath string) bool {
 		"livez",
 		"readyz",
 	}
-	
+
 	for _, endpoint := range singleWordEndpoints {
 		if path == endpoint {
 			return true
 		}
 	}
-	
+
 	return false
 }
