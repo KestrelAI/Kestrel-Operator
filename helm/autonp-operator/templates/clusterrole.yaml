@@ -30,7 +30,7 @@ rules:
   
   # Allow reading workloads for ingestion (apps API group)
   - apiGroups: ["apps"]
-    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets", "controllerrevisions"]
     verbs: ["get", "list", "watch"]
   
   # Allow reading batch workloads for ingestion 
@@ -42,3 +42,69 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"] 
+
+  # Allow reading additional core resources to enable chat functionality
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets", "nodes", "persistentvolumes", "persistentvolumeclaims", "serviceaccounts", 
+                "events", "limitranges", "resourcequotas", "bindings", "replicationcontrollers", "componentstatuses"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading RBAC resources to enable chat functionality
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading storage resources to enable chat functionality
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "volumeattachments", "csidrivers", "csinodes", "csistoragecapacities"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading custom resource definitions to enable chat functionality
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading pod disruption budgets to enable chat functionality
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading horizontal pod autoscalers to enable chat functionality
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading certificate signing requests to enable chat functionality
+  - apiGroups: ["certificates.k8s.io"]
+    resources: ["certificatesigningrequests"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading leases to enable chat functionality
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading ingresses to enable chat functionality
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "ingressclasses"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading subject access reviews to enable chat functionality
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["subjectaccessreviews", "selfsubjectaccessreviews", "localsubjectaccessreviews"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading endpoints slices to enable chat functionality
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading flow schemas and priority level configurations to enable chat functionality
+  - apiGroups: ["flowcontrol.apiserver.k8s.io"]
+    resources: ["flowschemas", "prioritylevelconfigurations"]
+    verbs: ["get", "list", "watch"]
+
+  # Allow reading pods and nodes to enable chat functionality
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list", "watch"]
