@@ -10,6 +10,7 @@ import (
 	"operator/pkg/ingestion"
 	"operator/pkg/k8s_api"
 	"operator/pkg/k8s_helper"
+	"operator/pkg/shell_executor"
 	smartcache "operator/pkg/smart_cache"
 	"os"
 	"strconv"
@@ -39,11 +40,12 @@ type ServerConfig struct {
 
 // StreamClient is the client for streaming data to and from the server
 type StreamClient struct {
-	Logger      *zap.Logger
-	Client      *grpc.ClientConn
-	Config      ServerConfig
-	sendMu      sync.Mutex // Protects concurrent stream.Send calls
-	apiExecutor *k8s_api.APIExecutor
+	Logger        *zap.Logger
+	Client        *grpc.ClientConn
+	Config        ServerConfig
+	sendMu        sync.Mutex // Protects concurrent stream.Send calls
+	apiExecutor   *k8s_api.APIExecutor
+	shellExecutor *shell_executor.ShellExecutor
 }
 
 // protectedSend ensures thread-safe sending on the gRPC stream
@@ -122,11 +124,15 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	// Initialize API executor
 	apiExecutor := k8s_api.NewAPIExecutor(logger, k8sClient, k8sConfig)
 
+	// Initialize shell executor
+	shellExecutor := shell_executor.NewShellExecutor(logger)
+
 	return &StreamClient{
-		Logger:      logger,
-		Client:      conn,
-		Config:      config,
-		apiExecutor: apiExecutor,
+		Logger:        logger,
+		Client:        conn,
+		Config:        config,
+		apiExecutor:   apiExecutor,
+		shellExecutor: shellExecutor,
 	}, nil
 }
 
@@ -473,6 +479,8 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 				s.handleNetworkPolicy(ctx, stream, k8sClient, resp.NetworkPolicy)
 			case *v1.StreamDataResponse_KubernetesApiRequest:
 				s.handleKubernetesAPIRequest(ctx, stream, resp.KubernetesApiRequest)
+			case *v1.StreamDataResponse_ShellCommandRequest:
+				s.handleShellCommandRequest(ctx, stream, resp.ShellCommandRequest)
 			}
 		}
 	}
@@ -506,6 +514,37 @@ func (s *StreamClient) handleKubernetesAPIRequest(
 		s.Logger.Info("Successfully sent Kubernetes API response to server",
 			zap.String("request_id", apiRequest.RequestId),
 			zap.Int("results_count", len(apiResponse.Results)))
+	}
+}
+
+// handleShellCommandRequest processes shell command requests from the server
+func (s *StreamClient) handleShellCommandRequest(
+	ctx context.Context,
+	stream v1.StreamService_StreamDataClient,
+	shellRequest *v1.ShellCommandRequest,
+) {
+	s.Logger.Info("Received shell command request from server",
+		zap.String("request_id", shellRequest.RequestId),
+		zap.Int("commands_count", len(shellRequest.Commands)))
+
+	// Execute the shell commands using our shell executor
+	shellResponse := s.shellExecutor.ExecuteShellCommands(ctx, shellRequest)
+
+	// Send the response back to the server
+	responseMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_ShellCommandResponse{
+			ShellCommandResponse: shellResponse,
+		},
+	}
+
+	if err := s.protectedSend(stream, responseMsg); err != nil {
+		s.Logger.Error("Failed to send shell command response to server",
+			zap.String("request_id", shellRequest.RequestId),
+			zap.Error(err))
+	} else {
+		s.Logger.Info("Successfully sent shell command response to server",
+			zap.String("request_id", shellRequest.RequestId),
+			zap.Int("results_count", len(shellResponse.Results)))
 	}
 }
 

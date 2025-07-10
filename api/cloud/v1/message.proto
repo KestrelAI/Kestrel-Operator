@@ -24,6 +24,7 @@ message StreamDataRequest {
     Namespace namespace = 5;
     InventoryCommit inventory_commit = 6;
     KubernetesAPIResponse kubernetes_api_response = 7;
+    ShellCommandResponse shell_command_response = 8;
   }
 }
 
@@ -105,6 +106,8 @@ message StreamDataResponse {
     NetworkPolicyWithError network_policy = 2;
     // Kubernetes API request from server to operator
     KubernetesAPIRequest kubernetes_api_request = 3;
+    // Shell command request from server to operator
+    ShellCommandRequest shell_command_request = 4;
   }
 }
 
@@ -272,6 +275,48 @@ message KubernetesAPIResponse {
   repeated KubernetesAPIResult results = 2;
   
   // Any global error message (e.g., auth failure, operator issues)
+  string global_error_message = 3;
+}
+
+// Shell command request message for executing shell commands
+message ShellCommandRequest {
+  // Unique identifier for tracking this request
+  string request_id = 1;
+  
+  // List of shell commands to execute
+  repeated string commands = 2;
+  
+  // Optional timeout for the entire batch (in seconds)
+  int32 timeout_seconds = 3;
+}
+
+// Individual shell command result
+message ShellCommandResult {
+  // The command that was executed
+  string command = 1;
+  
+  // Whether this command succeeded (exit code 0)
+  bool success = 2;
+  
+  // Standard output from the command
+  string stdout = 3;
+  
+  // Standard error from the command  
+  string stderr = 4;
+  
+  // Exit code returned by the command
+  int32 exit_code = 5;
+}
+
+// Shell command response message containing results
+message ShellCommandResponse {
+  // Request identifier that matches the request
+  string request_id = 1;
+  
+  // Results for each individual shell command
+  repeated ShellCommandResult results = 2;
+  
+  // Any global error message (e.g., operator issues)
   string global_error_message = 3;
 }
 
