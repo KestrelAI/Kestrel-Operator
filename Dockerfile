@@ -30,13 +30,12 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
 # Install Cilium CLI
 RUN CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt) && \
     curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz{,.sha256sum} && \
-    sha256sum --check cilium-linux-amd64.tar.gz.sha256sum && \
+    sha256sum -c cilium-linux-amd64.tar.gz.sha256sum && \
     tar xzvfC cilium-linux-amd64.tar.gz /usr/local/bin && \
-    rm cilium-linux-amd64.tar.gz{,.sha256sum}
+    rm cilium-linux-amd64.tar.gz cilium-linux-amd64.tar.gz.sha256sum
 
 # Install Trivy
-RUN wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | apk add --allow-untrusted /dev/stdin && \
-    TRIVY_VERSION=$(curl -s "https://api.github.com/repos/aquasecurity/trivy/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/v//') && \
+RUN TRIVY_VERSION=$(curl -s "https://api.github.com/repos/aquasecurity/trivy/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/v//') && \
     wget https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz && \
     tar zxvf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz && \
     mv trivy /usr/local/bin/ && \
