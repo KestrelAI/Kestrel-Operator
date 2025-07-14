@@ -20,7 +20,8 @@ RUN apk --no-cache add \
     curl \
     wget \
     tar \
-    gzip
+    gzip \
+    jq
 
 # Install kubectl
 RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
@@ -50,6 +51,7 @@ COPY --from=builder /app/bin/client .
 RUN kubectl version --client=true && \
     cilium version --client && \
     trivy --version && \
+    jq --version && \
     bash --version
 
 # Run the client
