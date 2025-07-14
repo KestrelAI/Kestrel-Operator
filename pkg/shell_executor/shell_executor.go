@@ -62,7 +62,6 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, command string) *v1.
 		Command: command,
 	}
 
-	// Validate command is not empty
 	if strings.TrimSpace(command) == "" {
 		result.Success = false
 		result.Stderr = "Command cannot be empty"
@@ -79,7 +78,6 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, command string) *v1.
 		return result
 	}
 
-	// Create the command with context
 	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
 
 	// Execute the command and capture output
@@ -87,7 +85,7 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, command string) *v1.
 	if err != nil {
 		result.Success = false
 		result.Stdout = string(stdout)
-		
+
 		// Handle different types of errors
 		if exitError, ok := err.(*exec.ExitError); ok {
 			result.Stderr = string(exitError.Stderr)
@@ -104,7 +102,6 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, command string) *v1.
 		return result
 	}
 
-	// Success
 	result.Success = true
 	result.Stdout = string(stdout)
 	result.ExitCode = 0
