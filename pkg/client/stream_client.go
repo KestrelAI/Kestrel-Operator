@@ -182,10 +182,11 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		return err
 	}
 
-	// Set up workload, namespace, and network policy ingestion channels
+	// Set up workload, namespace, network policy, and service ingestion channels
 	workloadChan := make(chan *v1.Workload, 1000)
 	namespaceChan := make(chan *v1.Namespace, 100)
 	networkPolicyChan := make(chan *v1.NetworkPolicy, 100)
+	serviceChan := make(chan *v1.Service, 100)
 
 	// Create network policy ingester with new pattern
 	networkPolicyIngester, err := ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
@@ -208,6 +209,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		return err
 	}
 
+	// Create service ingester
+	serviceIngester, err := ingestion.NewServiceIngester(s.Logger, serviceChan)
+	if err != nil {
+		s.Logger.Error("Failed to create service ingester", zap.Error(err))
+		return err
+	}
+
 	// Create a new stream service client
 	streamClient := v1.NewStreamServiceClient(s.Client)
 
@@ -221,12 +229,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		// Start sending inventory channel readers before ingesters start
 		inventoryDone := make(chan error, 1)
-		go s.sendInventoryData(ctx, stream, workloadChan, namespaceChan, networkPolicyChan, inventoryDone)
+		go s.sendInventoryData(ctx, stream, workloadChan, namespaceChan, networkPolicyChan, serviceChan, inventoryDone)
 
 		// Create channels to signal when initial inventory sync is complete
 		workloadSyncDone := make(chan error, 1)
 		namespaceSyncDone := make(chan error, 1)
 		networkPolicySyncDone := make(chan error, 1)
+		serviceSyncDone := make(chan error, 1)
 
 		// Start workload ingester
 		workloadCtx, workloadCancel := context.WithCancel(ctx)
@@ -255,6 +264,16 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			if err := networkPolicyIngester.StartSync(networkPolicyCtx, networkPolicySyncDone); err != nil {
 				s.Logger.Error("Network policy ingester failed", zap.Error(err))
 				networkPolicySyncDone <- err
+			}
+		}()
+
+		// Start service ingester
+		serviceCtx, serviceCancel := context.WithCancel(ctx)
+		defer serviceCancel()
+		go func() {
+			if err := serviceIngester.StartSync(serviceCtx, serviceSyncDone); err != nil {
+				s.Logger.Error("Service ingester failed", zap.Error(err))
+				serviceSyncDone <- err
 			}
 		}()
 
@@ -293,6 +312,18 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 				return err
 			}
 			s.Logger.Info("Network policy initial sync completed")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		// Wait for service sync
+		select {
+		case err := <-serviceSyncDone:
+			if err != nil {
+				s.Logger.Error("Service initial sync failed", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Service initial sync completed")
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -659,7 +690,7 @@ func (s *StreamClient) sendFlowToServer(stream v1.StreamService_StreamDataClient
 }
 
 // sendInventoryData collects workload and namespace data and sends it to the server
-func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamService_StreamDataClient, workloadChan <-chan *v1.Workload, namespaceChan <-chan *v1.Namespace, networkPolicyChan <-chan *v1.NetworkPolicy, done chan<- error) {
+func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamService_StreamDataClient, workloadChan <-chan *v1.Workload, namespaceChan <-chan *v1.Namespace, networkPolicyChan <-chan *v1.NetworkPolicy, serviceChan <-chan *v1.Service, done chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -740,6 +771,31 @@ func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamSe
 					return
 				}
 			}
+		case service, ok := <-serviceChan:
+			// Check if service channel was closed
+			if !ok {
+				s.Logger.Warn("Service channel closed unexpectedly")
+				select {
+				case done <- fmt.Errorf("service channel closed"):
+				default:
+				}
+				return
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendServiceToServer(stream, service); err != nil {
+					s.Logger.Error("Failed to send service data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
 		}
 	}
 }
@@ -775,6 +831,17 @@ func (s *StreamClient) sendNetworkPolicyToServer(stream v1.StreamService_StreamD
 		},
 	}
 	return s.protectedSend(stream, networkPolicyMsg)
+}
+
+// sendServiceToServer sends a single service to the server
+func (s *StreamClient) sendServiceToServer(stream v1.StreamService_StreamDataClient, service *v1.Service) error {
+	// Convert service data to proto message and send
+	serviceMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_Service{
+			Service: service,
+		},
+	}
+	return s.protectedSend(stream, serviceMsg)
 }
 
 // convertToProtoFlow converts a FlowCount to our proto Flow
