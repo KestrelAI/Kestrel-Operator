@@ -25,55 +25,86 @@ func NewShellExecutor(logger *zap.Logger) *ShellExecutor {
 	}
 }
 
-// parseShellArgs parses a shell command string into arguments, properly handling quoted strings
+// parseShellArgs splits a command line into arguments, honouring quoting
+// rules close to POSIX sh.
+//   - Single quotes: literal everything until next '
+//   - Double quotes: \ only escapes \" and \\
+//   - Outside quotes: \ escapes space, \\, ', "
 func parseShellArgs(command string) ([]string, error) {
+
+	// always return a non-nil slice on success
 	args := make([]string, 0)
 	var current strings.Builder
-	var inSingleQuote, inDoubleQuote bool
-	var escaped bool
+	inSingle, inDouble := false, false
 
-	for _, r := range command {
-		if escaped {
-			current.WriteRune(r)
-			escaped = false
+	runes := []rune(command)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+
+		// Back-slash processing
+		if r == '\\' && !inSingle {
+			// If this is the last rune just keep it literal
+			if i+1 == len(runes) {
+				current.WriteRune(r)
+				continue
+			}
+			next := runes[i+1]
+
+			// Decide if the back-slash should escape the next rune
+			shouldEscape := false
+			if inDouble {
+				// In double-quotes it only escapes " and \
+				shouldEscape = next == '"' || next == '\\'
+			} else {
+				// Outside quotes it escapes space, ', ", \
+				shouldEscape = unicode.IsSpace(next) ||
+					next == '\'' || next == '"' || next == '\\'
+			}
+
+			if shouldEscape {
+				current.WriteRune(next)
+				i++ // consume the next rune
+			} else {
+				// Keep the back-slash literally
+				current.WriteRune(r)
+			}
 			continue
 		}
 
-		if r == '\\' && !inSingleQuote {
-			escaped = true
-			continue
+		// Quote toggling
+		switch r {
+		case '\'':
+			if !inDouble {
+				inSingle = !inSingle
+				continue
+			}
+		case '"':
+			if !inSingle {
+				inDouble = !inDouble
+				continue
+			}
 		}
 
-		if r == '\'' && !inDoubleQuote {
-			inSingleQuote = !inSingleQuote
-			continue
-		}
-
-		if r == '"' && !inSingleQuote {
-			inDoubleQuote = !inDoubleQuote
-			continue
-		}
-
-		if unicode.IsSpace(r) && !inSingleQuote && !inDoubleQuote {
+		// Argument boundary
+		if unicode.IsSpace(r) && !inSingle && !inDouble {
 			if current.Len() > 0 {
 				args = append(args, current.String())
 				current.Reset()
 			}
-		} else {
-			current.WriteRune(r)
+			continue
 		}
+
+		current.WriteRune(r)
 	}
 
-	// Add the final argument if there is one
+	// Add the final arg if any
 	if current.Len() > 0 {
 		args = append(args, current.String())
 	}
 
-	// Check for unclosed quotes
-	if inSingleQuote || inDoubleQuote {
+	if inSingle || inDouble {
 		return nil, fmt.Errorf("unclosed quote in command")
 	}
-
 	return args, nil
 }
 
