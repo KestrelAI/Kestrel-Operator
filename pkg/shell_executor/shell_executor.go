@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"unicode"
 
 	v1 "operator/api/gen/cloud/v1"
 
@@ -22,6 +23,58 @@ func NewShellExecutor(logger *zap.Logger) *ShellExecutor {
 	return &ShellExecutor{
 		Logger: logger,
 	}
+}
+
+// parseShellArgs parses a shell command string into arguments, properly handling quoted strings
+func parseShellArgs(command string) ([]string, error) {
+	args := make([]string, 0)
+	var current strings.Builder
+	var inSingleQuote, inDoubleQuote bool
+	var escaped bool
+
+	for _, r := range command {
+		if escaped {
+			current.WriteRune(r)
+			escaped = false
+			continue
+		}
+
+		if r == '\\' && !inSingleQuote {
+			escaped = true
+			continue
+		}
+
+		if r == '\'' && !inDoubleQuote {
+			inSingleQuote = !inSingleQuote
+			continue
+		}
+
+		if r == '"' && !inSingleQuote {
+			inDoubleQuote = !inDoubleQuote
+			continue
+		}
+
+		if unicode.IsSpace(r) && !inSingleQuote && !inDoubleQuote {
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+		} else {
+			current.WriteRune(r)
+		}
+	}
+
+	// Add the final argument if there is one
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	// Check for unclosed quotes
+	if inSingleQuote || inDoubleQuote {
+		return nil, fmt.Errorf("unclosed quote in command")
+	}
+
+	return args, nil
 }
 
 // ExecuteShellCommands processes a batch of shell commands
@@ -69,8 +122,15 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, command string) *v1.
 		return result
 	}
 
-	// Split command into parts for exec.CommandContext
-	parts := strings.Fields(command)
+	// Parse command into parts using proper shell argument parsing
+	parts, err := parseShellArgs(command)
+	if err != nil {
+		result.Success = false
+		result.Stderr = fmt.Sprintf("Failed to parse command: %v", err)
+		result.ExitCode = 1
+		return result
+	}
+
 	if len(parts) == 0 {
 		result.Success = false
 		result.Stderr = "Invalid command format"
