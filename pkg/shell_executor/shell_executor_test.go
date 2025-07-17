@@ -107,3 +107,67 @@ func TestParseShellArgs(t *testing.T) {
 		})
 	}
 }
+
+func TestParseShellArgs_ComplexNested(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  string
+		expected []string
+		hasError bool
+	}{
+		{
+			name:    "kubectl + jq filter (escaped double quotes)",
+			command: `bash -c "kubectl get pods -o json | jq '.items[] | select(.status.phase==\"Running\") | .metadata.name'"`,
+			expected: []string{
+				"bash", "-c",
+				`kubectl get pods -o json | jq '.items[] | select(.status.phase=="Running") | .metadata.name'`,
+			},
+		},
+		{
+			name:    "for‑loop over namespaces with command substitution",
+			command: `bash -c 'for ns in $(kubectl get ns -o jsonpath="{.items[*].metadata.name}"); do kubectl get pods -n "$ns"; done'`,
+			expected: []string{
+				"bash", "-c",
+				`for ns in $(kubectl get ns -o jsonpath="{.items[*].metadata.name}"); do kubectl get pods -n "$ns"; done`,
+			},
+		},
+		{
+			name:    "service list piped through awk and column",
+			command: `bash -c "kubectl get svc --all-namespaces | awk '{print $1,$2}' | column -t"`,
+			expected: []string{
+				"bash", "-c",
+				`kubectl get svc --all-namespaces | awk '{print $1,$2}' | column -t`,
+			},
+		},
+		{
+			name:    "command substitution echo of current‑context",
+			command: `bash -c "echo $(kubectl config current-context)"`,
+			expected: []string{
+				"bash", "-c",
+				`echo $(kubectl config current-context)`,
+			},
+		},
+		{
+			name:    "jsonpath, tr, sort, uniq pipeline with nested quotes",
+			command: `bash -c "kubectl get pods -o=jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | sort | uniq"`,
+			expected: []string{
+				"bash", "-c",
+				`kubectl get pods -o=jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | sort | uniq`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseShellArgs(tt.command)
+
+			if tt.hasError {
+				assert.Error(t, err)
+				assert.Nil(t, got)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, got)
+			}
+		})
+	}
+}
