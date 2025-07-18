@@ -1,9 +1,11 @@
 package shell_executor
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
 func TestParseShellArgs(t *testing.T) {
@@ -170,4 +172,46 @@ func TestParseShellArgs_ComplexNested(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestShellCommandExecution(t *testing.T) {
+	logger := zap.NewNop()
+	executor := NewShellExecutor(logger)
+	ctx := context.Background()
+
+	// Test simple command without shell operators
+	result := executor.executeCommand(ctx, "bash echo hello")
+	if !result.Success {
+		t.Errorf("Simple command failed: %s", result.Stderr)
+	}
+	if result.Stdout != "hello\n" {
+		t.Errorf("Expected 'hello\\n', got %q", result.Stdout)
+	}
+
+	// Test command with redirection (needs shell)
+	result = executor.executeCommand(ctx, "bash echo 'test content' > /tmp/test_file.txt")
+	if !result.Success {
+		t.Errorf("Redirection command failed: %s", result.Stderr)
+	}
+
+	// Verify the file was created with correct content
+	result = executor.executeCommand(ctx, "bash cat /tmp/test_file.txt")
+	if !result.Success {
+		t.Errorf("Cat command failed: %s", result.Stderr)
+	}
+	if result.Stdout != "test content\n" {
+		t.Errorf("Expected 'test content\\n', got %q", result.Stdout)
+	}
+
+	// Test command with pipe (needs shell)
+	result = executor.executeCommand(ctx, "bash echo 'line1\nline2\nline3' | grep line2")
+	if !result.Success {
+		t.Errorf("Pipe command failed: %s", result.Stderr)
+	}
+	if result.Stdout != "line2\n" {
+		t.Errorf("Expected 'line2\\n', got %q", result.Stdout)
+	}
+
+	// Clean up
+	executor.executeCommand(ctx, "bash rm -f /tmp/test_file.txt")
 }
