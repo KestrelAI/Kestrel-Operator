@@ -116,8 +116,9 @@ func (e *ShellExecutor) ExecuteShellCommands(ctx context.Context, request *v1.Sh
 		zap.Int32("timeout_seconds", request.TimeoutSeconds))
 
 	// Set up timeout context
-	timeout := 30 * time.Second // default timeout
+	timeout := 60 * time.Second // default timeout for tool call batch
 	if request.TimeoutSeconds > 0 {
+		e.Logger.Info("Timeout specified in request, setting timeout", zap.Int32("timeout_seconds", request.TimeoutSeconds))
 		timeout = time.Duration(request.TimeoutSeconds) * time.Second
 	}
 
@@ -153,23 +154,37 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, command string) *v1.
 		return result
 	}
 
-	// Parse command into parts using proper shell argument parsing
-	parts, err := parseShellArgs(command)
-	if err != nil {
-		result.Success = false
-		result.Stderr = fmt.Sprintf("Failed to parse command: %v", err)
-		result.ExitCode = 1
-		return result
-	}
+	var cmd *exec.Cmd
 
-	if len(parts) == 0 {
-		result.Success = false
-		result.Stderr = "Invalid command format"
-		result.ExitCode = 1
-		return result
-	}
+	if strings.HasPrefix(command, "bash -c") {
+		// Use bash -c to interpret operators like pipes, redirection, etc.
+		command = strings.TrimPrefix(command, "bash -c")
+		e.Logger.Debug("Executing bash -c command", zap.String("command", command))
+		cmd = exec.CommandContext(ctx, "bash", "-c", command)
+	} else if strings.HasPrefix(command, "bash") {
+		// Use bash -c to interpret operators like pipes, redirection, etc.
+		command = strings.TrimPrefix(command, "bash")
+		e.Logger.Debug("Executing bash command", zap.String("command", command))
+		cmd = exec.CommandContext(ctx, "bash", "-c", command)
+	} else {
+		// Parse command into parts using proper shell argument parsing for simple commands
+		parts, err := parseShellArgs(command)
+		if err != nil {
+			result.Success = false
+			result.Stderr = fmt.Sprintf("Failed to parse command: %v", err)
+			result.ExitCode = 1
+			return result
+		}
 
-	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+		if len(parts) == 0 {
+			result.Success = false
+			result.Stderr = "Invalid command format"
+			result.ExitCode = 1
+			return result
+		}
+
+		cmd = exec.CommandContext(ctx, parts[0], parts[1:]...)
+	}
 
 	// Execute the command and capture output
 	stdout, err := cmd.Output()
@@ -189,7 +204,8 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, command string) *v1.
 		e.Logger.Error("Shell command failed",
 			zap.String("command", command),
 			zap.Error(err),
-			zap.Int32("exit_code", result.ExitCode))
+			zap.Int32("exit_code", result.ExitCode),
+			zap.String("stderr", result.Stderr))
 		return result
 	}
 
