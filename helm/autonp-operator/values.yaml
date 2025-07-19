@@ -27,10 +27,10 @@ auth:
 resources:
   limits:
     cpu: 100m
-    memory: 128Mi
+    memory: 2Gi
   requests:
     cpu: 50m
-    memory: 64Mi 
+    memory: 1Gi
 
 networkPolicy:
   create: true
