@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	serverv1 "server/api/gen/server/v1"
 
@@ -26,6 +27,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"k8s.io/client-go/kubernetes"
 )
@@ -76,6 +78,13 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		logger.Info("Using insecure credentials (no TLS)")
 	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
+
+	// Add keepalive parameters for long-lived streams (24 hours)
+	opts = append(opts, grpc.WithKeepaliveParams(keepalive.ClientParameters{
+		Time:                5 * time.Minute,  // Send pings every 5 minutes during idle
+		Timeout:             30 * time.Second, // Wait 30 seconds for ping response
+		PermitWithoutStream: true,             // Send pings even without active streams
+	}))
 
 	// Create the connection to the server
 	serverAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
