@@ -26,12 +26,6 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 65534
 
-# Service configuration - typically not needed for operator
-service:
-  create: false
-  type: ClusterIP
-  port: 80
-
 # AutoNP Server connection configuration
 server:
   # REQUIRED: Set this to your AutoNP server's FQDN or service name
@@ -44,6 +38,14 @@ auth:
   # REQUIRED: JWT token for operator authentication
   # Generate this token via the AutoNP server's onboarding API
   token: ""
+
+# Operator behavior configuration
+operator:
+  # Cilium integration settings
+  cilium:
+    # Set to true to disable Cilium flow collection entirely
+    # Useful for clusters without Cilium or when only resource ingestion is needed
+    disableFlows: false
 
 # Resource limits and requests - optimized for production
 resources:
@@ -61,26 +63,7 @@ affinity: {}
 
 # Network Policy configuration
 networkPolicy:
-  create: true
-  
-# Kubernetes API Server configuration
-# These settings should be adjusted based on your cluster configuration
-k8sApiServer:
-  # CIDR range that includes your Kubernetes API server
-  # Common ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
-  cidr: "10.0.0.0/8"
-  # Port for Kubernetes API server (usually 443 or 6443)
-  port: 443
-
-# Hubble Relay configuration (for Cilium environments)
-hubble:
-  # CIDR for Hubble Relay service
-  # This is typically dynamic, so useCiliumNetworkPolicy is recommended
-  cidr: "10.0.0.0/8"
-
-# Use CiliumNetworkPolicy for more precise network controls
-# Recommended for production environments with Cilium
-useCiliumNetworkPolicy: false
+  create: false
 
 
 # Service Account configuration
@@ -88,8 +71,4 @@ serviceAccount:
   create: true
   annotations: {}
   name: ""
-
-# RBAC configuration
-rbac:
-  create: true
 

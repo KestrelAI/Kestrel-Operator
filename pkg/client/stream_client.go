@@ -316,12 +316,16 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		}
 		s.Logger.Info("Successfully sent inventory commit message")
 
-		// Start exporting Cilium flows with context
-		flowCtx, flowCancel := context.WithCancel(ctx)
-		defer flowCancel() // Ensure flowCollector stops if this function exits
+		// Start exporting Cilium flows with context (only if Cilium is available)
+		if flowCollector != nil {
+			flowCtx, flowCancel := context.WithCancel(ctx)
+			defer flowCancel() // Ensure flowCollector stops if this function exits
 
-		go s.exportCiliumFlows(flowCtx, flowCollector, flowCancel)
-		s.Logger.Info("Started exporting Cilium flows")
+			go s.exportCiliumFlows(flowCtx, flowCollector, flowCancel)
+			s.Logger.Info("Started exporting Cilium flows")
+		} else {
+			s.Logger.Info("Cilium flow collection disabled, continuing without network flow data")
+		}
 
 		// Handle bidirectional streaming (inventory data already being sent via earlier goroutine)
 		return s.handleBidirectionalStreamWithFlows(ctx, stream, flowChan, inventoryDone)
@@ -339,13 +343,24 @@ func (s *StreamClient) setupFlowComponents(ctx context.Context) (chan smartcache
 	// Initialize flow cache
 	cache := smartcache.InitFlowCache(ctx, flowChan)
 
-	// Set up the flow collector to monitor Cilium flows
-	flowCollector, err := cilium.NewFlowCollector(ctx, s.Logger, "kube-system", cache)
-	if err != nil {
-		s.Logger.Error("Failed to create flow collector", zap.Error(err))
-		return nil, nil, nil, err
+	// Check if Cilium flow collection is explicitly disabled
+	disableCilium := getEnvOrDefault("DISABLE_CILIUM_FLOWS", "false")
+	if disableCilium == "true" {
+		s.Logger.Info("Cilium flow collection explicitly disabled via DISABLE_CILIUM_FLOWS environment variable")
+		return flowChan, cache, nil, nil
 	}
 
+	// Try to set up the flow collector to monitor Cilium flows
+	flowCollector, err := cilium.NewFlowCollector(ctx, s.Logger, "kube-system", cache)
+	if err != nil {
+		s.Logger.Warn("Failed to create flow collector, continuing without Cilium flow collection", zap.Error(err))
+		s.Logger.Info("Operator will continue with resource ingestion and other functions, but network flow data will not be available")
+		s.Logger.Info("To suppress this warning, set DISABLE_CILIUM_FLOWS=true environment variable")
+		// Return nil flowCollector to indicate Cilium is not available, but don't fail startup
+		return flowChan, cache, nil, nil
+	}
+
+	s.Logger.Info("Successfully connected to Cilium, network flow collection enabled")
 	return flowChan, cache, flowCollector, nil
 }
 

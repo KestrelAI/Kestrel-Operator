@@ -44,5 +44,9 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-jwt
                   key: token
+            
+            # Cilium integration configuration
+            - name: DISABLE_CILIUM_FLOWS
+              value: "{{ .Values.operator.cilium.disableFlows }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
