@@ -1,47 +1,95 @@
-# Default values for autonp-operator client
+# Production values for autonp-operator
+# This configuration is optimized for production Kubernetes environments
+
 replicaCount: 1
 
 image:
   repository: autonp/operator
-  tag: latest
+  tag: latest  # Use latest for local development
   pullPolicy: IfNotPresent
 
+
+# Pod configuration
 podAnnotations: {}
 podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  fsGroup: 65534
 
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65534
+
+# Service configuration - typically not needed for operator
 service:
+  create: false
   type: ClusterIP
   port: 80
 
-# Server connection configuration
+# AutoNP Server connection configuration
 server:
-  host: auto-np-server
+  # REQUIRED: Set this to your AutoNP server's FQDN or service name
+  host: "grpc.platform.usekestrel.ai"
   port: 50051
   useTLS: true
 
 # JWT Authentication configuration
 auth:
+  # REQUIRED: JWT token for operator authentication
+  # Generate this token via the AutoNP server's onboarding API
   token: ""
 
-# Resource limits and requests
+# Resource limits and requests - optimized for production
 resources:
   limits:
-    cpu: 100m
-    memory: 2Gi
-  requests:
-    cpu: 50m
+    cpu: 500m
     memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 256Mi
 
+# Node selection and affinity
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Network Policy configuration
 networkPolicy:
   create: true
-
+  
+# Kubernetes API Server configuration
+# These settings should be adjusted based on your cluster configuration
 k8sApiServer:
-  cidr: 10.0.0.0/8 # Cilium does not evaluate ipBlock rules for traffic to reserved:host identities unless the host is represented with a remote node identity.
-                   # So can't set to 192.168.49.2/32 (i.e. the kube-apiserver running on the node).
-  port: 8443 # Also commonly 443, in minikube it's 8443
+  # CIDR range that includes your Kubernetes API server
+  # Common ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+  cidr: "10.0.0.0/8"
+  # Port for Kubernetes API server (usually 443 or 6443)
+  port: 443
 
+# Hubble Relay configuration (for Cilium environments)
 hubble:
-  cidr: 10.244.0.3/32 # Not constant, so the better approach is to set useCiliumNetworkPolicy to true below
+  # CIDR for Hubble Relay service
+  # This is typically dynamic, so useCiliumNetworkPolicy is recommended
+  cidr: "10.0.0.0/8"
 
-# The clean way is to define a CiliumNetworkPolicy or CiliumClusterwideNetworkPolicy that explicitly allows egress to reserved:host (kube-apiserver entity, use for hubble relay as well)
-useCiliumNetworkPolicy: true
+# Use CiliumNetworkPolicy for more precise network controls
+# Recommended for production environments with Cilium
+useCiliumNetworkPolicy: false
+
+
+# Service Account configuration
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# RBAC configuration
+rbac:
+  create: true
+

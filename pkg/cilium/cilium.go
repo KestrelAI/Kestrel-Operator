@@ -2,7 +2,6 @@ package cilium
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"operator/pkg/k8s_helper"
@@ -34,13 +33,14 @@ type FlowCollector struct {
 func discoverCiliumHubbleRelayAddress(ctx context.Context, ciliumNamespace string, clientset kubernetes.Interface) (string, error) {
 	service, err := clientset.CoreV1().Services(ciliumNamespace).Get(ctx, ciliumHubbleRelayServiceName, metav1.GetOptions{})
 	if err != nil {
-		return "", errors.New("failed to get hubble-relay service")
+		return "", fmt.Errorf("failed to get hubble-relay service in namespace %s: %w", ciliumNamespace, err)
 	}
 
 	if len(service.Spec.Ports) == 0 {
-		return "", errors.New("no ports found in hubble-relay service")
+		return "", fmt.Errorf("no ports found in hubble-relay service in namespace %s", ciliumNamespace)
 	}
 
+	// Use the service port (which should be the external port)
 	address := fmt.Sprintf("%s:%d", service.Spec.ClusterIP, service.Spec.Ports[0].Port)
 	return address, nil
 }
