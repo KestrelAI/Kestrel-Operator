@@ -30,7 +30,7 @@ securityContext:
 server:
   # REQUIRED: Set this to your AutoNP server's FQDN or service name
   host: "grpc.platform.usekestrel.ai"
-  port: 50051
+  port: 443
   useTLS: true
 
 # JWT Authentication configuration

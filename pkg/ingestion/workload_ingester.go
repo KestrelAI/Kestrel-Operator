@@ -3,6 +3,7 @@ package ingestion
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	v1 "operator/api/gen/cloud/v1"
@@ -25,6 +26,8 @@ type WorkloadIngester struct {
 	workloadChan    chan *v1.Workload
 	informerFactory informers.SharedInformerFactory
 	stopCh          chan struct{}
+	stopped         bool
+	mu              sync.Mutex
 }
 
 // NewWorkloadIngester creates a new workload ingester using modern informer factory
@@ -94,14 +97,24 @@ func (wi *WorkloadIngester) StartSync(ctx context.Context, syncDone chan<- error
 
 	// Wait for context cancellation
 	<-ctx.Done()
-	close(wi.stopCh)
+	wi.safeClose()
 	wi.logger.Info("Stopped workload ingester")
 	return nil
 }
 
 // Stop stops the workload ingester
 func (wi *WorkloadIngester) Stop() {
-	close(wi.stopCh)
+	wi.safeClose()
+}
+
+// safeClose safely closes the stop channel only once
+func (wi *WorkloadIngester) safeClose() {
+	wi.mu.Lock()
+	defer wi.mu.Unlock()
+	if !wi.stopped {
+		close(wi.stopCh)
+		wi.stopped = true
+	}
 }
 
 // Modern informer setup methods - much cleaner than the old cache.NewInformer approach

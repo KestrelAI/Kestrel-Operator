@@ -3,6 +3,7 @@ package ingestion
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	v1 "operator/api/gen/cloud/v1"
@@ -31,6 +32,8 @@ type NetworkPolicyIngester struct {
 	networkPolicyChan chan *v1.NetworkPolicy
 	informerFactory   informers.SharedInformerFactory
 	stopCh            chan struct{}
+	stopped           bool
+	mu                sync.Mutex
 }
 
 // NewNetworkPolicyIngester creates a new NetworkPolicyIngester instance with channel support
@@ -109,15 +112,23 @@ func (npi *NetworkPolicyIngester) StartSync(ctx context.Context, syncDone chan<-
 
 	// Wait for context cancellation
 	<-ctx.Done()
-	close(npi.stopCh)
+	npi.safeClose()
 	npi.logger.Info("Stopped network policy ingester")
 	return nil
 }
 
 // Stop stops the network policy ingester
 func (npi *NetworkPolicyIngester) Stop() {
-	if npi.stopCh != nil {
+	npi.safeClose()
+}
+
+// safeClose safely closes the stop channel only once
+func (npi *NetworkPolicyIngester) safeClose() {
+	npi.mu.Lock()
+	defer npi.mu.Unlock()
+	if !npi.stopped {
 		close(npi.stopCh)
+		npi.stopped = true
 	}
 }
 

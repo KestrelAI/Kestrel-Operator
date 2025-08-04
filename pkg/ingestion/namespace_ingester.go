@@ -3,6 +3,7 @@ package ingestion
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	v1 "operator/api/gen/cloud/v1"
@@ -37,6 +38,8 @@ type NamespaceIngester struct {
 	namespaceChan   chan *v1.Namespace
 	informerFactory informers.SharedInformerFactory
 	stopCh          chan struct{}
+	stopped         bool
+	mu              sync.Mutex
 }
 
 // NewNamespaceIngester creates a new namespace ingester using modern informer factory
@@ -94,14 +97,24 @@ func (ni *NamespaceIngester) StartSync(ctx context.Context, syncDone chan<- erro
 
 	// Wait for context cancellation
 	<-ctx.Done()
-	close(ni.stopCh)
+	ni.safeClose()
 	ni.logger.Info("Stopped namespace ingester")
 	return nil
 }
 
 // Stop stops the namespace ingester
 func (ni *NamespaceIngester) Stop() {
-	close(ni.stopCh)
+	ni.safeClose()
+}
+
+// safeClose safely closes the stop channel only once
+func (ni *NamespaceIngester) safeClose() {
+	ni.mu.Lock()
+	defer ni.mu.Unlock()
+	if !ni.stopped {
+		close(ni.stopCh)
+		ni.stopped = true
+	}
 }
 
 // setupNamespaceInformer sets up the modern namespace informer
