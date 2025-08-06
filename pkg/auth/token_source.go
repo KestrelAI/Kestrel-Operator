@@ -40,8 +40,8 @@ func NewTokenSource(
 }
 
 func (g *grpcTokenSource) Token() (*oauth2.Token, error) {
-	// Renew token if it expires within the next 10 minutes (proactive renewal)
-	if g.cur.Valid() && time.Until(g.cur.Expiry) > 10*time.Minute {
+	// Renew token if it expires within the next 30 minutes (proactive renewal)
+	if g.cur.Valid() && time.Until(g.cur.Expiry) > 30*time.Minute {
 		return g.cur, nil
 	}
 
