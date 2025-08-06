@@ -2,14 +2,14 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ .Release.Name }}-secret-manager
-  namespace: kestrel-operator
+  namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Release.Name }}
     chart: {{ .Chart.Name }}-{{ .Chart.Version }}
     release: {{ .Release.Name }}
     heritage: {{ .Release.Service }}
 rules:
-  # Allow managing secrets in the kestrel-operator namespace only
+  # Allow managing secrets in the {{ .Release.Namespace }} namespace only
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"] 

@@ -16,7 +16,7 @@ spec:
     - to:
       - namespaceSelector:
           matchLabels:
-            kubernetes.io/metadata.name: kestrel-server
+            kubernetes.io/metadata.name: autonp-server
       ports:
         - port: {{ .Values.server.port | default 50051 }}
           protocol: TCP
