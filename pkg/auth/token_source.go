@@ -40,9 +40,12 @@ func NewTokenSource(
 }
 
 func (g *grpcTokenSource) Token() (*oauth2.Token, error) {
-	if g.cur.Valid() {
+	// Renew token if it expires within the next 10 minutes (proactive renewal)
+	if g.cur.Valid() && time.Until(g.cur.Expiry) > 10*time.Minute {
 		return g.cur, nil
 	}
+
+	// Token is either expired or expiring soon, renew it
 	resp, err := g.client.RenewClusterToken(
 		g.ctx,
 		&serverv1.RenewClusterTokenRequest{CurrentToken: g.cur.AccessToken})
