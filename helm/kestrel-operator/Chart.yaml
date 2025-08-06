@@ -1,6 +1,6 @@
 apiVersion: v2
 name: kestrel-operator
-description: Kestrel operator that connects to the server with JWT authentication
+description: Kestrel operator streams metadata and telemetry to the server over mTLS.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
