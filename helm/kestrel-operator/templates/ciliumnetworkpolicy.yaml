@@ -3,11 +3,11 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: allow-egress-to-host-workloads
-  namespace: autonp-operator
+  namespace: kestrel-operator
 spec:
   endpointSelector:
     matchLabels:
-      app: autonp-operator
+      app: kestrel-operator
   egress:
     - toEntities:
         - kube-apiserver

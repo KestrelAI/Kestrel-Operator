@@ -1,8 +1,8 @@
-# Default values for autonp-operator client
+# Default values for kestrel-operator client
 replicaCount: 1
 
 image:
-  repository: autonp/operator
+  repository: autonp/kestrel-operator
   tag: latest
   pullPolicy: IfNotPresent
 
@@ -15,7 +15,7 @@ service:
 
 # Server connection configuration
 server:
-  host: auto-np-server
+  host: autonp-server
   port: 50051
   useTLS: true
 
