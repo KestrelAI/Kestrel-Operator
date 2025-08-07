@@ -15,8 +15,8 @@ service:
 
 # Server connection configuration
 server:
-  host: autonp-server
-  port: 50051
+  host: grpc.platform.usekestrel.ai
+  port: 443
   useTLS: true
 
 # JWT Authentication configuration
