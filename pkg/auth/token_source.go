@@ -23,15 +23,15 @@ type grpcTokenSource struct {
 func NewTokenSource(
 	ctx context.Context,
 	cli serverv1.AutonpServerServiceClient,
-	initialJWT string,
+	token string,
 ) (oauth2.TokenSource, error) {
 
-	exp := parseExpiry(initialJWT)
+	exp := parseExpiry(token)
 	src := &grpcTokenSource{
 		ctx:    ctx,
 		client: cli,
 		cur: &oauth2.Token{
-			AccessToken: initialJWT,
+			AccessToken: token,
 			TokenType:   "Bearer",
 			Expiry:      exp,
 		},
@@ -40,20 +40,7 @@ func NewTokenSource(
 }
 
 func (g *grpcTokenSource) Token() (*oauth2.Token, error) {
-	if g.cur.Valid() {
-		return g.cur, nil
-	}
-	resp, err := g.client.RenewClusterToken(
-		g.ctx,
-		&serverv1.RenewClusterTokenRequest{CurrentToken: g.cur.AccessToken})
-	if err != nil {
-		return nil, err
-	}
-	g.cur = &oauth2.Token{
-		AccessToken: resp.AccessToken,
-		TokenType:   resp.TokenType,
-		Expiry:      time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second),
-	}
+	// Simply return the current token - renewal is handled by periodic goroutine in stream client
 	return g.cur, nil
 }
 
