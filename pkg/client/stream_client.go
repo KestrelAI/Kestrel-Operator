@@ -19,6 +19,8 @@ import (
 
 	serverv1 "server/api/gen/server/v1"
 
+	"log"
+
 	"github.com/cilium/cilium/api/v1/flow"
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"
@@ -27,7 +29,9 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/metadata"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 // ServerConfig holds the configuration for connecting to the server
@@ -142,7 +146,12 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	host := getEnvOrDefault("SERVER_HOST", "auto-np-server")
 	portStr := getEnvOrDefault("SERVER_PORT", "50051")
 	useTLSStr := getEnvOrDefault("SERVER_USE_TLS", "true")
-	token := getEnvOrDefault("AUTH_TOKEN", "")
+
+	// Token loading strategy: Check runtime secret first, fallback to Helm-managed secret
+	token, err := loadTokenWithFallback()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load authentication token: %w", err)
+	}
 
 	if token == "" {
 		return nil, fmt.Errorf("onboarding jwt token secret does not exist")
@@ -166,6 +175,57 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 		UseTLS: useTLS,
 		Token:  token,
 	}, nil
+}
+
+// loadTokenWithFallback implements the token loading strategy:
+// 1. Check runtime secret first (self-updated tokens)
+// 2. Fallback to Helm-managed secret (bootstrap token)
+func loadTokenWithFallback() (string, error) {
+	// First, try to load from runtime secret, which contains the most recently renewed token
+	runtimeToken, err := loadTokenFromSecret(auth.RuntimeSecretName)
+	if err == nil && runtimeToken != "" {
+		log.Printf("Using renewed token from runtime secret: %s", auth.RuntimeSecretName)
+		return runtimeToken, nil
+	}
+
+	// Fallback to Helm-managed initial secret via environment variable
+	helmToken := getEnvOrDefault("AUTH_TOKEN", "")
+	if helmToken != "" {
+		log.Printf("Using initial token from Helm-managed secret")
+		return helmToken, nil
+	}
+
+	return "", fmt.Errorf("no valid token found in runtime secret or initial Helm-managed secret")
+}
+
+// loadTokenFromSecret loads a token from a Kubernetes secret
+func loadTokenFromSecret(secretName string) (string, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return "", err
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return "", err
+	}
+
+	namespace := os.Getenv("POD_NAMESPACE")
+	if namespace == "" {
+		namespace = "kestrel-ai" // fallback
+	}
+
+	secret, err := clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	tokenBytes, exists := secret.Data["token"]
+	if !exists {
+		return "", fmt.Errorf("token key not found in secret %s", secretName)
+	}
+
+	return string(tokenBytes), nil
 }
 
 // Helper function to get environment variable with default value
