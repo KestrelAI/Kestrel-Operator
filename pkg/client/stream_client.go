@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	serverv1 "server/api/gen/server/v1"
 
@@ -29,6 +30,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/metadata"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -51,6 +53,11 @@ type StreamClient struct {
 	apiExecutor   *k8s_api.APIExecutor
 	shellExecutor *shell_executor.ShellExecutor
 }
+
+const (
+	runtimeSecretName    = "kestrel-operator-jwt-runtime"
+	tokenRenewalInterval = 3 * time.Hour // Based on 24 hour JWT TTL
+)
 
 // protectedSend ensures thread-safe sending on the gRPC stream
 func (s *StreamClient) protectedSend(stream v1.StreamService_StreamDataClient, req *v1.StreamDataRequest) error {
@@ -182,9 +189,9 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 // 2. Fallback to Helm-managed secret (bootstrap token)
 func loadTokenWithFallback() (string, error) {
 	// First, try to load from runtime secret, which contains the most recently renewed token
-	runtimeToken, err := loadTokenFromSecret(auth.RuntimeSecretName)
+	runtimeToken, err := loadTokenFromSecret(runtimeSecretName)
 	if err == nil && runtimeToken != "" {
-		log.Printf("Using renewed token from runtime secret: %s", auth.RuntimeSecretName)
+		log.Printf("Using renewed token from runtime secret: %s", runtimeSecretName)
 		return runtimeToken, nil
 	}
 
@@ -505,6 +512,9 @@ func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, s
 
 	// Start goroutine to collect flow data and send to server
 	go s.sendFlowData(ctx, stream, flowChan, done)
+
+	// Start periodic token renewal to ensure tokens are refreshed during long-lived connections
+	go s.periodicTokenRenewal(ctx)
 
 	// Monitor the inventory data goroutine for errors
 	go func() {
@@ -1001,4 +1011,95 @@ func convertToProtoFlow(flowData smartcache.FlowCount) *v1.Flow {
 		IngressAllowedBy: ingressAllowedBy,
 		EgressAllowedBy:  egressAllowedBy,
 	}
+}
+
+// periodicTokenRenewal handles token renewal every tokenRenewalInterval to ensure fresh tokens during long-lived connections
+func (s *StreamClient) periodicTokenRenewal(ctx context.Context) {
+	ticker := time.NewTicker(tokenRenewalInterval)
+	defer ticker.Stop()
+
+	s.Logger.Info("Starting periodic token renewal", zap.Duration("interval", tokenRenewalInterval))
+
+	for {
+		select {
+		case <-ctx.Done():
+			s.Logger.Info("Stopping periodic token renewal due to context cancellation")
+			return
+		case <-ticker.C:
+			s.Logger.Info("Performing periodic token renewal")
+
+			currentToken := s.Config.Token
+			serverClient := serverv1.NewAutonpServerServiceClient(s.Client)
+
+			// Call RenewClusterToken directly
+			renewCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			resp, err := serverClient.RenewClusterToken(renewCtx, &serverv1.RenewClusterTokenRequest{
+				CurrentToken: currentToken,
+			})
+			cancel()
+
+			if err != nil {
+				s.Logger.Warn("Periodic token renewal failed", zap.Error(err))
+				continue
+			}
+
+			s.Logger.Info("Token renewal successful, updating runtime secret")
+
+			// Update the runtime secret with the new token, so that if the operator is restarted,
+			// it will use the new token in the runtime secret.
+			if err := s.updateRuntimeTokenSecret(resp.AccessToken); err != nil {
+				s.Logger.Error("Failed to update runtime token secret", zap.Error(err))
+			} else {
+				s.Logger.Info("Successfully updated runtime token secret")
+
+				// Update config token for the next renewal cycle
+				s.Config.Token = resp.AccessToken
+			}
+		}
+	}
+}
+
+// updateRuntimeTokenSecret updates the runtime secret with a new token
+func (s *StreamClient) updateRuntimeTokenSecret(newToken string) error {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return err
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return err
+	}
+
+	namespace := os.Getenv("POD_NAMESPACE")
+	if namespace == "" {
+		namespace = "kestrel-ai" // fallback
+	}
+
+	// Create or update the runtime secret
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      runtimeSecretName,
+			Namespace: namespace,
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"token": []byte(newToken),
+		},
+	}
+
+	// Try to update first, create if it doesn't exist
+	_, err = clientset.CoreV1().Secrets(namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
+	if err != nil {
+		// If update failed, try to create
+		_, err = clientset.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
+		if err != nil {
+			return err
+		}
+		s.Logger.Info("Created runtime token secret", zap.String("secretName", runtimeSecretName))
+	} else {
+		s.Logger.Info("Successfully updated runtime token secret", zap.String("secretName", runtimeSecretName))
+	}
+
+	return nil
 }
