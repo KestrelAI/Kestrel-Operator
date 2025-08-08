@@ -2,7 +2,7 @@
 replicaCount: 1
 
 image:
-  repository: autonp/kestrel-operator
+  repository: ghcr.io/ramanv0/autonp/kestrel-operator
   tag: latest
   pullPolicy: IfNotPresent
 
