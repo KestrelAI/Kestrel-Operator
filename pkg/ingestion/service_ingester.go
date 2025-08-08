@@ -3,6 +3,7 @@ package ingestion
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	v1 "operator/api/gen/cloud/v1"
@@ -24,6 +25,8 @@ type ServiceIngester struct {
 	serviceChan     chan *v1.Service
 	informerFactory informers.SharedInformerFactory
 	stopCh          chan struct{}
+	stopped         bool
+	mu              sync.Mutex
 }
 
 // NewServiceIngester creates a new service ingester using modern informer factory
@@ -81,14 +84,24 @@ func (si *ServiceIngester) StartSync(ctx context.Context, syncDone chan<- error)
 
 	// Wait for context cancellation
 	<-ctx.Done()
-	close(si.stopCh)
+	si.safeClose()
 	si.logger.Info("Stopped service ingester")
 	return nil
 }
 
 // Stop stops the service ingester
 func (si *ServiceIngester) Stop() {
-	close(si.stopCh)
+	si.safeClose()
+}
+
+// safeClose safely closes the stopCh channel only once
+func (si *ServiceIngester) safeClose() {
+	si.mu.Lock()
+	defer si.mu.Unlock()
+	if !si.stopped {
+		close(si.stopCh)
+		si.stopped = true
+	}
 }
 
 // setupServiceInformer sets up the service informer with event handlers
