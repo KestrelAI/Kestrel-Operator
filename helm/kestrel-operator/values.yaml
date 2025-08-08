@@ -24,7 +24,7 @@ securityContext:
   runAsNonRoot: true
   runAsUser: 65534
 
-# AutoNP Server connection configuration
+# Kestrel Cloud connection configuration
 server:
   host: grpc.platform.usekestrel.ai
   port: 443
@@ -33,7 +33,7 @@ server:
 # JWT Authentication configuration
 auth:
   # REQUIRED: JWT token for operator authentication
-  # Generate this token via the AutoNP server's onboarding API
+  # Generate this token via the Kestrel Cloud onboarding API
   token: ""
 
 # Operator behavior configuration
