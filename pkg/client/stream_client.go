@@ -16,8 +16,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	serverv1 "server/api/gen/server/v1"
+
+	"log"
 
 	"github.com/cilium/cilium/api/v1/flow"
 	"github.com/golang-jwt/jwt/v4"
@@ -26,8 +29,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/oauth"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 // ServerConfig holds the configuration for connecting to the server
@@ -47,6 +54,11 @@ type StreamClient struct {
 	apiExecutor   *k8s_api.APIExecutor
 	shellExecutor *shell_executor.ShellExecutor
 }
+
+const (
+	runtimeSecretName    = "kestrel-operator-jwt-runtime"
+	tokenRenewalInterval = 3 * time.Hour // Based on 24 hour JWT TTL
+)
 
 // protectedSend ensures thread-safe sending on the gRPC stream
 func (s *StreamClient) protectedSend(stream v1.StreamService_StreamDataClient, req *v1.StreamDataRequest) error {
@@ -76,6 +88,13 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		logger.Info("Using insecure credentials (no TLS)")
 	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
+
+	// Add keepalive parameters for long-lived streams (24 hours)
+	opts = append(opts, grpc.WithKeepaliveParams(keepalive.ClientParameters{
+		Time:                5 * time.Minute,  // Send pings every 5 minutes during idle
+		Timeout:             30 * time.Second, // Wait 30 seconds for ping response
+		PermitWithoutStream: true,             // Send pings even without active streams
+	}))
 
 	// Create the connection to the server
 	serverAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
@@ -142,7 +161,12 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	host := getEnvOrDefault("SERVER_HOST", "auto-np-server")
 	portStr := getEnvOrDefault("SERVER_PORT", "50051")
 	useTLSStr := getEnvOrDefault("SERVER_USE_TLS", "true")
-	token := getEnvOrDefault("AUTH_TOKEN", "")
+
+	// Token loading strategy: Check runtime secret first, fallback to Helm-managed secret
+	token, err := loadTokenWithFallback()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load authentication token: %w", err)
+	}
 
 	if token == "" {
 		return nil, fmt.Errorf("onboarding jwt token secret does not exist")
@@ -168,6 +192,57 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	}, nil
 }
 
+// loadTokenWithFallback implements the token loading strategy:
+// 1. Check runtime secret first (self-updated tokens)
+// 2. Fallback to Helm-managed secret (bootstrap token)
+func loadTokenWithFallback() (string, error) {
+	// First, try to load from runtime secret, which contains the most recently renewed token
+	runtimeToken, err := loadTokenFromSecret(runtimeSecretName)
+	if err == nil && runtimeToken != "" {
+		log.Printf("Using renewed token from runtime secret: %s", runtimeSecretName)
+		return runtimeToken, nil
+	}
+
+	// Fallback to Helm-managed initial secret via environment variable
+	helmToken := getEnvOrDefault("AUTH_TOKEN", "")
+	if helmToken != "" {
+		log.Printf("Using initial token from Helm-managed secret")
+		return helmToken, nil
+	}
+
+	return "", fmt.Errorf("no valid token found in runtime secret or initial Helm-managed secret")
+}
+
+// loadTokenFromSecret loads a token from a Kubernetes secret
+func loadTokenFromSecret(secretName string) (string, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return "", err
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return "", err
+	}
+
+	namespace := os.Getenv("POD_NAMESPACE")
+	if namespace == "" {
+		namespace = "kestrel-ai" // fallback
+	}
+
+	secret, err := clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	tokenBytes, exists := secret.Data["token"]
+	if !exists {
+		return "", fmt.Errorf("token key not found in secret %s", secretName)
+	}
+
+	return string(tokenBytes), nil
+}
+
 // Helper function to get environment variable with default value
 func getEnvOrDefault(key, defaultValue string) string {
 	value := os.Getenv(key)
@@ -188,10 +263,11 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		return err
 	}
 
-	// Set up workload, namespace, and network policy ingestion channels
+	// Set up workload, namespace, network policy, and service ingestion channels
 	workloadChan := make(chan *v1.Workload, 1000)
 	namespaceChan := make(chan *v1.Namespace, 100)
 	networkPolicyChan := make(chan *v1.NetworkPolicy, 100)
+	serviceChan := make(chan *v1.Service, 100)
 
 	// Create network policy ingester with new pattern
 	networkPolicyIngester, err := ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
@@ -214,6 +290,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		return err
 	}
 
+	// Create service ingester
+	serviceIngester, err := ingestion.NewServiceIngester(s.Logger, serviceChan)
+	if err != nil {
+		s.Logger.Error("Failed to create service ingester", zap.Error(err))
+		return err
+	}
+
 	// Create a new stream service client
 	streamClient := v1.NewStreamServiceClient(s.Client)
 
@@ -227,12 +310,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		// Start sending inventory channel readers before ingesters start
 		inventoryDone := make(chan error, 1)
-		go s.sendInventoryData(ctx, stream, workloadChan, namespaceChan, networkPolicyChan, inventoryDone)
+		go s.sendInventoryData(ctx, stream, workloadChan, namespaceChan, networkPolicyChan, serviceChan, inventoryDone)
 
 		// Create channels to signal when initial inventory sync is complete
 		workloadSyncDone := make(chan error, 1)
 		namespaceSyncDone := make(chan error, 1)
 		networkPolicySyncDone := make(chan error, 1)
+		serviceSyncDone := make(chan error, 1)
 
 		// Start workload ingester
 		workloadCtx, workloadCancel := context.WithCancel(ctx)
@@ -261,6 +345,16 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			if err := networkPolicyIngester.StartSync(networkPolicyCtx, networkPolicySyncDone); err != nil {
 				s.Logger.Error("Network policy ingester failed", zap.Error(err))
 				networkPolicySyncDone <- err
+			}
+		}()
+
+		// Start service ingester
+		serviceCtx, serviceCancel := context.WithCancel(ctx)
+		defer serviceCancel()
+		go func() {
+			if err := serviceIngester.StartSync(serviceCtx, serviceSyncDone); err != nil {
+				s.Logger.Error("Service ingester failed", zap.Error(err))
+				serviceSyncDone <- err
 			}
 		}()
 
@@ -299,6 +393,18 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 				return err
 			}
 			s.Logger.Info("Network policy initial sync completed")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		// Wait for service sync
+		select {
+		case err := <-serviceSyncDone:
+			if err != nil {
+				s.Logger.Error("Service initial sync failed", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Service initial sync completed")
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -429,6 +535,9 @@ func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, s
 
 	// Start goroutine to collect flow data and send to server
 	go s.sendFlowData(ctx, stream, flowChan, done)
+
+	// Start periodic token renewal to ensure tokens are refreshed during long-lived connections
+	go s.periodicTokenRenewal(ctx)
 
 	// Monitor the inventory data goroutine for errors
 	go func() {
@@ -713,7 +822,7 @@ func (s *StreamClient) sendFlowToServer(stream v1.StreamService_StreamDataClient
 }
 
 // sendInventoryData collects workload and namespace data and sends it to the server
-func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamService_StreamDataClient, workloadChan <-chan *v1.Workload, namespaceChan <-chan *v1.Namespace, networkPolicyChan <-chan *v1.NetworkPolicy, done chan<- error) {
+func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamService_StreamDataClient, workloadChan <-chan *v1.Workload, namespaceChan <-chan *v1.Namespace, networkPolicyChan <-chan *v1.NetworkPolicy, serviceChan <-chan *v1.Service, done chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -794,6 +903,31 @@ func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamSe
 					return
 				}
 			}
+		case service, ok := <-serviceChan:
+			// Check if service channel was closed
+			if !ok {
+				s.Logger.Warn("Service channel closed unexpectedly")
+				select {
+				case done <- fmt.Errorf("service channel closed"):
+				default:
+				}
+				return
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendServiceToServer(stream, service); err != nil {
+					s.Logger.Error("Failed to send service data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
 		}
 	}
 }
@@ -829,6 +963,17 @@ func (s *StreamClient) sendNetworkPolicyToServer(stream v1.StreamService_StreamD
 		},
 	}
 	return s.protectedSend(stream, networkPolicyMsg)
+}
+
+// sendServiceToServer sends a single service to the server
+func (s *StreamClient) sendServiceToServer(stream v1.StreamService_StreamDataClient, service *v1.Service) error {
+	// Convert service data to proto message and send
+	serviceMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_Service{
+			Service: service,
+		},
+	}
+	return s.protectedSend(stream, serviceMsg)
 }
 
 // convertToProtoFlow converts a FlowCount to our proto Flow
@@ -889,4 +1034,95 @@ func convertToProtoFlow(flowData smartcache.FlowCount) *v1.Flow {
 		IngressAllowedBy: ingressAllowedBy,
 		EgressAllowedBy:  egressAllowedBy,
 	}
+}
+
+// periodicTokenRenewal handles token renewal every tokenRenewalInterval to ensure fresh tokens during long-lived connections
+func (s *StreamClient) periodicTokenRenewal(ctx context.Context) {
+	ticker := time.NewTicker(tokenRenewalInterval)
+	defer ticker.Stop()
+
+	s.Logger.Info("Starting periodic token renewal", zap.Duration("interval", tokenRenewalInterval))
+
+	for {
+		select {
+		case <-ctx.Done():
+			s.Logger.Info("Stopping periodic token renewal due to context cancellation")
+			return
+		case <-ticker.C:
+			s.Logger.Info("Performing periodic token renewal")
+
+			currentToken := s.Config.Token
+			serverClient := serverv1.NewAutonpServerServiceClient(s.Client)
+
+			// Call RenewClusterToken directly
+			renewCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			resp, err := serverClient.RenewClusterToken(renewCtx, &serverv1.RenewClusterTokenRequest{
+				CurrentToken: currentToken,
+			})
+			cancel()
+
+			if err != nil {
+				s.Logger.Warn("Periodic token renewal failed", zap.Error(err))
+				continue
+			}
+
+			s.Logger.Info("Token renewal successful, updating runtime secret")
+
+			// Update the runtime secret with the new token, so that if the operator is restarted,
+			// it will use the new token in the runtime secret.
+			if err := s.updateRuntimeTokenSecret(resp.AccessToken); err != nil {
+				s.Logger.Error("Failed to update runtime token secret", zap.Error(err))
+			} else {
+				s.Logger.Info("Successfully updated runtime token secret")
+
+				// Update config token for the next renewal cycle
+				s.Config.Token = resp.AccessToken
+			}
+		}
+	}
+}
+
+// updateRuntimeTokenSecret updates the runtime secret with a new token
+func (s *StreamClient) updateRuntimeTokenSecret(newToken string) error {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return err
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return err
+	}
+
+	namespace := os.Getenv("POD_NAMESPACE")
+	if namespace == "" {
+		namespace = "kestrel-ai" // fallback
+	}
+
+	// Create or update the runtime secret
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      runtimeSecretName,
+			Namespace: namespace,
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"token": []byte(newToken),
+		},
+	}
+
+	// Try to update first, create if it doesn't exist
+	_, err = clientset.CoreV1().Secrets(namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
+	if err != nil {
+		// If update failed, try to create
+		_, err = clientset.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
+		if err != nil {
+			return err
+		}
+		s.Logger.Info("Created runtime token secret", zap.String("secretName", runtimeSecretName))
+	} else {
+		s.Logger.Info("Successfully updated runtime token secret", zap.String("secretName", runtimeSecretName))
+	}
+
+	return nil
 }

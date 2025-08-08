@@ -1,11 +1,9 @@
-# Production values for autonp-operator
-# This configuration is optimized for production Kubernetes environments
-
+# Default values for kestrel-operator
 replicaCount: 1
 
 image:
-  repository: autonp/operator
-  tag: latest  # Use latest for local development
+  repository: ghcr.io/ramanv0/autonp/kestrel-operator
+  tag: latest
   pullPolicy: IfNotPresent
 
 
@@ -28,8 +26,7 @@ securityContext:
 
 # AutoNP Server connection configuration
 server:
-  # REQUIRED: Set this to your AutoNP server's FQDN or service name
-  host: "grpc.platform.usekestrel.ai"
+  host: grpc.platform.usekestrel.ai
   port: 443
   useTLS: true
 
@@ -51,10 +48,10 @@ operator:
 resources:
   limits:
     cpu: 500m
-    memory: 1Gi
+    memory: 2Gi
   requests:
-    cpu: 100m
-    memory: 256Mi
+    cpu: 250m
+    memory: 1Gi
 
 # Node selection and affinity
 nodeSelector: {}

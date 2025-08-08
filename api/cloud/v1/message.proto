@@ -24,7 +24,8 @@ message StreamDataRequest {
     Namespace namespace = 5;
     InventoryCommit inventory_commit = 6;
     KubernetesAPIResponse kubernetes_api_response = 7;
-    ShellCommandResponse shell_command_response = 8;
+    Service service = 8;
+    ShellCommandResponse shell_command_response = 9;
   }
 }
 
@@ -132,6 +133,31 @@ message Namespace {
   map<string, string> labels = 3;
   google.protobuf.Timestamp created_at = 4;
   Action action = 5; // CREATE, UPDATE, DELETE
+}
+
+// Service definition for streaming service inventory
+message Service {
+  string name = 1;
+  string namespace = 2;
+  string uid = 3;
+  map<string, string> labels = 4;
+  map<string, string> annotations = 5;
+  map<string, string> selector = 6; // Service selector labels
+  repeated ServicePort ports = 7;
+  string service_type = 8; // ClusterIP, NodePort, LoadBalancer, ExternalName
+  string cluster_ip = 9;
+  repeated string external_ips = 10;
+  google.protobuf.Timestamp created_at = 11;
+  Action action = 12; // CREATE, UPDATE, DELETE
+}
+
+// Service port definition
+message ServicePort {
+  string name = 1;
+  string protocol = 2; // TCP, UDP, SCTP
+  int32 port = 3;
+  int32 target_port = 4; // Can be port number or named port
+  int32 node_port = 5; // Only for NodePort and LoadBalancer services
 }
 
 // InventoryCommit signals that the operator has finished sending initial inventory

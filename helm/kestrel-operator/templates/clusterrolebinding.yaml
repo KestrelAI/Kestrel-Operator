@@ -1,8 +1,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
-  name: {{ .Release.Name }}-secret-binding
-  namespace: autonp-operator
+  name: {{ .Release.Name }}
   labels:
     app: {{ .Release.Name }}
     chart: {{ .Chart.Name }}-{{ .Chart.Version }}
@@ -10,9 +9,9 @@ metadata:
     heritage: {{ .Release.Service }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: {{ .Release.Name }}-secret-manager
+  kind: ClusterRole
+  name: {{ .Release.Name }}
 subjects:
 - kind: ServiceAccount
   name: {{ .Release.Name }}
-  namespace: {{ .Release.Namespace }} 
+  namespace: {{ .Release.Namespace }}
