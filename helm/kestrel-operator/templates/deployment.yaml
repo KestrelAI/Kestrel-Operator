@@ -48,5 +48,11 @@ spec:
             # Cilium integration configuration
             - name: DISABLE_CILIUM_FLOWS
               value: "{{ .Values.operator.cilium.disableFlows }}"
+            
+            # Istio integration configuration
+            - name: ENABLE_ISTIO_ALS
+              value: "{{ .Values.operator.istio.enabled }}"
+            - name: ISTIO_ALS_PORT
+              value: "{{ .Values.operator.istio.alsPort }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
