@@ -35,6 +35,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	"operator/pkg/envoy_als"
 )
 
 // ServerConfig holds the configuration for connecting to the server
@@ -79,7 +81,7 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		creds = credentials.NewTLS(&tls.Config{
 			InsecureSkipVerify: false,
 		})
-		logger.Info("Using TLS with InsecureSkipVerify=true")
+		logger.Info("Using TLS with InsecureSkipVerify=false")
 	} else {
 		// Use insecure credentials
 		creds = credentials.NewTLS(&tls.Config{
@@ -258,10 +260,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	defer cancel()
 
 	// Create flow components
-	flowChan, _, flowCollector, err := s.setupFlowComponents(ctx)
+	flowChan, _, flowCollector, l7FlowChan, l7Cache, err := s.setupFlowComponents(ctx)
 	if err != nil {
 		return err
 	}
+
+	// Ensure cleanup of L7 cache on shutdown
+	defer l7Cache.Stop()
 
 	// Set up workload, namespace, network policy, and service ingestion channels
 	workloadChan := make(chan *v1.Workload, 1000)
@@ -434,7 +439,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		}
 
 		// Handle bidirectional streaming (inventory data already being sent via earlier goroutine)
-		return s.handleBidirectionalStreamWithFlows(ctx, stream, flowChan, inventoryDone)
+		return s.handleBidirectionalStreamWithFlows(ctx, stream, flowChan, inventoryDone, l7FlowChan)
 	}
 
 	// Use the retry logic to handle stream reconnection
@@ -442,18 +447,26 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 }
 
 // setupFlowComponents creates and initializes the flow cache and collector
-func (s *StreamClient) setupFlowComponents(ctx context.Context) (chan smartcache.FlowCount, *smartcache.SmartCache, *cilium.FlowCollector, error) {
-	// Create a channel for flow data - buffer large enough for one purge-cycle (~5 min) worth of flows
+func (s *StreamClient) setupFlowComponents(ctx context.Context) (chan smartcache.FlowCount, *smartcache.SmartCache, *cilium.FlowCollector, chan smartcache.L7Flow, *smartcache.L7SmartCache, error) {
+	// Create a channel for L3/L4 flow data - buffer large enough for one purge-cycle (~5 min) worth of flows
 	flowChan := make(chan smartcache.FlowCount, 20_000)
 
-	// Initialize flow cache
+	// Initialize L3/L4 flow cache
 	cache := smartcache.InitFlowCache(ctx, flowChan)
+
+	// Create L7 flow channel and cache
+	l7FlowChan := make(chan smartcache.L7Flow, 10_000)
+	l7Cache := smartcache.InitL7FlowCache(ctx, l7FlowChan)
 
 	// Check if Cilium flow collection is explicitly disabled
 	disableCilium := getEnvOrDefault("DISABLE_CILIUM_FLOWS", "false")
 	if disableCilium == "true" {
 		s.Logger.Info("Cilium flow collection explicitly disabled via DISABLE_CILIUM_FLOWS environment variable")
-		return flowChan, cache, nil, nil
+
+		// Still set up Istio ALS even without Cilium
+		s.setupIstioALSIfEnabled(ctx, l7Cache)
+
+		return flowChan, cache, nil, l7FlowChan, l7Cache, nil
 	}
 
 	// Try to set up the flow collector to monitor Cilium flows
@@ -462,12 +475,67 @@ func (s *StreamClient) setupFlowComponents(ctx context.Context) (chan smartcache
 		s.Logger.Warn("Failed to create flow collector, continuing without Cilium flow collection", zap.Error(err))
 		s.Logger.Info("Operator will continue with resource ingestion and other functions, but network flow data will not be available")
 		s.Logger.Info("To suppress this warning, set DISABLE_CILIUM_FLOWS=true environment variable")
+
+		// Still set up Istio ALS even without Cilium
+		s.setupIstioALSIfEnabled(ctx, l7Cache)
+
 		// Return nil flowCollector to indicate Cilium is not available, but don't fail startup
-		return flowChan, cache, nil, nil
+		return flowChan, cache, nil, l7FlowChan, l7Cache, nil
 	}
 
 	s.Logger.Info("Successfully connected to Cilium, network flow collection enabled")
-	return flowChan, cache, flowCollector, nil
+
+	// Set up Istio ALS alongside Cilium if enabled
+	s.setupIstioALSIfEnabled(ctx, l7Cache)
+
+	return flowChan, cache, flowCollector, l7FlowChan, l7Cache, nil
+}
+
+// setupIstioALSIfEnabled starts the Istio Access Log Service if enabled and connects it to the L7 cache
+func (s *StreamClient) setupIstioALSIfEnabled(ctx context.Context, l7Cache *smartcache.L7SmartCache) {
+	// Check if Istio ALS is enabled
+	enableIstioALS := getEnvOrDefault("ENABLE_ISTIO_ALS", "false")
+	if enableIstioALS == "true" {
+		alsPortStr := getEnvOrDefault("ISTIO_ALS_PORT", "8080")
+		alsPort, err := strconv.Atoi(alsPortStr)
+		if err != nil {
+			s.Logger.Warn("Invalid ISTIO_ALS_PORT, using default 8080", zap.String("port", alsPortStr))
+			alsPort = 8080
+		}
+
+		// Create L7 access log channel that feeds directly into the cache
+		l7LogChan := make(chan *v1.L7AccessLog, 1000)
+
+		// Create ALS server
+		alsServer := envoy_als.NewALSServer(s.Logger, l7LogChan, alsPort)
+
+		// Start ALS server in background
+		go func() {
+			s.Logger.Info("Starting Istio Access Log Service", zap.Int("port", alsPort))
+			if err := alsServer.StartServer(ctx); err != nil {
+				s.Logger.Error("Istio ALS server failed", zap.Error(err))
+			}
+		}()
+
+		// Start goroutine to read from ALS channel and feed into L7 cache
+		// This follows the same pattern as Cilium flows feeding into the smart cache
+		go func() {
+			for {
+				select {
+				case accessLog := <-l7LogChan:
+					if accessLog != nil {
+						l7Cache.AddL7AccessLog(accessLog)
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+
+		s.Logger.Info("Istio Access Log Service enabled and connected to L7 cache", zap.Int("port", alsPort))
+	} else {
+		s.Logger.Info("Istio Access Log Service disabled")
+	}
 }
 
 // extractTenantFromToken extracts the tenant ID from a JWT token
@@ -526,7 +594,7 @@ func (s *StreamClient) exportCiliumFlows(ctx context.Context, flowCollector *cil
 
 // handleBidirectionalStreamWithFlows manages the bidirectional streaming for flows only
 // (inventory data is already being handled by a separate goroutine)
-func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, stream v1.StreamService_StreamDataClient, flowChan chan smartcache.FlowCount, inventoryDone <-chan error) error {
+func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, stream v1.StreamService_StreamDataClient, flowChan chan smartcache.FlowCount, inventoryDone <-chan error, l7FlowChan <-chan smartcache.L7Flow) error {
 	// Create a channel to handle stream closure
 	done := make(chan error, 1)
 
@@ -535,6 +603,14 @@ func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, s
 
 	// Start goroutine to collect flow data and send to server
 	go s.sendFlowData(ctx, stream, flowChan, done)
+
+	// Start goroutine to collect L7 flows and send to server
+	if l7FlowChan != nil {
+		s.Logger.Info("Starting L7 flow processing goroutine")
+		go s.sendL7FlowsToStreamWithDone(ctx, stream, l7FlowChan, done)
+	} else {
+		s.Logger.Info("No L7 flow channel available, skipping L7 log processing")
+	}
 
 	// Start periodic token renewal to ensure tokens are refreshed during long-lived connections
 	go s.periodicTokenRenewal(ctx)
@@ -1125,4 +1201,149 @@ func (s *StreamClient) updateRuntimeTokenSecret(newToken string) error {
 	}
 
 	return nil
+}
+
+// sendL7FlowsToStreamWithDone sends L7 flows to the server stream with done channel
+func (s *StreamClient) sendL7FlowsToStreamWithDone(ctx context.Context, stream v1.StreamService_StreamDataClient, l7FlowChan <-chan smartcache.L7Flow, done chan<- error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case l7Flow, ok := <-l7FlowChan:
+			// Check if channel was closed
+			if !ok {
+				s.Logger.Info("L7 flow channel closed")
+				return
+			}
+			if l7Flow.AccessLog != nil {
+				// The access log already has all aggregated values from the L7 cache
+				// No need to modify anything - just send it as-is
+
+				// Send L7 access log to server with aggregated data
+				logMsg := &v1.StreamDataRequest{
+					Request: &v1.StreamDataRequest_L7AccessLog{
+						L7AccessLog: l7Flow.AccessLog,
+					},
+				}
+
+				if err := s.protectedSend(stream, logMsg); err != nil {
+					s.Logger.Error("Failed to send L7 access log", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+
+				// Create base log fields (include aggregation info)
+				l7Log := l7Flow.AccessLog
+				logFields := []zap.Field{
+					zap.String("l7_protocol", l7Log.L7Protocol.String()),
+					zap.String("node_id", l7Log.NodeId),
+					zap.String("protocol", l7Log.Protocol),
+					zap.Int64("duration_ms", l7Log.DurationMs),
+					zap.Uint64("bytes_sent", l7Log.BytesSent),
+					zap.Uint64("bytes_received", l7Log.BytesReceived),
+					zap.Bool("allowed", l7Log.Allowed),
+					zap.String("cluster_name", l7Log.ClusterName),
+					zap.Int64("count", l7Log.Count),
+				}
+
+				if l7Log.Timestamp != nil {
+					logFields = append(logFields, zap.String("timestamp", l7Log.Timestamp.String()))
+				}
+
+				if l7Log.FirstSeen != nil {
+					logFields = append(logFields, zap.String("first_seen", l7Log.FirstSeen.String()))
+				}
+
+				if l7Log.LastSeen != nil {
+					logFields = append(logFields, zap.String("last_seen", l7Log.LastSeen.String()))
+				}
+
+				if l7Log.Source != nil {
+					logFields = append(logFields,
+						zap.String("src_ip", l7Log.Source.Ip),
+						zap.String("src_port", strconv.Itoa(int(l7Log.Source.Port))),
+						zap.String("src_ns", l7Log.Source.Namespace),
+						zap.String("src_name", l7Log.Source.Name),
+						zap.String("src_service", l7Log.Source.ServiceName),
+						zap.String("src_kind", l7Log.Source.Kind),
+					)
+				}
+
+				if l7Log.Destination != nil {
+					logFields = append(logFields,
+						zap.String("dst_ip", l7Log.Destination.Ip),
+						zap.String("dst_port", strconv.Itoa(int(l7Log.Destination.Port))),
+						zap.String("dst_ns", l7Log.Destination.Namespace),
+						zap.String("dst_name", l7Log.Destination.Name),
+						zap.String("dst_service", l7Log.Destination.ServiceName),
+						zap.String("dst_kind", l7Log.Destination.Kind),
+					)
+				}
+
+				// Add HTTP-specific fields if HttpData is not nil
+				if l7Log.HttpData != nil {
+					logFields = append(logFields,
+						zap.String("http_method", l7Log.HttpData.Method),
+						zap.String("http_path", l7Log.HttpData.Path),
+						zap.String("http_version", l7Log.HttpData.Version),
+						zap.String("http_host", l7Log.HttpData.Host),
+						zap.String("http_user_agent", l7Log.HttpData.UserAgent),
+						zap.String("http_referer", l7Log.HttpData.Referer),
+						zap.String("http_response_code", strconv.Itoa(int(l7Log.HttpData.ResponseCode))),
+						zap.String("http_response_size", strconv.Itoa(int(l7Log.HttpData.ResponseSize))),
+						zap.String("http_response_flags", strings.Join(l7Log.HttpData.ResponseFlags, ",")),
+					)
+
+					// Add request headers if they exist
+					if len(l7Log.HttpData.RequestHeaders) > 0 {
+						headerStrs := make([]string, 0, len(l7Log.HttpData.RequestHeaders))
+						for k, v := range l7Log.HttpData.RequestHeaders {
+							headerStrs = append(headerStrs, fmt.Sprintf("%s:%s", k, v))
+						}
+						logFields = append(logFields, zap.String("http_request_headers", strings.Join(headerStrs, ",")))
+					}
+				}
+
+				// Add TCP-specific fields if TcpData is not nil
+				if l7Log.TcpData != nil {
+					logFields = append(logFields,
+						zap.String("tcp_connection_state", l7Log.TcpData.ConnectionState),
+						zap.String("tcp_access_log_type", l7Log.TcpData.AccessLogType),
+						zap.Uint64("tcp_received_bytes", l7Log.TcpData.ReceivedBytes),
+						zap.Uint64("tcp_sent_bytes", l7Log.TcpData.SentBytes),
+						zap.String("tcp_stream_id", l7Log.TcpData.StreamId),
+						zap.String("tcp_termination_details", l7Log.TcpData.ConnectionTerminationDetails),
+					)
+				}
+
+				s.Logger.Info("Sent L7 access log", logFields...)
+
+				// Validate if we have sufficient data for Authorization Policy generation
+				if l7Log.HttpData != nil && l7Log.Source != nil && l7Log.Destination != nil {
+					authPolicyData := []string{}
+					if l7Log.Source.Namespace != "" && l7Log.Source.Name != "" {
+						authPolicyData = append(authPolicyData, fmt.Sprintf("src=%s/%s", l7Log.Source.Namespace, l7Log.Source.Name))
+					}
+					if l7Log.Destination.Namespace != "" && l7Log.Destination.ServiceName != "" {
+						authPolicyData = append(authPolicyData, fmt.Sprintf("dst=%s/%s", l7Log.Destination.Namespace, l7Log.Destination.ServiceName))
+					}
+					if l7Log.HttpData.Method != "" && l7Log.HttpData.Path != "" {
+						authPolicyData = append(authPolicyData, fmt.Sprintf("method=%s", l7Log.HttpData.Method))
+						authPolicyData = append(authPolicyData, fmt.Sprintf("path=%s", l7Log.HttpData.Path))
+					}
+
+					if len(authPolicyData) >= 3 {
+						s.Logger.Info("L7 log contains sufficient data for Authorization Policy",
+							zap.String("policy_data", strings.Join(authPolicyData, ", ")))
+					} else {
+						s.Logger.Info("L7 log missing data for Authorization Policy generation",
+							zap.String("available_data", strings.Join(authPolicyData, ", ")))
+					}
+				}
+			}
+		}
+	}
 }
