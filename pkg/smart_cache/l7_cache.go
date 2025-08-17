@@ -156,30 +156,6 @@ func (c *L7SmartCache) createKey(accessLog *v1.L7AccessLog) L7FlowKey {
 	return key
 }
 
-// createBaseKey creates a cache key without HTTP method/path for connection-level aggregation
-func (c *L7SmartCache) createBaseKey(accessLog *v1.L7AccessLog) L7FlowKey {
-	key := L7FlowKey{
-		L7Protocol: accessLog.L7Protocol,
-		Allowed:    accessLog.Allowed,
-		// Deliberately leave HTTPMethod and HTTPPath empty for connection-level matching
-	}
-
-	if src := accessLog.Source; src != nil {
-		key.SourceNamespace = src.Namespace
-		key.SourceName = src.Name
-		key.SourceKind = src.Kind
-	}
-
-	if dst := accessLog.Destination; dst != nil {
-		key.DestinationNamespace = dst.Namespace
-		key.DestinationServiceName = dst.ServiceName
-		key.DestinationKind = dst.Kind
-		key.DestinationPort = dst.Port
-	}
-
-	return key
-}
-
 // AddL7AccessLog adds an L7 access log to the cache, aggregating with existing entries
 func (c *L7SmartCache) AddL7AccessLog(accessLog *v1.L7AccessLog) {
 	if accessLog == nil {
