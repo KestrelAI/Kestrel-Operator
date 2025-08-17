@@ -127,34 +127,6 @@ func (c *L7SmartCache) Stop() {
 	close(c.stopCh)
 }
 
-// AddL7AccessLog adds an L7 access log to the cache, aggregating with existing entries
-func (c *L7SmartCache) AddL7AccessLog(accessLog *v1.L7AccessLog) {
-	if accessLog == nil {
-		return
-	}
-
-	key := c.createKey(accessLog)
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	existing, exists := c.flows[key]
-	if !exists {
-		// First occurrence - initialize aggregation fields
-		accessLog.Count = 1
-		accessLog.FirstSeen = timestamppb.Now()
-		accessLog.LastSeen = timestamppb.Now()
-		c.flows[key] = accessLog
-	} else {
-		// Simple aggregation - just update the counters and timestamps
-		existing.Count++
-		existing.LastSeen = timestamppb.Now()
-		existing.BytesSent += accessLog.BytesSent
-		existing.BytesReceived += accessLog.BytesReceived
-		existing.DurationMs += accessLog.DurationMs
-	}
-}
-
 // createKey creates a cache key from an L7 access log
 func (c *L7SmartCache) createKey(accessLog *v1.L7AccessLog) L7FlowKey {
 	key := L7FlowKey{
@@ -182,6 +154,58 @@ func (c *L7SmartCache) createKey(accessLog *v1.L7AccessLog) L7FlowKey {
 	}
 
 	return key
+}
+
+// createBaseKey creates a cache key without HTTP method/path for connection-level aggregation
+func (c *L7SmartCache) createBaseKey(accessLog *v1.L7AccessLog) L7FlowKey {
+	key := L7FlowKey{
+		L7Protocol: accessLog.L7Protocol,
+		Allowed:    accessLog.Allowed,
+		// Deliberately leave HTTPMethod and HTTPPath empty for connection-level matching
+	}
+
+	if src := accessLog.Source; src != nil {
+		key.SourceNamespace = src.Namespace
+		key.SourceName = src.Name
+		key.SourceKind = src.Kind
+	}
+
+	if dst := accessLog.Destination; dst != nil {
+		key.DestinationNamespace = dst.Namespace
+		key.DestinationServiceName = dst.ServiceName
+		key.DestinationKind = dst.Kind
+		key.DestinationPort = dst.Port
+	}
+
+	return key
+}
+
+// AddL7AccessLog adds an L7 access log to the cache, aggregating with existing entries
+func (c *L7SmartCache) AddL7AccessLog(accessLog *v1.L7AccessLog) {
+	if accessLog == nil {
+		return
+	}
+
+	key := c.createKey(accessLog)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	existing, exists := c.flows[key]
+	if !exists {
+		// First occurrence - initialize aggregation fields
+		accessLog.Count = 1
+		accessLog.FirstSeen = timestamppb.Now()
+		accessLog.LastSeen = timestamppb.Now()
+		c.flows[key] = accessLog
+	} else {
+		// Simple aggregation - just update the counters and timestamps
+		existing.Count++
+		existing.LastSeen = timestamppb.Now()
+		existing.BytesSent += accessLog.BytesSent
+		existing.BytesReceived += accessLog.BytesReceived
+		existing.DurationMs += accessLog.DurationMs
+	}
 }
 
 // normalizePath normalizes HTTP paths for better aggregation
