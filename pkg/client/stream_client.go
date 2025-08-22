@@ -268,11 +268,12 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	// Ensure cleanup of L7 cache on shutdown
 	defer l7Cache.Stop()
 
-	// Set up workload, namespace, network policy, and service ingestion channels
+	// Set up workload, namespace, network policy, service, and authorization policy ingestion channels
 	workloadChan := make(chan *v1.Workload, 1000)
 	namespaceChan := make(chan *v1.Namespace, 100)
 	networkPolicyChan := make(chan *v1.NetworkPolicy, 100)
 	serviceChan := make(chan *v1.Service, 100)
+	authorizationPolicyChan := make(chan *v1.AuthorizationPolicy, 100)
 
 	// Create network policy ingester with new pattern
 	networkPolicyIngester, err := ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
@@ -302,6 +303,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		return err
 	}
 
+	// Create authorization policy ingester (only if Istio is enabled)
+	authorizationPolicyIngester, err := ingestion.NewAuthorizationPolicyIngester(s.Logger, authorizationPolicyChan)
+	if err != nil {
+		s.Logger.Error("Failed to create authorization policy ingester", zap.Error(err))
+		return err
+	}
+
 	// Create a new stream service client
 	streamClient := v1.NewStreamServiceClient(s.Client)
 
@@ -315,13 +323,14 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		// Start sending inventory channel readers before ingesters start
 		inventoryDone := make(chan error, 1)
-		go s.sendInventoryData(ctx, stream, workloadChan, namespaceChan, networkPolicyChan, serviceChan, inventoryDone)
+		go s.sendInventoryData(ctx, stream, workloadChan, namespaceChan, networkPolicyChan, serviceChan, authorizationPolicyChan, inventoryDone)
 
 		// Create channels to signal when initial inventory sync is complete
 		workloadSyncDone := make(chan error, 1)
 		namespaceSyncDone := make(chan error, 1)
 		networkPolicySyncDone := make(chan error, 1)
 		serviceSyncDone := make(chan error, 1)
+		authorizationPolicySyncDone := make(chan error, 1)
 
 		// Start workload ingester
 		workloadCtx, workloadCancel := context.WithCancel(ctx)
@@ -360,6 +369,16 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			if err := serviceIngester.StartSync(serviceCtx, serviceSyncDone); err != nil {
 				s.Logger.Error("Service ingester failed", zap.Error(err))
 				serviceSyncDone <- err
+			}
+		}()
+
+		// Start authorization policy ingester
+		authorizationPolicyCtx, authorizationPolicyCancel := context.WithCancel(ctx)
+		defer authorizationPolicyCancel()
+		go func() {
+			if err := authorizationPolicyIngester.StartSync(authorizationPolicyCtx, authorizationPolicySyncDone); err != nil {
+				s.Logger.Error("Authorization policy ingester failed", zap.Error(err))
+				authorizationPolicySyncDone <- err
 			}
 		}()
 
@@ -410,6 +429,18 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 				return err
 			}
 			s.Logger.Info("Service initial sync completed")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		// Wait for authorization policy sync
+		select {
+		case err := <-authorizationPolicySyncDone:
+			if err != nil {
+				s.Logger.Error("Authorization policy initial sync failed", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Authorization policy initial sync completed")
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -897,8 +928,8 @@ func (s *StreamClient) sendFlowToServer(stream v1.StreamService_StreamDataClient
 	return s.protectedSend(stream, flowMsg)
 }
 
-// sendInventoryData collects workload and namespace data and sends it to the server
-func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamService_StreamDataClient, workloadChan <-chan *v1.Workload, namespaceChan <-chan *v1.Namespace, networkPolicyChan <-chan *v1.NetworkPolicy, serviceChan <-chan *v1.Service, done chan<- error) {
+// sendInventoryData collects workload, namespace, network policy, service, and authorization policy data and sends it to the server
+func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamService_StreamDataClient, workloadChan <-chan *v1.Workload, namespaceChan <-chan *v1.Namespace, networkPolicyChan <-chan *v1.NetworkPolicy, serviceChan <-chan *v1.Service, authorizationPolicyChan <-chan *v1.AuthorizationPolicy, done chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -1004,6 +1035,31 @@ func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamSe
 					return
 				}
 			}
+		case authorizationPolicy, ok := <-authorizationPolicyChan:
+			// Check if authorization policy channel was closed
+			if !ok {
+				s.Logger.Warn("Authorization policy channel closed unexpectedly")
+				select {
+				case done <- fmt.Errorf("authorization policy channel closed"):
+				default:
+				}
+				return
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendAuthorizationPolicyToServer(stream, authorizationPolicy); err != nil {
+					s.Logger.Error("Failed to send authorization policy data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
 		}
 	}
 }
@@ -1050,6 +1106,17 @@ func (s *StreamClient) sendServiceToServer(stream v1.StreamService_StreamDataCli
 		},
 	}
 	return s.protectedSend(stream, serviceMsg)
+}
+
+// sendAuthorizationPolicyToServer sends a single authorization policy to the server
+func (s *StreamClient) sendAuthorizationPolicyToServer(stream v1.StreamService_StreamDataClient, authorizationPolicy *v1.AuthorizationPolicy) error {
+	// Convert authorization policy data to proto message and send
+	authorizationPolicyMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_AuthorizationPolicy{
+			AuthorizationPolicy: authorizationPolicy,
+		},
+	}
+	return s.protectedSend(stream, authorizationPolicyMsg)
 }
 
 // convertToProtoFlow converts a FlowCount to our proto Flow
