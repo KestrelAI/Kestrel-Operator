@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	log.Println("Starting AutoNP Operator...")
+	log.Println("Starting Kestrel AI Operator...")
 
 	logger, err := zap.NewProduction()
 	if err != nil {
