@@ -27,6 +27,7 @@ message StreamDataRequest {
     Service service = 8;
     ShellCommandResponse shell_command_response = 9;
     L7AccessLog l7_access_log = 10;
+    AuthorizationPolicy authorization_policy = 11;
   }
 }
 
@@ -512,6 +513,113 @@ message TCPAccessLogData {
   
   // Number of upstream connection attempts
   uint32 upstream_request_attempt_count = 9;
+}
+
+// Istio Authorization Policy definition
+message AuthorizationPolicy {
+  string api_version = 1; // security.istio.io/v1beta1, security.istio.io/v1, etc.
+  string kind = 2;
+
+  // Standard Kubernetes metadata
+  ObjectMeta metadata = 3;
+  AuthorizationPolicySpec spec = 4;
+
+  // Zero-or-more "target" workloads protected by this policy;
+  // each entry in the target_workloads list is of the format: "<Namespace>.<Kind>.<Name>".
+  repeated string target_workloads = 5;
+
+  // Action performed on this authorization policy
+  Action action = 6; // CREATE, UPDATE, DELETE
+}
+
+// Authorization Policy specification
+message AuthorizationPolicySpec {
+  // Optional. The selector decides where to apply the authorization policy.
+  LabelSelector selector = 1;
+
+  // Optional. A list of rules to match the request.
+  repeated AuthorizationPolicyRule rules = 2;
+
+  // Optional. The action to take if the request is matched with the rules.
+  AuthorizationPolicyAction action = 3;
+}
+
+// Authorization Policy rule
+message AuthorizationPolicyRule {
+  // Optional. from specifies the source of a request.
+  repeated AuthorizationPolicyRuleFrom from = 1;
+
+  // Optional. to specifies the operation of a request.
+  repeated AuthorizationPolicyRuleTo to = 2;
+
+  // Optional. when specifies a list of additional conditions of a request.
+  repeated AuthorizationPolicyCondition when = 3;
+}
+
+// Authorization Policy rule from
+message AuthorizationPolicyRuleFrom {
+  // Optional. source specifies the source identities of a request.
+  AuthorizationPolicySource source = 1;
+}
+
+// Authorization Policy rule to
+message AuthorizationPolicyRuleTo {
+  // Optional. operation specifies the operation of a request.
+  AuthorizationPolicyOperation operation = 1;
+}
+
+// Authorization Policy source
+message AuthorizationPolicySource {
+  // Optional. A list of source peer identities (i.e. service account).
+  repeated string principals = 1;
+
+  // Optional. A list of request identities (i.e. request.auth.principal).
+  repeated string request_principals = 2;
+
+  // Optional. A list of namespaces.
+  repeated string namespaces = 3;
+
+  // Optional. A list of IP blocks.
+  repeated string ip_blocks = 4;
+
+  // Optional. A list of remote IP blocks.
+  repeated string remote_ip_blocks = 5;
+}
+
+// Authorization Policy operation
+message AuthorizationPolicyOperation {
+  // Optional. A list of HTTP methods (e.g., "GET", "POST").
+  repeated string methods = 1;
+
+  // Optional. A list of HTTP paths or gRPC methods.
+  repeated string paths = 2;
+
+  // Optional. A list of ports.
+  repeated string ports = 3;
+
+  // Optional. A list of hosts.
+  repeated string hosts = 4;
+}
+
+// Authorization Policy condition
+message AuthorizationPolicyCondition {
+  // The name of an Istio attribute.
+  string key = 1;
+
+  // Optional. A list of allowed values for the attribute.
+  repeated string values = 2;
+
+  // Optional. A list of allowed values for the attribute specified as a regular expression.
+  repeated string not_values = 3;
+}
+
+// Authorization Policy action
+enum AuthorizationPolicyAction {
+  AUTHORIZATION_POLICY_ACTION_UNSPECIFIED = 0;
+  AUTHORIZATION_POLICY_ACTION_ALLOW = 1;
+  AUTHORIZATION_POLICY_ACTION_DENY = 2;
+  AUTHORIZATION_POLICY_ACTION_AUDIT = 3;
+  AUTHORIZATION_POLICY_ACTION_CUSTOM = 4;
 }
 
 // Service definition with bi-directional streaming RPC
