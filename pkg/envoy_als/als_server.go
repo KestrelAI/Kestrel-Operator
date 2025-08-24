@@ -137,7 +137,7 @@ func (s *ALSServer) processAccessLogRequest(req *accesslogv3.StreamAccessLogsMes
 
 	// Log if neither HTTP nor TCP logs were present
 	if req.GetHttpLogs() == nil && req.GetTcpLogs() == nil {
-		s.logger.Warn("Received access log request with no HTTP or TCP logs - likely identifier-only message")
+		s.logger.Debug("Received access log request with no HTTP or TCP logs - likely identifier-only message")
 	}
 }
 
