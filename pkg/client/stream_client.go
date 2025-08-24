@@ -574,12 +574,18 @@ func (s *StreamClient) setupIstioALSIfEnabled(ctx context.Context, l7Cache *smar
 		// Create ALS server
 		alsServer := envoy_als.NewALSServer(s.Logger, l7LogChan, alsPort)
 
-		// Start ALS server in background
+		// Start ALS server in background with retry logic
 		go func() {
-			s.Logger.Info("Starting Istio Access Log Service", zap.Int("port", alsPort))
-			if err := alsServer.StartServer(ctx); err != nil {
-				s.Logger.Error("Istio ALS server failed", zap.Error(err))
+			s.Logger.Info("Starting Istio Access Log Service with retry capability", zap.Int("port", alsPort))
+
+			// Use retry logic for ALS server similar to stream connections
+			alsFunc := func(ctx context.Context) error {
+				s.Logger.Info("Starting/Restarting Istio Access Log Service", zap.Int("port", alsPort))
+				return alsServer.StartServer(ctx)
 			}
+
+			// This will automatically retry if the ALS server fails
+			WithReconnect(ctx, alsFunc)
 		}()
 
 		// Start goroutine to read from ALS channel and feed into L7 cache
