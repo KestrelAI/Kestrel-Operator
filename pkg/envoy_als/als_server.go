@@ -221,7 +221,7 @@ func (s *ALSServer) convertHTTPLogToL7AccessLog(httpLog *accesslogdata.HTTPAcces
 		Timestamp:     timestamppb.New(timestamp),
 		Source:        source,
 		Destination:   destination,
-		Protocol:      "HTTP", // Application layer protocol for clarity
+		Protocol:      "TCP", // Application layer protocol for clarity
 		L7Protocol:    v1.L7ProtocolType_L7_PROTOCOL_HTTP,
 		HttpData:      httpData,
 		DurationMs:    durationMs,
