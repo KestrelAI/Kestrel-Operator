@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	log.Println("Starting AutoNP Operator...")
+	log.Println("Starting Kestrel AI Operator...")
 
 	logger, err := zap.NewProduction()
 	if err != nil {
@@ -61,12 +61,20 @@ func main() {
 		// Wait for either the operator to finish or the restart timer
 		select {
 		case err := <-operatorDone:
-			logger.Info("Operator has encountered an error", zap.Error(err))
+			if err != nil {
+				logger.Error("Operator exited with error", zap.Error(err))
+			} else {
+				logger.Info("Operator exited cleanly")
+			}
 			cancel()
 
 		case <-time.After(restartInterval):
 			logger.Info("Restarting operator on regular interval", zap.Duration("session_duration", restartInterval))
 			cancel()
+			// Make sure goroutine fully stops and closes resources before looping
+			if err := <-operatorDone; err != nil {
+				logger.Warn("Operator stopped during scheduled restart", zap.Error(err))
+			}
 		}
 
 	}
