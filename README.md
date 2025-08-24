@@ -79,9 +79,9 @@ To enable Istio integration (already done by selecting Istio as the traffic data
 
 **Via Helm values:**
 ```yaml
-istio:
-  enabled: true
 operator:
+  istio:
+    enabled: true
   cilium:
     disableFlows: true  # Typically disable Cilium when using Istio for flow collection
 ```
