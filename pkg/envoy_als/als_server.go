@@ -206,6 +206,12 @@ func (s *ALSServer) convertHTTPLogToL7AccessLog(httpLog *accesslogdata.HTTPAcces
 		allowed = false
 	}
 
+	// Filter out logs with internal Istio/Envoy service destinations that cannot have authorization policies
+	if destination != nil && s.isInternalIstioService(destination.ServiceName) {
+		s.logger.Debug("Skipping access log for internal Istio service", zap.String("service", destination.ServiceName))
+		return nil
+	}
+
 	l7Log := &v1.L7AccessLog{
 		Timestamp:     timestamppb.New(timestamp),
 		Source:        source,
@@ -265,6 +271,12 @@ func (s *ALSServer) convertTCPLogToL7AccessLog(tcpLog *accesslogdata.TCPAccessLo
 	if tcpLog.ConnectionProperties != nil {
 		tcpData.ReceivedBytes = tcpLog.ConnectionProperties.ReceivedBytes
 		tcpData.SentBytes = tcpLog.ConnectionProperties.SentBytes
+	}
+
+	// Filter out logs with internal Istio/Envoy service destinations that cannot have authorization policies
+	if destination != nil && s.isInternalIstioService(destination.ServiceName) {
+		s.logger.Debug("Skipping TCP access log for internal Istio service", zap.String("service", destination.ServiceName))
+		return nil
 	}
 
 	// Calculate duration
@@ -720,6 +732,25 @@ func (s *ALSServer) convertAccessLogType(logType accesslogdata.AccessLogType) st
 		return "UdpSessionEnd"
 	default:
 		return "Unknown"
+	}
+}
+
+// isInternalIstioService checks if a service name represents an internal Istio/Envoy concept
+// that should not have authorization policies defined on it
+func (s *ALSServer) isInternalIstioService(serviceName string) bool {
+	switch serviceName {
+	case "inbound-service":
+		return true
+	case "passthrough-cluster":
+		return true
+	case "inbound-passthrough-cluster":
+		return true
+	case "blackhole-cluster":
+		return true
+	case "unknown-service":
+		return true
+	default:
+		return false
 	}
 }
 
