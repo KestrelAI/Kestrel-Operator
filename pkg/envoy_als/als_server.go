@@ -99,8 +99,6 @@ func (s *ALSServer) processAccessLogRequest(req *accesslogv3.StreamAccessLogsMes
 					default:
 						s.logger.Warn("L7 log channel full, dropping log")
 					}
-				} else {
-					s.logger.Warn("Failed to convert HTTP log entry to L7AccessLog")
 				}
 			} else {
 				s.logger.Debug("Skipping invalid HTTP traffic entry - treating as raw TCP instead")
@@ -128,8 +126,6 @@ func (s *ALSServer) processAccessLogRequest(req *accesslogv3.StreamAccessLogsMes
 					default:
 						s.logger.Warn("L7 log channel full, dropping log")
 					}
-				} else {
-					s.logger.Warn("Failed to convert TCP log entry to L7AccessLog")
 				}
 			}
 		}
