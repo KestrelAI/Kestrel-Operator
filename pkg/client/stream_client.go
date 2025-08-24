@@ -275,11 +275,19 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	serviceChan := make(chan *v1.Service, 100)
 	authorizationPolicyChan := make(chan *v1.AuthorizationPolicy, 100)
 
-	// Create network policy ingester with new pattern
-	networkPolicyIngester, err := ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
-	if err != nil {
-		s.Logger.Error("Failed to create network policy ingester", zap.Error(err))
-		return err
+	// Create network policy ingester (only if Cilium flows are enabled)
+	var networkPolicyIngester *ingestion.NetworkPolicyIngester
+	disableCilium := getEnvOrDefault("DISABLE_CILIUM_FLOWS", "false")
+	if disableCilium != "true" {
+		var err error
+		networkPolicyIngester, err = ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
+		if err != nil {
+			s.Logger.Error("Failed to create network policy ingester", zap.Error(err))
+			return err
+		}
+		s.Logger.Info("Network policy ingester enabled")
+	} else {
+		s.Logger.Info("Network policy ingester disabled (Cilium flows disabled)")
 	}
 
 	// Create workload ingester
@@ -304,10 +312,18 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	}
 
 	// Create authorization policy ingester (only if Istio is enabled)
-	authorizationPolicyIngester, err := ingestion.NewAuthorizationPolicyIngester(s.Logger, authorizationPolicyChan)
-	if err != nil {
-		s.Logger.Error("Failed to create authorization policy ingester", zap.Error(err))
-		return err
+	var authorizationPolicyIngester *ingestion.AuthorizationPolicyIngester
+	enableIstioALS := getEnvOrDefault("ENABLE_ISTIO_ALS", "false")
+	if enableIstioALS == "true" {
+		var err error
+		authorizationPolicyIngester, err = ingestion.NewAuthorizationPolicyIngester(s.Logger, authorizationPolicyChan)
+		if err != nil {
+			s.Logger.Error("Failed to create authorization policy ingester", zap.Error(err))
+			return err
+		}
+		s.Logger.Info("Authorization policy ingester enabled")
+	} else {
+		s.Logger.Info("Authorization policy ingester disabled (Istio ALS not enabled)")
 	}
 
 	// Create a new stream service client
@@ -352,15 +368,24 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			}
 		}()
 
-		// Start network policy ingester
-		networkPolicyCtx, networkPolicyCancel := context.WithCancel(ctx)
-		defer networkPolicyCancel()
-		go func() {
-			if err := networkPolicyIngester.StartSync(networkPolicyCtx, networkPolicySyncDone); err != nil {
-				s.Logger.Error("Network policy ingester failed", zap.Error(err))
-				networkPolicySyncDone <- err
-			}
-		}()
+		// Start network policy ingester (only if Cilium flows are enabled)
+		var networkPolicyCtx context.Context
+		var networkPolicyCancel context.CancelFunc
+		if networkPolicyIngester != nil {
+			networkPolicyCtx, networkPolicyCancel = context.WithCancel(ctx)
+			defer networkPolicyCancel()
+			go func() {
+				if err := networkPolicyIngester.StartSync(networkPolicyCtx, networkPolicySyncDone); err != nil {
+					s.Logger.Error("Network policy ingester failed", zap.Error(err))
+					networkPolicySyncDone <- err
+				}
+			}()
+		} else {
+			// If network policy ingester is disabled, signal completion immediately
+			go func() {
+				networkPolicySyncDone <- nil
+			}()
+		}
 
 		// Start service ingester
 		serviceCtx, serviceCancel := context.WithCancel(ctx)
@@ -372,15 +397,24 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			}
 		}()
 
-		// Start authorization policy ingester
-		authorizationPolicyCtx, authorizationPolicyCancel := context.WithCancel(ctx)
-		defer authorizationPolicyCancel()
-		go func() {
-			if err := authorizationPolicyIngester.StartSync(authorizationPolicyCtx, authorizationPolicySyncDone); err != nil {
-				s.Logger.Error("Authorization policy ingester failed", zap.Error(err))
-				authorizationPolicySyncDone <- err
-			}
-		}()
+		// Start authorization policy ingester (only if Istio is enabled)
+		var authorizationPolicyCtx context.Context
+		var authorizationPolicyCancel context.CancelFunc
+		if authorizationPolicyIngester != nil {
+			authorizationPolicyCtx, authorizationPolicyCancel = context.WithCancel(ctx)
+			defer authorizationPolicyCancel()
+			go func() {
+				if err := authorizationPolicyIngester.StartSync(authorizationPolicyCtx, authorizationPolicySyncDone); err != nil {
+					s.Logger.Error("Authorization policy ingester failed", zap.Error(err))
+					authorizationPolicySyncDone <- err
+				}
+			}()
+		} else {
+			// If authorization policy ingester is disabled, signal completion immediately
+			go func() {
+				authorizationPolicySyncDone <- nil
+			}()
+		}
 
 		// Wait for all ingesters to complete their initial sync
 		s.Logger.Info("Waiting for initial inventory sync to complete...")
