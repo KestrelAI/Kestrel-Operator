@@ -200,10 +200,19 @@ func (s *ALSServer) convertHTTPLogToL7AccessLog(httpLog *accesslogdata.HTTPAcces
 		durationMs = httpLog.CommonProperties.Duration.AsDuration().Milliseconds()
 	}
 
-	// Determine if request was allowed
+	// Determine if request was allowed by checking for authorization denial flags
+	// If the request reached the application and got a response, it was allowed by Istio policies
+	// Authorization denials would typically result in no response or specific response flags
 	allowed := true
-	if httpData.ResponseCode >= 400 {
-		allowed = false
+	if httpLog.CommonProperties.ResponseFlags != nil {
+		if httpLog.CommonProperties.ResponseFlags.GetUnauthorizedDetails() != nil {
+			allowed = false
+		}
+		// Also check for other denial indicators
+		if httpLog.CommonProperties.ResponseFlags.GetNoRouteFound() ||
+			httpLog.CommonProperties.ResponseFlags.GetNoClusterFound() {
+			allowed = false
+		}
 	}
 
 	// Filter out logs with internal Istio/Envoy service destinations that cannot have authorization policies
@@ -216,7 +225,7 @@ func (s *ALSServer) convertHTTPLogToL7AccessLog(httpLog *accesslogdata.HTTPAcces
 		Timestamp:     timestamppb.New(timestamp),
 		Source:        source,
 		Destination:   destination,
-		Protocol:      "TCP",
+		Protocol:      "HTTP", // Application layer protocol for clarity
 		L7Protocol:    v1.L7ProtocolType_L7_PROTOCOL_HTTP,
 		HttpData:      httpData,
 		DurationMs:    durationMs,
@@ -295,7 +304,7 @@ func (s *ALSServer) convertTCPLogToL7AccessLog(tcpLog *accesslogdata.TCPAccessLo
 		DurationMs:    durationMs,
 		BytesSent:     tcpLog.CommonProperties.UpstreamWireBytesSent,
 		BytesReceived: tcpLog.CommonProperties.UpstreamWireBytesReceived,
-		Allowed:       true, // TCP connections that complete are typically allowed
+		Allowed:       s.isTCPConnectionAllowed(tcpLog.CommonProperties), // Check if TCP connection was allowed
 		NodeId:        nodeName,
 		ClusterName:   tcpLog.CommonProperties.UpstreamCluster,
 	}
@@ -752,6 +761,22 @@ func (s *ALSServer) isInternalIstioService(serviceName string) bool {
 	default:
 		return false
 	}
+}
+
+// isTCPConnectionAllowed determines if a TCP connection was allowed based on response flags
+func (s *ALSServer) isTCPConnectionAllowed(props *accesslogdata.AccessLogCommon) bool {
+	if props.ResponseFlags != nil {
+		// Check for denial indicators
+		if props.ResponseFlags.GetUnauthorizedDetails() != nil ||
+			props.ResponseFlags.GetNoRouteFound() ||
+			props.ResponseFlags.GetNoClusterFound() ||
+			props.ResponseFlags.GetUpstreamConnectionFailure() {
+			return false
+		}
+	}
+
+	// If we have a TCP log entry, the connection was established and allowed
+	return true
 }
 
 // StartServer starts the ALS gRPC server
