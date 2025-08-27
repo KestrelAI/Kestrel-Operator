@@ -26,6 +26,8 @@ message StreamDataRequest {
     KubernetesAPIResponse kubernetes_api_response = 7;
     Service service = 8;
     ShellCommandResponse shell_command_response = 9;
+    L7AccessLog l7_access_log = 10;
+    AuthorizationPolicy authorization_policy = 11;
   }
 }
 
@@ -344,6 +346,280 @@ message ShellCommandResponse {
   
   // Any global error message (e.g., operator issues)
   string global_error_message = 3;
+}
+
+// L7AccessLog message for streaming L7 access logs from Envoy
+message L7AccessLog {
+  // Timestamp when the request was received
+  google.protobuf.Timestamp timestamp = 1;
+  
+  // Source information
+  L7Endpoint source = 2;
+  
+  // Destination information  
+  L7Endpoint destination = 3;
+  
+  // Protocol information
+  string protocol = 4; // TCP, UDP
+  
+  // L7 protocol type
+  L7ProtocolType l7_protocol = 5;
+  
+  // HTTP-specific data (when l7_protocol is HTTP)
+  HTTPAccessLogData http_data = 6;
+  
+  // TCP-specific data (when l7_protocol is TCP)
+  TCPAccessLogData tcp_data = 7;
+  
+  // Duration of the request/connection
+  int64 duration_ms = 8;
+  
+  // Number of bytes sent upstream
+  uint64 bytes_sent = 9;
+  
+  // Number of bytes received from upstream
+  uint64 bytes_received = 10;
+  
+  // Whether the request was successful
+  bool allowed = 11;
+  
+  // Node ID from Envoy
+  string node_id = 12;
+  
+  // Cluster name from Envoy
+  string cluster_name = 13;
+  
+  // Count of times this L7 access log was observed
+  int64 count = 14;
+  
+  // When this L7 access log was first seen
+  google.protobuf.Timestamp first_seen = 15;
+  
+  // When this L7 access log was last seen
+  google.protobuf.Timestamp last_seen = 16;
+}
+
+// L7 protocol types
+enum L7ProtocolType {
+  L7_PROTOCOL_UNKNOWN = 0;
+  L7_PROTOCOL_HTTP = 1;
+  L7_PROTOCOL_TCP = 2;
+  L7_PROTOCOL_GRPC = 3;
+}
+
+// L7 endpoint information with richer metadata than basic Endpoint
+message L7Endpoint {
+  // IP address
+  string ip = 1;
+  
+  // Port number
+  uint32 port = 2;
+  
+  // Kubernetes namespace
+  string namespace = 3;
+  
+  // Kubernetes workload kind (Pod, Service, etc.)
+  string kind = 4;
+  
+  // Kubernetes workload name
+  string name = 5;
+  
+  // Service name (if applicable)
+  string service_name = 6;
+}
+
+// HTTP-specific access log data
+message HTTPAccessLogData {
+  // HTTP method (GET, POST, etc.)
+  string method = 1;
+  
+  // Request path
+  string path = 2;
+  
+  // HTTP version (e.g., "1.1", "2.0")
+  string version = 3;
+  
+  // Host header value
+  string host = 4;
+  
+  // User agent header
+  string user_agent = 5;
+  
+  // Request headers
+  map<string, string> request_headers = 6;
+  
+  // Response status code
+  uint32 response_code = 7;
+  
+  // Response headers
+  map<string, string> response_headers = 8;
+  
+  // Request size in bytes
+  uint64 request_size = 9;
+  
+  // Response size in bytes
+  uint64 response_size = 10;
+  
+  // Referer header
+  string referer = 11;
+  
+  // Response flags from Envoy
+  repeated string response_flags = 12;
+  
+  // Connection termination details (from CommonProperties)
+  string connection_termination_details = 13;
+  
+  // Transport failure reason (if connection failed)
+  string upstream_transport_failure_reason = 14;
+  
+  // Downstream transport failure reason (if applicable)
+  string downstream_transport_failure_reason = 15;
+  
+  // Access log type (e.g., "DownstreamStart", "DownstreamEnd")
+  string access_log_type = 16;
+  
+  // Optional unique stream/connection ID
+  string stream_id = 17;
+  
+  // Number of upstream connection attempts
+  uint32 upstream_request_attempt_count = 18;
+}
+
+// TCP-specific access log data
+message TCPAccessLogData {
+  // Connection state (derived from access log type and termination details)
+  string connection_state = 1;
+  
+  // Number of bytes received from downstream
+  uint64 received_bytes = 2;
+  
+  // Number of bytes sent to downstream  
+  uint64 sent_bytes = 3;
+  
+  // Connection termination details
+  string connection_termination_details = 4;
+  
+  // Transport failure reason (if connection failed)
+  string upstream_transport_failure_reason = 5;
+  
+  // Downstream transport failure reason (if applicable)
+  string downstream_transport_failure_reason = 6;
+  
+  // Access log type (e.g., "TcpUpstreamConnected", "TcpConnectionEnd")
+  string access_log_type = 7;
+  
+  // Optional unique stream/connection ID
+  string stream_id = 8;
+  
+  // Number of upstream connection attempts
+  uint32 upstream_request_attempt_count = 9;
+}
+
+// Istio Authorization Policy definition
+message AuthorizationPolicy {
+  string api_version = 1; // security.istio.io/v1beta1, security.istio.io/v1, etc.
+  string kind = 2;
+
+  // Standard Kubernetes metadata
+  ObjectMeta metadata = 3;
+  AuthorizationPolicySpec spec = 4;
+
+  // Zero-or-more "target" workloads protected by this policy;
+  // each entry in the target_workloads list is of the format: "<Namespace>.<Kind>.<Name>".
+  repeated string target_workloads = 5;
+
+  // Action performed on this authorization policy
+  Action action = 6; // CREATE, UPDATE, DELETE
+}
+
+// Authorization Policy specification
+message AuthorizationPolicySpec {
+  // Optional. The selector decides where to apply the authorization policy.
+  LabelSelector selector = 1;
+
+  // Optional. A list of rules to match the request.
+  repeated AuthorizationPolicyRule rules = 2;
+
+  // Optional. The action to take if the request is matched with the rules.
+  AuthorizationPolicyAction action = 3;
+}
+
+// Authorization Policy rule
+message AuthorizationPolicyRule {
+  // Optional. from specifies the source of a request.
+  repeated AuthorizationPolicyRuleFrom from = 1;
+
+  // Optional. to specifies the operation of a request.
+  repeated AuthorizationPolicyRuleTo to = 2;
+
+  // Optional. when specifies a list of additional conditions of a request.
+  repeated AuthorizationPolicyCondition when = 3;
+}
+
+// Authorization Policy rule from
+message AuthorizationPolicyRuleFrom {
+  // Optional. source specifies the source identities of a request.
+  AuthorizationPolicySource source = 1;
+}
+
+// Authorization Policy rule to
+message AuthorizationPolicyRuleTo {
+  // Optional. operation specifies the operation of a request.
+  AuthorizationPolicyOperation operation = 1;
+}
+
+// Authorization Policy source
+message AuthorizationPolicySource {
+  // Optional. A list of source peer identities (i.e. service account).
+  repeated string principals = 1;
+
+  // Optional. A list of request identities (i.e. request.auth.principal).
+  repeated string request_principals = 2;
+
+  // Optional. A list of namespaces.
+  repeated string namespaces = 3;
+
+  // Optional. A list of IP blocks.
+  repeated string ip_blocks = 4;
+
+  // Optional. A list of remote IP blocks.
+  repeated string remote_ip_blocks = 5;
+}
+
+// Authorization Policy operation
+message AuthorizationPolicyOperation {
+  // Optional. A list of HTTP methods (e.g., "GET", "POST").
+  repeated string methods = 1;
+
+  // Optional. A list of HTTP paths or gRPC methods.
+  repeated string paths = 2;
+
+  // Optional. A list of ports.
+  repeated string ports = 3;
+
+  // Optional. A list of hosts.
+  repeated string hosts = 4;
+}
+
+// Authorization Policy condition
+message AuthorizationPolicyCondition {
+  // The name of an Istio attribute.
+  string key = 1;
+
+  // Optional. A list of allowed values for the attribute.
+  repeated string values = 2;
+
+  // Optional. A list of allowed values for the attribute specified as a regular expression.
+  repeated string not_values = 3;
+}
+
+// Authorization Policy action
+enum AuthorizationPolicyAction {
+  AUTHORIZATION_POLICY_ACTION_UNSPECIFIED = 0;
+  AUTHORIZATION_POLICY_ACTION_ALLOW = 1;
+  AUTHORIZATION_POLICY_ACTION_DENY = 2;
+  AUTHORIZATION_POLICY_ACTION_AUDIT = 3;
+  AUTHORIZATION_POLICY_ACTION_CUSTOM = 4;
 }
 
 // Service definition with bi-directional streaming RPC

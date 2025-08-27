@@ -28,6 +28,11 @@ rules:
     resources: ["ciliumnetworkpolicies", "ciliumclusterwidenetworkpolicies"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   
+  # Allow access to Istio security policies
+  - apiGroups: ["security.istio.io"]
+    resources: ["authorizationpolicies", "peerauthentications", "requestauthentications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
   # Allow reading workloads for ingestion (apps API group)
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets", "daemonsets", "replicasets", "controllerrevisions"]

@@ -43,6 +43,14 @@ operator:
     # Set to true to disable Cilium flow collection entirely
     # Useful for clusters without Cilium or when only resource ingestion is needed
     disableFlows: false
+  
+  # Istio integration settings  
+  istio:
+    # Enable Istio Access Log Service for L7 flow collection
+    # When enabled, operator will start a gRPC ALS server to receive Envoy access logs
+    enabled: false
+    # Port for the ALS gRPC server
+    alsPort: 8080
 
 # Resource limits and requests - optimized for production
 resources:

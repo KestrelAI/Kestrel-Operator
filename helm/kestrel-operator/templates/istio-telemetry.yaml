@@ -1,0 +1,31 @@
+{{- if .Values.operator.istio.enabled }}
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: {{ include "kestrel-operator.fullname" . }}-access-logging
+  namespace: istio-system
+  labels:
+    {{- include "kestrel-operator.labels" . | nindent 4 }}
+spec:
+  # Apply to all workloads in the mesh
+  accessLogging:
+    - providers:
+        - name: {{ include "kestrel-operator.fullname" . }}-als
+    - providers:
+        - name: {{ include "kestrel-operator.fullname" . }}-als-tcp
+---
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: {{ include "kestrel-operator.fullname" . }}-access-logging-default
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kestrel-operator.labels" . | nindent 4 }}
+spec:
+  # Apply to workloads in the operator namespace
+  accessLogging:
+    - providers:
+        - name: {{ include "kestrel-operator.fullname" . }}-als
+    - providers:
+        - name: {{ include "kestrel-operator.fullname" . }}-als-tcp
+{{- end }} 
