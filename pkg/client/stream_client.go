@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	serverv1 "server/api/gen/server/v1"
+	serverv1 "operator/api/gen/server/v1"
 
 	"log"
 
