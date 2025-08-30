@@ -50,4 +50,5 @@ jobs:
     - name: Push Helm chart to GHCR
       run: |
         CHART_VERSION="${{ github.event.inputs.chart_version || '0.1.0' }}"
-        helm push kestrel-operator-$CHART_VERSION.tgz oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts
+        REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        helm push kestrel-operator-$CHART_VERSION.tgz oci://${{ env.REGISTRY }}/${REPO_OWNER}/charts
