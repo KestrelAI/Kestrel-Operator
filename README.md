@@ -125,5 +125,5 @@ The operator's Helm chart will automatically create the necessary `Telemetry` re
 To install the Kestrel Operator on your cluster, simply copy the command from the Onboard Cluster page on the Kestrel Platform:
 
 ```bash
-helm install kestrel-operator oci://ghcr.io/ramanv0/charts/kestrel-operator --version 0.1.0 --namespace kestrel-ai --create-namespace -f kestrel-ai-operator-values-<cluster-name>.yaml
+helm install kestrel-operator oci://ghcr.io/kestrelai/charts/kestrel-operator --version 0.1.0 --namespace kestrel-ai --create-namespace -f kestrel-ai-operator-values-<cluster-name>.yaml
 ```
