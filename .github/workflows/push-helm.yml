@@ -40,7 +40,7 @@ jobs:
 
     - name: Update chart version
       run: |
-        CHART_VERSION="${{ github.event.inputs.chart_version || 'latest' }}"
+        CHART_VERSION="${{ github.event.inputs.chart_version || '0.1.0' }}"
         sed -i "s/^version:.*/version: $CHART_VERSION/" helm/kestrel-operator/Chart.yaml
 
     - name: Package Helm chart
@@ -49,5 +49,5 @@ jobs:
 
     - name: Push Helm chart to GHCR
       run: |
-        CHART_VERSION="${{ github.event.inputs.chart_version || 'latest' }}"
+        CHART_VERSION="${{ github.event.inputs.chart_version || '0.1.0' }}"
         helm push kestrel-operator-$CHART_VERSION.tgz oci://${{ env.REGISTRY }}/${{ github.repository }}/charts 

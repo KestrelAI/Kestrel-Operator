@@ -6,7 +6,7 @@ WORKDIR /app
 COPY . .
 
 # Build the operator application
-WORKDIR /app/operator
+WORKDIR /app
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/client ./cmd/client
 
 # Use a small alpine image for the final container
