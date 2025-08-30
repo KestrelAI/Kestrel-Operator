@@ -42,7 +42,7 @@ jobs:
       id: meta-operator
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ github.repository }}/kestrel-operator
+        images: ${{ env.REGISTRY }}/${{ github.repository }}
         tags: |
           type=raw,value=${{ github.event.inputs.image_tag || 'latest' }}
 
