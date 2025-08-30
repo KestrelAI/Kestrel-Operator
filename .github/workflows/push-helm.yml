@@ -1,6 +1,8 @@
 name: Package and Push Helm Chart
 
 on:
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       chart_version:
@@ -38,7 +40,8 @@ jobs:
 
     - name: Update chart version
       run: |
-        sed -i "s/^version:.*/version: ${{ github.event.inputs.chart_version }}/" helm/kestrel-operator/Chart.yaml
+        CHART_VERSION="${{ github.event.inputs.chart_version || 'latest' }}"
+        sed -i "s/^version:.*/version: $CHART_VERSION/" helm/kestrel-operator/Chart.yaml
 
     - name: Package Helm chart
       run: |
@@ -46,4 +49,5 @@ jobs:
 
     - name: Push Helm chart to GHCR
       run: |
-        helm push kestrel-operator-${{ github.event.inputs.chart_version }}.tgz oci://${{ env.REGISTRY }}/${{ github.repository }}/charts 
+        CHART_VERSION="${{ github.event.inputs.chart_version || 'latest' }}"
+        helm push kestrel-operator-$CHART_VERSION.tgz oci://${{ env.REGISTRY }}/${{ github.repository }}/charts 

@@ -1,6 +1,8 @@
 name: Build Kestrel Operator Image
 
 on:
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       image_tag:
@@ -42,7 +44,7 @@ jobs:
       with:
         images: ${{ env.REGISTRY }}/${{ github.repository }}/kestrel-operator
         tags: |
-          type=raw,value=${{ github.event.inputs.image_tag }}
+          type=raw,value=${{ github.event.inputs.image_tag || 'latest' }}
 
     - name: Build and push operator image
       uses: docker/build-push-action@v5
