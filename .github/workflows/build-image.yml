@@ -1,7 +1,7 @@
 name: Build Kestrel Operator Image
 
 on:
-  pull_request:
+  push:
     branches: [ main ]
   workflow_dispatch:
     inputs:
