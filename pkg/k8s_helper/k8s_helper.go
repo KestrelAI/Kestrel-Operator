@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -39,6 +40,16 @@ func NewClientSet() (*kubernetes.Clientset, error) {
 	}
 
 	return kubernetes.NewForConfig(clusterConfig)
+}
+
+// NewDynamicClient returns a new Kubernetes dynamic client based on the execution environment.
+func NewDynamicClient() (dynamic.Interface, error) {
+	clusterConfig, err := NewRestConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return dynamic.NewForConfig(clusterConfig)
 }
 
 // IsRunningInCluster helps determine if the application is running inside a Kubernetes cluster.
