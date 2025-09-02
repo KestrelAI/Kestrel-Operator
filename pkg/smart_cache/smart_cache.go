@@ -133,9 +133,6 @@ func (s *SmartCache) purgeCache() {
 	defer s.mu.Unlock()
 
 	for flowKey, flowData := range s.FlowKeys {
-		fmt.Printf("[DEBUG] Sending flow: src=%s/%s dst=%s/%s port=%d count=%d\n",
-			flowKey.SourceNamespace, flowKey.SourceName, flowKey.DestinationNamespace, flowKey.DestinationName, flowKey.DestinationPort, flowData.Count)
-
 		select {
 		case s.flowChan <- FlowCount{
 			FlowKey:      flowKey,
