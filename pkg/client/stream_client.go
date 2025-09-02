@@ -752,6 +752,8 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 				s.handleKubernetesAPIRequest(ctx, stream, resp.KubernetesApiRequest)
 			case *v1.StreamDataResponse_ShellCommandRequest:
 				s.handleShellCommandRequest(ctx, stream, resp.ShellCommandRequest)
+			case *v1.StreamDataResponse_YamlDryRunRequest:
+				s.handleYamlDryRunRequest(ctx, stream, resp.YamlDryRunRequest)
 			}
 		}
 	}
@@ -816,6 +818,55 @@ func (s *StreamClient) handleShellCommandRequest(
 		s.Logger.Info("Successfully sent shell command response to server",
 			zap.String("request_id", shellRequest.RequestId),
 			zap.Int("results_count", len(shellResponse.Results)))
+	}
+}
+
+// handleYamlDryRunRequest processes YAML dry-run validation requests from the server
+func (s *StreamClient) handleYamlDryRunRequest(
+	ctx context.Context,
+	stream v1.StreamService_StreamDataClient,
+	yamlRequest *v1.YamlDryRunRequest,
+) {
+	s.Logger.Info("Received YAML dry-run validation request from server",
+		zap.String("request_id", yamlRequest.RequestId),
+		zap.Int("manifests_count", len(yamlRequest.YamlManifests)))
+
+	// Create YAML validator
+	yamlValidator, err := ingestion.NewYamlValidator(s.Logger)
+	if err != nil {
+		s.Logger.Error("Failed to create YAML validator", zap.Error(err))
+		// Send error response
+		errorResponse := &v1.YamlDryRunResponse{
+			RequestId:          yamlRequest.RequestId,
+			GlobalErrorMessage: fmt.Sprintf("Failed to create YAML validator: %v", err),
+		}
+		s.sendYamlDryRunResponse(stream, errorResponse)
+		return
+	}
+
+	// Validate YAML manifests
+	yamlResponse := yamlValidator.ValidateYamlManifests(ctx, yamlRequest)
+
+	// Send the response back to the server
+	s.sendYamlDryRunResponse(stream, yamlResponse)
+}
+
+// sendYamlDryRunResponse sends a YAML dry-run validation response to the server
+func (s *StreamClient) sendYamlDryRunResponse(stream v1.StreamService_StreamDataClient, yamlResponse *v1.YamlDryRunResponse) {
+	responseMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_YamlDryRunResponse{
+			YamlDryRunResponse: yamlResponse,
+		},
+	}
+
+	if err := s.protectedSend(stream, responseMsg); err != nil {
+		s.Logger.Error("Failed to send YAML dry-run response to server",
+			zap.String("request_id", yamlResponse.RequestId),
+			zap.Error(err))
+	} else {
+		s.Logger.Info("Successfully sent YAML dry-run response to server",
+			zap.String("request_id", yamlResponse.RequestId),
+			zap.Int("results_count", len(yamlResponse.Results)))
 	}
 }
 
