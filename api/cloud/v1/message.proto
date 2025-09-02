@@ -28,6 +28,7 @@ message StreamDataRequest {
     ShellCommandResponse shell_command_response = 9;
     L7AccessLog l7_access_log = 10;
     AuthorizationPolicy authorization_policy = 11;
+    YamlDryRunResponse yaml_dry_run_response = 12;
   }
 }
 
@@ -111,6 +112,8 @@ message StreamDataResponse {
     KubernetesAPIRequest kubernetes_api_request = 3;
     // Shell command request from server to operator
     ShellCommandRequest shell_command_request = 4;
+    // YAML dry-run validation request from server to operator
+    YamlDryRunRequest yaml_dry_run_request = 5;
   }
 }
 
@@ -343,6 +346,63 @@ message ShellCommandResponse {
   
   // Results for each individual shell command
   repeated ShellCommandResult results = 2;
+  
+  // Any global error message (e.g., operator issues)
+  string global_error_message = 3;
+}
+
+// YAML dry-run validation request message
+message YamlDryRunRequest {
+  // Unique identifier for tracking this request
+  string request_id = 1;
+  
+  // List of YAML manifests to validate
+  repeated YamlManifest yaml_manifests = 2;
+  
+  // Optional timeout for the entire batch (in seconds)
+  int32 timeout_seconds = 3;
+}
+
+// Individual YAML manifest for validation
+message YamlManifest {
+  // Unique identifier for this manifest
+  string manifest_id = 1;
+  
+  // YAML content to validate
+  string yaml_content = 2;
+  
+  // Optional resource type hint (Deployment, Service, etc.)
+  string resource_type = 3;
+  
+  // Optional namespace (for namespaced resources)
+  string namespace = 4;
+}
+
+// Individual YAML validation result
+message YamlValidationResult {
+  // The manifest ID that was validated
+  string manifest_id = 1;
+  
+  // Whether this manifest passed dry-run validation
+  bool valid = 2;
+  
+  // Error message if validation failed
+  string error_message = 3;
+  
+  // HTTP status code from Kubernetes API
+  int32 status_code = 4;
+  
+  // Suggested fixes (if any)
+  string suggested_fix = 5;
+}
+
+// YAML dry-run validation response message
+message YamlDryRunResponse {
+  // Request identifier that matches the request
+  string request_id = 1;
+  
+  // Results for each individual YAML manifest
+  repeated YamlValidationResult results = 2;
   
   // Any global error message (e.g., operator issues)
   string global_error_message = 3;
