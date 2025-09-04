@@ -194,8 +194,9 @@ func loadCertificatesFromKubernetesSecrets(logger *zap.Logger, namespace string)
 		logger.Debug("Successfully loaded CA certificate from client secret")
 	}
 
-	// Server name based on certificate subject
-	serverName := "hubble-relay.cilium.io"
+	// Server name must match the server certificate, not the client certificate
+	// E.g. in GKE Dataplane V2, the server certificate is valid for *.gke-managed-dpv2-observability.svc.cluster.local
+	serverName := fmt.Sprintf("hubble-relay.%s.svc.cluster.local", namespace)
 
 	logger.Info("Successfully loaded Hubble certificates from Kubernetes secrets",
 		zap.String("client_secret", hubbleRelayClientSecretName),
