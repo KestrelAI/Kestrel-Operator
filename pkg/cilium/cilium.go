@@ -103,13 +103,13 @@ func loadHubbleTLSCredentials(logger *zap.Logger, namespace string) (credentials
 	// Verify the CA certificate is valid by parsing it
 	caCertParsed, err := x509.ParseCertificates(tlsConfig.CACert)
 	if err != nil || len(caCertParsed) == 0 {
-		logger.Warn("Could not parse CA certificate for validation, but will proceed", zap.Error(err))
-	} else {
-		logger.Debug("Loaded CA certificate details",
-			zap.String("subject", caCertParsed[0].Subject.String()),
-			zap.Time("not_before", caCertParsed[0].NotBefore),
-			zap.Time("not_after", caCertParsed[0].NotAfter))
+		return nil, fmt.Errorf("invalid CA certificate - cannot establish secure connection: %w", err)
 	}
+
+	logger.Debug("Loaded CA certificate details",
+		zap.String("subject", caCertParsed[0].Subject.String()),
+		zap.Time("not_before", caCertParsed[0].NotBefore),
+		zap.Time("not_after", caCertParsed[0].NotAfter))
 
 	// Create TLS config
 	grpcTLSConfig := &tls.Config{
@@ -238,7 +238,7 @@ func NewFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace s
 
 		tlsConn, tlsConnErr := grpc.NewClient(hubbleAddress, dialOpts...)
 		if tlsConnErr != nil {
-			logger.Warn("Failed to connect with TLS, will try insecure connection",
+			logger.Warn("Failed to create TLS gRPC client, will try insecure connection",
 				zap.Error(tlsConnErr))
 		} else {
 			logger.Info("Successfully established TLS gRPC connection to Hubble relay",
