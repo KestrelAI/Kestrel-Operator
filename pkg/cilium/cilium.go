@@ -100,16 +100,8 @@ func loadHubbleTLSCredentials(logger *zap.Logger, namespace string) (credentials
 		return nil, fmt.Errorf("failed to parse CA certificate - invalid PEM format")
 	}
 
-	// Verify the CA certificate is valid by parsing it
-	caCertParsed, err := x509.ParseCertificates(tlsConfig.CACert)
-	if err != nil || len(caCertParsed) == 0 {
-		return nil, fmt.Errorf("invalid CA certificate - cannot establish secure connection: %w", err)
-	}
-
-	logger.Debug("Loaded CA certificate details",
-		zap.String("subject", caCertParsed[0].Subject.String()),
-		zap.Time("not_before", caCertParsed[0].NotBefore),
-		zap.Time("not_after", caCertParsed[0].NotAfter))
+	// The AppendCertsFromPEM success is sufficient validation for PEM certificates
+	logger.Debug("Successfully loaded and validated CA certificate for TLS connection")
 
 	// Create TLS config
 	grpcTLSConfig := &tls.Config{
