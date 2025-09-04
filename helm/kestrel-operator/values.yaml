@@ -43,6 +43,12 @@ operator:
     # Set to true to disable Cilium flow collection entirely
     # Useful for clusters without Cilium or when only resource ingestion is needed
     disableFlows: false
+    
+    # Hubble TLS configuration for secure connections to Hubble relay
+    # By default, the operator will try to use TLS to connect to Hubble
+    hubble:
+      tls:
+        forceDisable: false
   
   # Istio integration settings  
   istio:
