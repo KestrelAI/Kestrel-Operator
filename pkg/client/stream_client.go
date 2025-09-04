@@ -60,6 +60,9 @@ type StreamClient struct {
 const (
 	runtimeSecretName    = "kestrel-operator-jwt-runtime"
 	tokenRenewalInterval = 3 * time.Hour // Based on 24 hour JWT TTL
+
+	defaultHubbleRelayNamespace     = "kube-system"
+	dataplaneV2HubbleRelayNamespace = "gke-managed-dpv2-observability"
 )
 
 // protectedSend ensures thread-safe sending on the gRPC stream
@@ -535,20 +538,35 @@ func (s *StreamClient) setupFlowComponents(ctx context.Context) (chan smartcache
 	}
 
 	// Try to set up the flow collector to monitor Cilium flows
-	flowCollector, err := cilium.NewFlowCollector(ctx, s.Logger, "kube-system", cache)
+	// Check kube-system first, then fallback to gke-managed-dpv2-observability for GKE Dataplane V2
+	var flowCollector *cilium.FlowCollector
+	var err error
+
+	// First try kube-system namespace
+	flowCollector, err = cilium.NewFlowCollector(ctx, s.Logger, defaultHubbleRelayNamespace, cache)
 	if err != nil {
-		s.Logger.Warn("Failed to create flow collector, continuing without Cilium flow collection", zap.Error(err))
-		s.Logger.Info("Operator will continue with resource ingestion and other functions, but network flow data will not be available")
-		s.Logger.Info("To suppress this warning, set DISABLE_CILIUM_FLOWS=true environment variable")
+		s.Logger.Info("Hubble relay not found in kube-system, trying gke-managed-dpv2-observability namespace", zap.Error(err))
 
-		// Still set up Istio ALS even without Cilium
-		s.setupIstioALSIfEnabled(ctx, l7Cache)
+		// Try GKE Dataplane V2 observability namespace
+		flowCollector, err = cilium.NewFlowCollector(ctx, s.Logger, dataplaneV2HubbleRelayNamespace, cache)
+		if err != nil {
+			s.Logger.Warn("Failed to create flow collector in both kube-system and gke-managed-dpv2-observability namespaces, continuing without Cilium flow collection", zap.Error(err))
+			s.Logger.Info("Operator will continue with resource ingestion and other functions, but network flow data will not be available")
+			s.Logger.Info("To suppress this warning, set DISABLE_CILIUM_FLOWS=true environment variable")
 
-		// Return nil flowCollector to indicate Cilium is not available, but don't fail startup
-		return flowChan, cache, nil, l7FlowChan, l7Cache, nil
+			// Still set up Istio ALS even without Cilium
+			s.setupIstioALSIfEnabled(ctx, l7Cache)
+
+			// Return nil flowCollector to indicate Cilium is not available, but don't fail startup
+			return flowChan, cache, nil, l7FlowChan, l7Cache, nil
+		} else {
+			s.Logger.Info("Successfully connected to Cilium hubble-relay in gke-managed-dpv2-observability namespace")
+		}
+	} else {
+		s.Logger.Info("Successfully connected to Cilium hubble-relay in kube-system namespace")
 	}
 
-	s.Logger.Info("Successfully connected to Cilium, network flow collection enabled")
+	s.Logger.Info("Cilium network flow collection enabled")
 
 	// Set up Istio ALS alongside Cilium if enabled
 	s.setupIstioALSIfEnabled(ctx, l7Cache)
