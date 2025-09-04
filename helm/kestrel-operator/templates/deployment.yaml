@@ -49,6 +49,10 @@ spec:
             - name: DISABLE_CILIUM_FLOWS
               value: "{{ .Values.operator.cilium.disableFlows }}"
             
+            # Hubble TLS configuration
+            - name: DISABLE_HUBBLE_TLS
+              value: "{{ .Values.operator.cilium.hubble.tls.forceDisable }}"
+            
             # Istio integration configuration
             - name: ENABLE_ISTIO_ALS
               value: "{{ .Values.operator.istio.enabled }}"
