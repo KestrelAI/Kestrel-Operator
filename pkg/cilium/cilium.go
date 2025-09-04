@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"os"
 	"time"
 
 	"operator/pkg/k8s_helper"
@@ -220,28 +221,34 @@ func NewFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace s
 
 	var conn *grpc.ClientConn
 
-	// First try to connect with TLS (required for GKE Dataplane V2)
-	tlsCreds, tlsErr := loadHubbleTLSCredentials(logger, ciliumNamespace)
-	if tlsErr == nil {
-		logger.Info("Attempting TLS connection to Hubble relay")
-		dialOpts := []grpc.DialOption{
-			grpc.WithTransportCredentials(tlsCreds),
-		}
-
-		tlsConn, tlsConnErr := grpc.NewClient(hubbleAddress, dialOpts...)
-		if tlsConnErr != nil {
-			logger.Warn("Failed to create TLS gRPC client, will try insecure connection",
-				zap.Error(tlsConnErr))
-		} else {
-			logger.Info("Successfully established TLS gRPC connection to Hubble relay",
-				zap.String("address", hubbleAddress))
-			conn = tlsConn
-		}
+	// Check if TLS should be forced off via environment variable
+	disableHubbleTLS := os.Getenv("DISABLE_HUBBLE_TLS")
+	if disableHubbleTLS == "true" {
+		logger.Info("Hubble TLS explicitly disabled via DISABLE_HUBBLE_TLS environment variable")
 	} else {
-		logger.Info("TLS credentials not available, will try insecure connection", zap.Error(tlsErr))
+		// Try to connect with TLS first
+		tlsCreds, tlsErr := loadHubbleTLSCredentials(logger, ciliumNamespace)
+		if tlsErr == nil {
+			logger.Info("Attempting TLS connection to Hubble relay")
+			dialOpts := []grpc.DialOption{
+				grpc.WithTransportCredentials(tlsCreds),
+			}
+
+			tlsConn, tlsConnErr := grpc.NewClient(hubbleAddress, dialOpts...)
+			if tlsConnErr != nil {
+				logger.Warn("Failed to create TLS gRPC client, will try insecure connection",
+					zap.Error(tlsConnErr))
+			} else {
+				logger.Info("Successfully established TLS gRPC connection to Hubble relay",
+					zap.String("address", hubbleAddress))
+				conn = tlsConn
+			}
+		} else {
+			logger.Info("TLS credentials not available, will try insecure connection", zap.Error(tlsErr))
+		}
 	}
 
-	// Fallback to insecure connection if TLS failed
+	// Fallback to insecure connection if TLS failed or was disabled
 	if conn == nil {
 		logger.Info("Attempting insecure connection to Hubble relay")
 		dialOpts := []grpc.DialOption{
@@ -250,13 +257,14 @@ func NewFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace s
 
 		insecureConn, insecureErr := grpc.NewClient(hubbleAddress, dialOpts...)
 		if insecureErr != nil {
-			return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay at %s (TLS err: %v, insecure err: %w)", hubbleAddress, tlsErr, insecureErr)
+			return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay at %s: %w", hubbleAddress, insecureErr)
 		}
 
 		logger.Info("Successfully established insecure gRPC connection to Hubble relay",
 			zap.String("address", hubbleAddress))
 		conn = insecureConn
 	}
+
 	hubbleClient := observer.NewObserverClient(conn)
 	return &FlowCollector{logger: logger, client: hubbleClient, cache: cache}, nil
 }
