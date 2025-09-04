@@ -2,7 +2,10 @@ package cilium
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"time"
 
 	"operator/pkg/k8s_helper"
 
@@ -12,6 +15,7 @@ import (
 	observer "github.com/cilium/cilium/api/v1/observer"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,6 +25,10 @@ import (
 const (
 	ciliumHubbleRelayMaxFlowCount uint64 = 100
 	ciliumHubbleRelayServiceName  string = "hubble-relay"
+
+	// Secret names for certificate discovery
+	hubbleRelayClientSecretName = "hubble-relay-client-certs"
+	hubbleServerCertsSecretName = "hubble-relay-server-certs"
 )
 
 type FlowCollector struct {
@@ -45,6 +53,163 @@ func discoverCiliumHubbleRelayAddress(ctx context.Context, ciliumNamespace strin
 	return address, nil
 }
 
+// HubbleTLSConfig holds TLS configuration for Hubble relay
+type HubbleTLSConfig struct {
+	ClientCert []byte
+	ClientKey  []byte
+	CACert     []byte
+	ServerName string
+}
+
+// loadHubbleTLSCredentials loads TLS credentials for connecting to Hubble relay using multiple discovery methods
+func loadHubbleTLSCredentials(logger *zap.Logger, namespace string) (credentials.TransportCredentials, error) {
+	logger.Info("Attempting to discover Hubble TLS certificates",
+		zap.String("namespace", namespace))
+
+	tlsConfig, err := discoverHubbleCertificates(logger, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover Hubble TLS certificates: %w", err)
+	}
+
+	// Validate and parse client certificate and key
+	cert, err := tls.X509KeyPair(tlsConfig.ClientCert, tlsConfig.ClientKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse client certificate and key: %w", err)
+	}
+
+	// Validate that we have a valid certificate
+	if len(cert.Certificate) == 0 {
+		return nil, fmt.Errorf("no certificates found in client certificate")
+	}
+
+	// Parse the client certificate to verify it's valid
+	clientCertParsed, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse client certificate: %w", err)
+	}
+
+	// Log certificate details for debugging
+	logger.Debug("Loaded client certificate details",
+		zap.String("subject", clientCertParsed.Subject.String()),
+		zap.Time("not_before", clientCertParsed.NotBefore),
+		zap.Time("not_after", clientCertParsed.NotAfter))
+
+	// Create certificate pool and add CA
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(tlsConfig.CACert) {
+		return nil, fmt.Errorf("failed to parse CA certificate - invalid PEM format")
+	}
+
+	// Verify the CA certificate is valid by parsing it
+	caCertParsed, err := x509.ParseCertificates(tlsConfig.CACert)
+	if err != nil || len(caCertParsed) == 0 {
+		logger.Warn("Could not parse CA certificate for validation, but will proceed", zap.Error(err))
+	} else {
+		logger.Debug("Loaded CA certificate details",
+			zap.String("subject", caCertParsed[0].Subject.String()),
+			zap.Time("not_before", caCertParsed[0].NotBefore),
+			zap.Time("not_after", caCertParsed[0].NotAfter))
+	}
+
+	// Create TLS config
+	grpcTLSConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caCertPool,
+		ServerName:   tlsConfig.ServerName,
+	}
+
+	logger.Info("Successfully configured TLS for Hubble relay",
+		zap.String("server_name", tlsConfig.ServerName),
+		zap.String("namespace", namespace))
+
+	return credentials.NewTLS(grpcTLSConfig), nil
+}
+
+// discoverHubbleCertificates attempts to discover Hubble TLS certificates from Kubernetes secrets
+func discoverHubbleCertificates(logger *zap.Logger, namespace string) (*HubbleTLSConfig, error) {
+	// Load certificates from Kubernetes secrets (GKE Dataplane V2 and standard Cilium)
+	if config, err := loadCertificatesFromKubernetesSecrets(logger, namespace); err == nil {
+		logger.Info("Loaded Hubble certificates from Kubernetes secrets")
+		return config, nil
+	} else {
+		logger.Debug("Failed to load certificates from Kubernetes secrets", zap.Error(err))
+		return nil, fmt.Errorf("no valid Hubble TLS certificates found - ensure hubble-relay-client-certs secret exists in namespace %s: %w", namespace, err)
+	}
+}
+
+// loadCertificatesFromKubernetesSecrets loads certificates from Kubernetes secrets
+func loadCertificatesFromKubernetesSecrets(logger *zap.Logger, namespace string) (*HubbleTLSConfig, error) {
+	// Get Kubernetes clientset
+	clientset, err := k8s_helper.NewClientSet()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+
+	// Create context with timeout for secret retrieval
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Try to load from hubble-relay-client-certs secret in the Hubble namespace
+	logger.Debug("Attempting to load client certificates from Hubble namespace",
+		zap.String("namespace", namespace),
+		zap.String("secret_name", hubbleRelayClientSecretName))
+
+	clientSecret, err := clientset.CoreV1().Secrets(namespace).Get(ctx, hubbleRelayClientSecretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client secret %s in namespace %s: %w", hubbleRelayClientSecretName, namespace, err)
+	}
+
+	// Extract client certificate and key from secret (standard kubernetes.io/tls format)
+	clientCert, exists := clientSecret.Data["tls.crt"]
+	if !exists || len(clientCert) == 0 {
+		return nil, fmt.Errorf("tls.crt not found or empty in secret %s", hubbleRelayClientSecretName)
+	}
+
+	clientKey, exists := clientSecret.Data["tls.key"]
+	if !exists || len(clientKey) == 0 {
+		return nil, fmt.Errorf("tls.key not found or empty in secret %s", hubbleRelayClientSecretName)
+	}
+
+	// Try to get CA certificate from client secret first
+	caCert, exists := clientSecret.Data["ca.crt"]
+	if !exists {
+		// If CA cert is not in client secret, try to get it from server secret in the same namespace
+		logger.Debug("CA certificate not found in client secret, trying server secret",
+			zap.String("server_secret_name", hubbleServerCertsSecretName))
+
+		serverSecret, err := clientset.CoreV1().Secrets(namespace).Get(ctx, hubbleServerCertsSecretName, metav1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get server secret %s for CA certificate in namespace %s: %w",
+				hubbleServerCertsSecretName, namespace, err)
+		}
+
+		caCert, exists = serverSecret.Data["ca.crt"]
+		if !exists || len(caCert) == 0 {
+			return nil, fmt.Errorf("ca.crt not found or empty in either client secret %s or server secret %s",
+				hubbleRelayClientSecretName, hubbleServerCertsSecretName)
+		}
+
+		logger.Debug("Successfully loaded CA certificate from server secret", zap.String("server_secret_namespace", namespace))
+	} else {
+		logger.Debug("Successfully loaded CA certificate from client secret")
+	}
+
+	// Server name based on certificate subject
+	serverName := "hubble-relay.cilium.io"
+
+	logger.Info("Successfully loaded Hubble certificates from Kubernetes secrets",
+		zap.String("client_secret", hubbleRelayClientSecretName),
+		zap.String("namespace", namespace),
+		zap.String("server_name", serverName))
+
+	return &HubbleTLSConfig{
+		ClientCert: clientCert,
+		ClientKey:  clientKey,
+		CACert:     caCert,
+		ServerName: serverName,
+	}, nil
+}
+
 // newCiliumCollector connects to Ciilium Hubble Relay, sets up an Observer client, and returns a new Collector using it.
 func NewFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace string, cache *smartcache.SmartCache) (*FlowCollector, error) {
 	config, err := k8s_helper.NewClientSet()
@@ -55,9 +220,49 @@ func NewFlowCollector(ctx context.Context, logger *zap.Logger, ciliumNamespace s
 	if err != nil {
 		return nil, err
 	}
-	conn, err := grpc.NewClient(hubbleAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay: %w", err)
+
+	logger.Info("Attempting to connect to Hubble relay",
+		zap.String("address", hubbleAddress),
+		zap.String("namespace", ciliumNamespace))
+
+	var conn *grpc.ClientConn
+
+	// First try to connect with TLS (required for GKE Dataplane V2)
+	tlsCreds, tlsErr := loadHubbleTLSCredentials(logger, ciliumNamespace)
+	if tlsErr == nil {
+		logger.Info("Attempting TLS connection to Hubble relay")
+		dialOpts := []grpc.DialOption{
+			grpc.WithTransportCredentials(tlsCreds),
+		}
+
+		tlsConn, tlsConnErr := grpc.NewClient(hubbleAddress, dialOpts...)
+		if tlsConnErr != nil {
+			logger.Warn("Failed to connect with TLS, will try insecure connection",
+				zap.Error(tlsConnErr))
+		} else {
+			logger.Info("Successfully established TLS gRPC connection to Hubble relay",
+				zap.String("address", hubbleAddress))
+			conn = tlsConn
+		}
+	} else {
+		logger.Info("TLS credentials not available, will try insecure connection", zap.Error(tlsErr))
+	}
+
+	// Fallback to insecure connection if TLS failed
+	if conn == nil {
+		logger.Info("Attempting insecure connection to Hubble relay")
+		dialOpts := []grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}
+
+		insecureConn, insecureErr := grpc.NewClient(hubbleAddress, dialOpts...)
+		if insecureErr != nil {
+			return nil, fmt.Errorf("failed to connect to Cilium Hubble Relay at %s (TLS err: %v, insecure err: %w)", hubbleAddress, tlsErr, insecureErr)
+		}
+
+		logger.Info("Successfully established insecure gRPC connection to Hubble relay",
+			zap.String("address", hubbleAddress))
+		conn = insecureConn
 	}
 	hubbleClient := observer.NewObserverClient(conn)
 	return &FlowCollector{logger: logger, client: hubbleClient, cache: cache}, nil
@@ -75,6 +280,8 @@ func (fm *FlowCollector) ExportCiliumFlows(ctx context.Context) error {
 		fm.logger.Error("Error getting network flows", zap.Error(err))
 		return err
 	}
+
+	fm.logger.Info("Successfully established flow stream to Hubble relay")
 	defer func() {
 		err = stream.CloseSend()
 		if err != nil {
