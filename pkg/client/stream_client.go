@@ -13,6 +13,7 @@ import (
 	"operator/pkg/shell_executor"
 	smartcache "operator/pkg/smart_cache"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -772,6 +773,8 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 				s.handleShellCommandRequest(ctx, stream, resp.ShellCommandRequest)
 			case *v1.StreamDataResponse_YamlDryRunRequest:
 				s.handleYamlDryRunRequest(ctx, stream, resp.YamlDryRunRequest)
+			case *v1.StreamDataResponse_YamlApplyRequest:
+				s.handleYamlApplyRequest(ctx, stream, resp.YamlApplyRequest)
 			}
 		}
 	}
@@ -869,6 +872,34 @@ func (s *StreamClient) handleYamlDryRunRequest(
 	s.sendYamlDryRunResponse(stream, yamlResponse)
 }
 
+// handleYamlApplyRequest processes YAML apply requests from the server
+func (s *StreamClient) handleYamlApplyRequest(
+	ctx context.Context,
+	stream v1.StreamService_StreamDataClient,
+	yamlRequest *v1.YamlApplyRequest,
+) {
+	s.Logger.Info("Received YAML apply request from server",
+		zap.String("request_id", yamlRequest.RequestId),
+		zap.Int("manifests_count", len(yamlRequest.YamlManifests)))
+
+	// Process each manifest
+	results := make([]*v1.YamlApplyResult, 0, len(yamlRequest.YamlManifests))
+
+	for _, manifest := range yamlRequest.YamlManifests {
+		result := s.applyYamlManifest(ctx, manifest)
+		results = append(results, result)
+	}
+
+	// Create response
+	yamlResponse := &v1.YamlApplyResponse{
+		RequestId: yamlRequest.RequestId,
+		Results:   results,
+	}
+
+	// Send the response back to the server
+	s.sendYamlApplyResponse(stream, yamlResponse)
+}
+
 // sendYamlDryRunResponse sends a YAML dry-run validation response to the server
 func (s *StreamClient) sendYamlDryRunResponse(stream v1.StreamService_StreamDataClient, yamlResponse *v1.YamlDryRunResponse) {
 	responseMsg := &v1.StreamDataRequest{
@@ -886,6 +917,91 @@ func (s *StreamClient) sendYamlDryRunResponse(stream v1.StreamService_StreamData
 			zap.String("request_id", yamlResponse.RequestId),
 			zap.Int("results_count", len(yamlResponse.Results)))
 	}
+}
+
+// sendYamlApplyResponse sends a YAML apply response to the server
+func (s *StreamClient) sendYamlApplyResponse(stream v1.StreamService_StreamDataClient, yamlResponse *v1.YamlApplyResponse) {
+	responseMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_YamlApplyResponse{
+			YamlApplyResponse: yamlResponse,
+		},
+	}
+
+	if err := s.protectedSend(stream, responseMsg); err != nil {
+		s.Logger.Error("Failed to send YAML apply response to server",
+			zap.String("request_id", yamlResponse.RequestId),
+			zap.Error(err))
+	} else {
+		s.Logger.Info("Successfully sent YAML apply response to server",
+			zap.String("request_id", yamlResponse.RequestId),
+			zap.Int("results_count", len(yamlResponse.Results)))
+	}
+}
+
+// applyYamlManifest applies a single YAML manifest to the cluster
+func (s *StreamClient) applyYamlManifest(ctx context.Context, manifest *v1.YamlManifest) *v1.YamlApplyResult {
+	result := &v1.YamlApplyResult{
+		ManifestId: manifest.ManifestId,
+	}
+
+	s.Logger.Info("Applying YAML manifest",
+		zap.String("manifest_id", manifest.ManifestId),
+		zap.String("resource_type", manifest.ResourceType),
+		zap.String("namespace", manifest.Namespace))
+
+	// Apply the YAML using kubectl
+	err := s.applyResourceToCluster(ctx, manifest.YamlContent, manifest.ResourceType, manifest.Namespace)
+	if err != nil {
+		s.Logger.Error("Failed to apply YAML manifest",
+			zap.String("manifest_id", manifest.ManifestId),
+			zap.Error(err))
+		result.Success = false
+		result.ErrorMessage = err.Error()
+		result.StatusCode = 500
+		return result
+	}
+
+	result.Success = true
+	result.StatusCode = 200
+	result.AppliedResourceInfo = fmt.Sprintf("Applied %s in namespace %s", manifest.ResourceType, manifest.Namespace)
+
+	s.Logger.Info("Successfully applied YAML manifest",
+		zap.String("manifest_id", manifest.ManifestId),
+		zap.String("applied_info", result.AppliedResourceInfo))
+
+	return result
+}
+
+// applyResourceToCluster applies YAML content to the cluster using kubectl
+func (s *StreamClient) applyResourceToCluster(ctx context.Context, yamlContent, resourceType, namespace string) error {
+	// Create a temporary file for the YAML content
+	tmpFile, err := os.CreateTemp("", "kestrel-apply-*.yaml")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	// Write YAML content to temporary file
+	if _, err := tmpFile.WriteString(yamlContent); err != nil {
+		return fmt.Errorf("failed to write YAML to temporary file: %w", err)
+	}
+	tmpFile.Close()
+
+	// Apply using kubectl with timeout
+	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", tmpFile.Name(), "--timeout=30s")
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("kubectl apply failed: %w, output: %s", err, string(output))
+	}
+
+	s.Logger.Info("kubectl apply completed successfully",
+		zap.String("output", string(output)),
+		zap.String("resource_type", resourceType),
+		zap.String("namespace", namespace))
+
+	return nil
 }
 
 // handleNetworkPolicy validates network policies from the server and sends appropriate responses
