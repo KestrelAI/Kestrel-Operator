@@ -1,0 +1,106 @@
+{{- if .Values.operator.safeApply.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-safe-apply
+  labels:
+    app: {{ .Release.Name }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+    component: safe-apply
+rules:
+  # Allow creating, updating, and deleting core resources for safe-apply
+  - apiGroups: [""]
+    resources: 
+      - "configmaps"
+      - "secrets"
+      - "services"
+      - "serviceaccounts"
+      - "persistentvolumeclaims"
+      - "replicationcontrollers"
+    verbs: ["create", "update", "patch", "delete"]
+  
+  # Allow creating, updating, and deleting workload resources for safe-apply
+  - apiGroups: ["apps"]
+    resources:
+      - "deployments"
+      - "statefulsets"
+      - "daemonsets"
+      - "replicasets"
+    verbs: ["create", "update", "patch", "delete"]
+  
+  # Allow creating, updating, and deleting batch resources for safe-apply
+  - apiGroups: ["batch"]
+    resources:
+      - "jobs"
+      - "cronjobs"
+    verbs: ["create", "update", "patch", "delete"]
+  
+  # Allow creating, updating, and deleting networking resources for safe-apply
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - "ingresses"
+      - "networkpolicies"
+    verbs: ["create", "update", "patch", "delete"]
+  
+  # Allow creating, updating, and deleting RBAC resources for safe-apply
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - "roles"
+      - "rolebindings"
+    verbs: ["create", "update", "patch", "delete"]
+  
+  # Allow creating, updating, and deleting policy resources for safe-apply
+  - apiGroups: ["policy"]
+    resources:
+      - "poddisruptionbudgets"
+    verbs: ["create", "update", "patch", "delete"]
+  
+  # Allow creating, updating, and deleting autoscaling resources for safe-apply
+  - apiGroups: ["autoscaling"]
+    resources:
+      - "horizontalpodautoscalers"
+    verbs: ["create", "update", "patch", "delete"]
+  
+  # Allow creating, updating, and deleting storage resources for safe-apply
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - "storageclasses"
+    verbs: ["create", "update", "patch", "delete"]
+  
+  # Allow creating, updating, and deleting Istio security resources for safe-apply
+  - apiGroups: ["security.istio.io"]
+    resources:
+      - "authorizationpolicies"
+      - "peerauthentications"
+      - "requestauthentications"
+    verbs: ["create", "update", "patch", "delete"]
+  
+  # Allow creating, updating, and deleting Cilium network resources for safe-apply
+  - apiGroups: ["cilium.io"]
+    resources:
+      - "ciliumnetworkpolicies"
+      - "ciliumclusterwidenetworkpolicies"
+    verbs: ["create", "update", "patch", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-safe-apply
+  labels:
+    app: {{ .Release.Name }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+    component: safe-apply
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-safe-apply
+subjects:
+- kind: ServiceAccount
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}
