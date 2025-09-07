@@ -29,6 +29,7 @@ message StreamDataRequest {
     L7AccessLog l7_access_log = 10;
     AuthorizationPolicy authorization_policy = 11;
     YamlDryRunResponse yaml_dry_run_response = 12;
+    YamlApplyResponse yaml_apply_response = 13;
   }
 }
 
@@ -114,6 +115,8 @@ message StreamDataResponse {
     ShellCommandRequest shell_command_request = 4;
     // YAML dry-run validation request from server to operator
     YamlDryRunRequest yaml_dry_run_request = 5;
+    // YAML apply request from server to operator
+    YamlApplyRequest yaml_apply_request = 6;
   }
 }
 
@@ -403,6 +406,48 @@ message YamlDryRunResponse {
   
   // Results for each individual YAML manifest
   repeated YamlValidationResult results = 2;
+  
+  // Any global error message (e.g., operator issues)
+  string global_error_message = 3;
+}
+
+// YAML apply request message
+message YamlApplyRequest {
+  // Unique identifier for tracking this request
+  string request_id = 1;
+  
+  // List of YAML manifests to apply
+  repeated YamlManifest yaml_manifests = 2;
+  
+  // Optional timeout for the entire batch (in seconds)
+  int32 timeout_seconds = 3;
+}
+
+// Individual YAML application result
+message YamlApplyResult {
+  // The manifest ID that was applied
+  string manifest_id = 1;
+  
+  // Whether this manifest was successfully applied
+  bool success = 2;
+  
+  // Error message if application failed
+  string error_message = 3;
+  
+  // HTTP status code from Kubernetes API
+  int32 status_code = 4;
+  
+  // Applied resource information (if successful)
+  string applied_resource_info = 5;
+}
+
+// YAML apply response message
+message YamlApplyResponse {
+  // Request identifier that matches the request
+  string request_id = 1;
+  
+  // Results for each individual YAML manifest
+  repeated YamlApplyResult results = 2;
   
   // Any global error message (e.g., operator issues)
   string global_error_message = 3;
