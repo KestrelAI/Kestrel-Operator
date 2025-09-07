@@ -58,6 +58,12 @@ operator:
     # Port for the ALS gRPC server
     alsPort: 8080
 
+  # Safe-apply configuration for Chat YAML changes
+  safeApply:
+    # Enable safe-apply permissions for the operator
+    # When enabled, the operator will have RBAC permissions to apply approved YAML changes
+    enabled: false
+
 # Resource limits and requests - optimized for production
 resources:
   limits:
