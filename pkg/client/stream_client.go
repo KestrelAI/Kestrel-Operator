@@ -38,6 +38,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"operator/pkg/envoy_als"
+	"sync/atomic"
 )
 
 // ServerConfig holds the configuration for connecting to the server
@@ -56,6 +57,13 @@ type StreamClient struct {
 	sendMu        sync.Mutex // Protects concurrent stream.Send calls
 	apiExecutor   *k8s_api.APIExecutor
 	shellExecutor *shell_executor.ShellExecutor
+
+	// Health tracking fields for liveness probe
+	streamHealthy   int64 // atomic boolean (1 = healthy, 0 = unhealthy)
+	lastHealthyTime int64 // atomic unix timestamp of last healthy operation
+	eofErrorCount   int64 // atomic counter for consecutive EOF errors
+	healthMu        sync.RWMutex
+	lastError       error // last error encountered (protected by healthMu)
 }
 
 const (
@@ -70,7 +78,108 @@ const (
 func (s *StreamClient) protectedSend(stream v1.StreamService_StreamDataClient, req *v1.StreamDataRequest) error {
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()
-	return stream.Send(req)
+	err := stream.Send(req)
+
+	// Update health status based on send result
+	if err != nil {
+		s.recordStreamError(err)
+	} else {
+		s.recordStreamHealthy()
+	}
+
+	return err
+}
+
+// recordStreamHealthy marks the stream as healthy
+func (s *StreamClient) recordStreamHealthy() {
+	atomic.StoreInt64(&s.streamHealthy, 1)
+	atomic.StoreInt64(&s.lastHealthyTime, time.Now().Unix())
+	atomic.StoreInt64(&s.eofErrorCount, 0)
+
+	s.healthMu.Lock()
+	s.lastError = nil
+	s.healthMu.Unlock()
+}
+
+// recordStreamError records a stream error and updates health status
+func (s *StreamClient) recordStreamError(err error) {
+	atomic.StoreInt64(&s.streamHealthy, 0)
+
+	s.healthMu.Lock()
+	s.lastError = err
+	s.healthMu.Unlock()
+
+	// Check if this is an EOF error and increment counter
+	if err != nil && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection closed")) {
+		atomic.AddInt64(&s.eofErrorCount, 1)
+		s.Logger.Warn("EOF error detected on gRPC stream",
+			zap.Error(err),
+			zap.Int64("consecutive_eof_count", atomic.LoadInt64(&s.eofErrorCount)))
+	}
+}
+
+// IsStreamHealthy returns true if the stream is currently healthy
+func (s *StreamClient) IsStreamHealthy() bool {
+	return atomic.LoadInt64(&s.streamHealthy) == 1
+}
+
+// GetStreamHealthInfo returns detailed health information for debugging
+func (s *StreamClient) GetStreamHealthInfo() (bool, time.Time, int64, error) {
+	healthy := atomic.LoadInt64(&s.streamHealthy) == 1
+	lastHealthyUnix := atomic.LoadInt64(&s.lastHealthyTime)
+	lastHealthyTime := time.Unix(lastHealthyUnix, 0)
+	eofCount := atomic.LoadInt64(&s.eofErrorCount)
+
+	s.healthMu.RLock()
+	lastErr := s.lastError
+	s.healthMu.RUnlock()
+
+	return healthy, lastHealthyTime, eofCount, lastErr
+}
+
+// IsStreamInEOFLoop returns true if the stream is stuck in an EOF loop
+func (s *StreamClient) IsStreamInEOFLoop() bool {
+	eofCount := atomic.LoadInt64(&s.eofErrorCount)
+	lastHealthyUnix := atomic.LoadInt64(&s.lastHealthyTime)
+
+	// Consider it an EOF loop if:
+	// 1. We have 5 or more consecutive EOF errors, AND
+	// 2. It's been more than 5 minutes since the last healthy operation
+	const maxEOFErrors = 5
+	const maxUnhealthyDuration = 5 * time.Minute
+
+	if eofCount >= maxEOFErrors {
+		if lastHealthyUnix == 0 {
+			// Never been healthy
+			return true
+		}
+		lastHealthyTime := time.Unix(lastHealthyUnix, 0)
+		if time.Since(lastHealthyTime) > maxUnhealthyDuration {
+			return true
+		}
+	}
+
+	return false
+}
+
+// SimulateEOF simulates EOF errors for testing purposes
+func (s *StreamClient) SimulateEOF() {
+	s.Logger.Warn("Simulating EOF errors for testing")
+
+	// Create a mock EOF error
+	eofErr := fmt.Errorf("rpc error: code = Unavailable desc = EOF")
+
+	// Simulate multiple EOF errors to trigger EOF loop detection
+	for i := 0; i < 6; i++ {
+		s.recordStreamError(eofErr)
+	}
+
+	// Set last healthy time to more than 5 minutes ago to trigger EOF loop
+	atomic.StoreInt64(&s.lastHealthyTime, time.Now().Add(-10*time.Minute).Unix())
+
+	s.Logger.Warn("Simulated EOF loop condition",
+		zap.Int64("eof_count", atomic.LoadInt64(&s.eofErrorCount)),
+		zap.Bool("in_eof_loop", s.IsStreamInEOFLoop()))
 }
 
 // NewStreamClient creates a new StreamClient with the given configuration
@@ -158,6 +267,10 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		Config:        config,
 		apiExecutor:   apiExecutor,
 		shellExecutor: shellExecutor,
+		// Initialize health tracking - start as unhealthy until first successful operation
+		streamHealthy:   0,
+		lastHealthyTime: 0,
+		eofErrorCount:   0,
 	}, nil
 }
 
@@ -753,12 +866,16 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 		default:
 			response, err := stream.Recv()
 			if err != nil {
+				s.recordStreamError(err)
 				select {
 				case done <- err:
 				default:
 				}
 				return
 			}
+
+			// Successfully received a message - mark stream as healthy
+			s.recordStreamHealthy()
 
 			// Handle the response based on its type
 			switch resp := response.Response.(type) {
