@@ -64,10 +64,10 @@ operator:
     # When enabled, the operator will have RBAC permissions to apply approved YAML changes
     enabled: false
 
-# Health check configuration for liveness and readiness probes
+# Health check configuration for liveness probe
 healthcheck:
-  # Port for the health check HTTP server
-  port: 8080
+  # Port for the health check HTTP server (8081 to avoid conflict with Istio ALS port 8080)
+  port: 8081
   
   # Liveness probe configuration
   # The liveness probe determines if the pod should be restarted
