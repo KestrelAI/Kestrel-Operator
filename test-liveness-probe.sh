@@ -7,7 +7,7 @@ set -e
 
 NAMESPACE=${1:-kestrel-ai}
 DEPLOYMENT="kestrel-operator"
-PORT=8080
+PORT=8081
 
 echo "Testing Kestrel AI Operator Liveness Probe"
 echo "=============================================="
