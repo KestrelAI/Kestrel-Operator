@@ -64,6 +64,23 @@ operator:
     # When enabled, the operator will have RBAC permissions to apply approved YAML changes
     enabled: false
 
+# Health check configuration for liveness and readiness probes
+healthcheck:
+  # Port for the health check HTTP server
+  port: 8080
+  
+  # Liveness probe configuration
+  # The liveness probe determines if the pod should be restarted
+  # It will fail if the gRPC stream is in an EOF loop or unhealthy for too long
+  livenessProbe:
+    initialDelaySeconds: 30  # Wait 30 seconds after container starts
+    periodSeconds: 30        # Check every 30 seconds
+    timeoutSeconds: 5        # Timeout after 5 seconds
+    failureThreshold: 3      # Restart after 3 consecutive failures
+    successThreshold: 1      # Consider healthy after 1 success
+  
+
+
 # Resource limits and requests - optimized for production
 resources:
   limits:
