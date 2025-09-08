@@ -23,7 +23,7 @@ func TestHealthServer(t *testing.T) {
 	}
 
 	// Create health server
-	healthServer := NewHealthServer(logger, streamClient, 8080)
+	healthServer := NewHealthServer(logger, streamClient, 8081)
 
 	// Test liveness endpoint with healthy stream
 	t.Run("liveness_healthy", func(t *testing.T) {
