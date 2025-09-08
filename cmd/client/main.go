@@ -42,12 +42,12 @@ func main() {
 	}
 	defer streamClient.Client.Close()
 
-	// Get health server port from environment variable (default to 8080)
-	healthPortStr := getEnvOrDefault("HEALTH_PORT", "8080")
+	// Get health server port from environment variable (default to 8081)
+	healthPortStr := getEnvOrDefault("HEALTH_PORT", "8081")
 	healthPort, err := strconv.Atoi(healthPortStr)
 	if err != nil {
-		logger.Warn("Invalid HEALTH_PORT, using default 8080", zap.String("port", healthPortStr))
-		healthPort = 8080
+		logger.Warn("Invalid HEALTH_PORT, using default 8081", zap.String("port", healthPortStr))
+		healthPort = 8081
 	}
 
 	// Create and start health server
