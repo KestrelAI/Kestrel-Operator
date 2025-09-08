@@ -61,10 +61,10 @@ spec:
             
             # Health server configuration
             - name: HEALTH_PORT
-              value: "{{ .Values.healthcheck.port | default 8080 }}"
+              value: "{{ .Values.healthcheck.port | default 8081 }}"
           ports:
             - name: health
-              containerPort: {{ .Values.healthcheck.port | default 8080 }}
+              containerPort: {{ .Values.healthcheck.port | default 8081 }}
               protocol: TCP
           livenessProbe:
             httpGet:
