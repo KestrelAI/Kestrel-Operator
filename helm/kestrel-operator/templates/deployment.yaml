@@ -58,5 +58,23 @@ spec:
               value: "{{ .Values.operator.istio.enabled }}"
             - name: ISTIO_ALS_PORT
               value: "{{ .Values.operator.istio.alsPort }}"
+            
+            # Health server configuration
+            - name: HEALTH_PORT
+              value: "{{ .Values.healthcheck.port | default 8080 }}"
+          ports:
+            - name: health
+              containerPort: {{ .Values.healthcheck.port | default 8080 }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: health
+            initialDelaySeconds: {{ .Values.healthcheck.livenessProbe.initialDelaySeconds | default 30 }}
+            periodSeconds: {{ .Values.healthcheck.livenessProbe.periodSeconds | default 30 }}
+            timeoutSeconds: {{ .Values.healthcheck.livenessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.healthcheck.livenessProbe.failureThreshold | default 3 }}
+            successThreshold: {{ .Values.healthcheck.livenessProbe.successThreshold | default 1 }}
+
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
