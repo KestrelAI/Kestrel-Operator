@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"sync/atomic"
+
 	"go.uber.org/zap"
 )
 
@@ -119,10 +121,13 @@ func TestStreamHealthTracking(t *testing.T) {
 	logger := zap.NewNop()
 
 	streamClient := &StreamClient{
-		Logger:          logger,
-		streamHealthy:   0,
-		lastHealthyTime: 0,
-		eofErrorCount:   0,
+		Logger:           logger,
+		streamHealthy:    0,
+		lastHealthyTime:  0,
+		eofErrorCount:    0,
+		totalEOFErrors:   0,
+		eofTrackingStart: 0,
+		lastEOFTime:      0,
 	}
 
 	// Test initial state
@@ -150,13 +155,13 @@ func TestStreamHealthTracking(t *testing.T) {
 		t.Error("Last healthy time should not be zero")
 	}
 
-	// Test EOF loop detection
+	// Test EOF loop detection - should not be in loop when healthy
 	if streamClient.IsStreamInEOFLoop() {
 		t.Error("Should not be in EOF loop when healthy")
 	}
 
-	// Simulate EOF errors
-	for i := 0; i < 6; i++ {
+	// Simulate enough EOF errors to potentially trigger loop detection
+	for i := 0; i < 8; i++ {
 		streamClient.recordStreamError(&mockEOFError{})
 	}
 
@@ -164,17 +169,34 @@ func TestStreamHealthTracking(t *testing.T) {
 		t.Error("Stream should be unhealthy after errors")
 	}
 
-	// Should not be in EOF loop yet (not enough time passed)
+	// Should not be in EOF loop yet (not enough time passed and not enough frequency)
 	if streamClient.IsStreamInEOFLoop() {
 		t.Error("Should not be in EOF loop immediately after errors")
 	}
 
-	// Simulate time passing
-	streamClient.lastHealthyTime = time.Now().Add(-10 * time.Minute).Unix()
+	// Simulate time passing and set tracking start to make it look like a persistent problem
+	now := time.Now()
+	atomic.StoreInt64(&streamClient.eofTrackingStart, now.Add(-8*time.Minute).Unix())
+	atomic.StoreInt64(&streamClient.lastEOFTime, now.Unix())
 
 	// Now should be in EOF loop
 	if !streamClient.IsStreamInEOFLoop() {
-		t.Error("Should be in EOF loop after time passes")
+		t.Error("Should be in EOF loop after sufficient time and errors")
+	}
+
+	// Test detailed health info
+	healthy2, _, _, totalEOFCount, eofStart, lastEOF, _ := streamClient.GetDetailedStreamHealthInfo()
+	if healthy2 {
+		t.Error("Stream should not be healthy after errors")
+	}
+	if totalEOFCount != 8 {
+		t.Errorf("Total EOF count should be 8, got %d", totalEOFCount)
+	}
+	if eofStart.IsZero() {
+		t.Error("EOF tracking start should not be zero")
+	}
+	if lastEOF.IsZero() {
+		t.Error("Last EOF time should not be zero")
 	}
 }
 
