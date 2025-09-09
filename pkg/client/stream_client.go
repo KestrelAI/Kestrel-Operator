@@ -62,8 +62,12 @@ type StreamClient struct {
 	streamHealthy   int64 // atomic boolean (1 = healthy, 0 = unhealthy)
 	lastHealthyTime int64 // atomic unix timestamp of last healthy operation
 	eofErrorCount   int64 // atomic counter for consecutive EOF errors
-	healthMu        sync.RWMutex
-	lastError       error // last error encountered (protected by healthMu)
+	// New fields for persistent EOF tracking
+	totalEOFErrors   int64 // atomic counter for total EOF errors in time window
+	eofTrackingStart int64 // atomic unix timestamp when EOF tracking started
+	lastEOFTime      int64 // atomic unix timestamp of last EOF error
+	healthMu         sync.RWMutex
+	lastError        error // last error encountered (protected by healthMu)
 }
 
 const (
@@ -72,6 +76,11 @@ const (
 
 	defaultHubbleRelayNamespace     = "kube-system"
 	dataplaneV2HubbleRelayNamespace = "gke-managed-dpv2-observability"
+
+	// Constants for EOF loop detection
+	minEOFErrorsForLoop  = 5               // Minimum total EOF errors to consider it a loop
+	maxTimeBetweenEOFs   = 2 * time.Minute // Max time between EOF errors to be considered active
+	minUnhealthyDuration = 5 * time.Minute // Minimum time we should be unhealthy to declare a loop
 )
 
 // protectedSend ensures thread-safe sending on the gRPC stream
@@ -94,7 +103,24 @@ func (s *StreamClient) protectedSend(stream v1.StreamService_StreamDataClient, r
 func (s *StreamClient) recordStreamHealthy() {
 	atomic.StoreInt64(&s.streamHealthy, 1)
 	atomic.StoreInt64(&s.lastHealthyTime, time.Now().Unix())
-	atomic.StoreInt64(&s.eofErrorCount, 0)
+
+	// Only reset EOF counters if we've been healthy for a sustained period (5 minutes)
+	// This prevents resetting counters immediately after reconnection
+	lastHealthyTime := atomic.LoadInt64(&s.lastHealthyTime)
+	eofTrackingStart := atomic.LoadInt64(&s.eofTrackingStart)
+
+	const healthyResetThreshold = 5 * time.Minute
+
+	// If we have EOF tracking data and we've been healthy for long enough, reset EOF counters
+	if eofTrackingStart > 0 && lastHealthyTime > 0 {
+		timeSinceEOFTracking := time.Unix(lastHealthyTime, 0).Sub(time.Unix(eofTrackingStart, 0))
+		if timeSinceEOFTracking > healthyResetThreshold {
+			atomic.StoreInt64(&s.eofErrorCount, 0)
+			atomic.StoreInt64(&s.totalEOFErrors, 0)
+			atomic.StoreInt64(&s.eofTrackingStart, 0)
+			atomic.StoreInt64(&s.lastEOFTime, 0)
+		}
+	}
 
 	s.healthMu.Lock()
 	s.lastError = nil
@@ -109,12 +135,30 @@ func (s *StreamClient) recordStreamError(err error) {
 	s.lastError = err
 	s.healthMu.Unlock()
 
-	// Check if this is an EOF error and increment counter
+	// Check if this is an EOF error and increment counters
 	if err != nil && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection closed")) {
+		now := time.Now().Unix()
+		atomic.StoreInt64(&s.lastEOFTime, now)
+
+		// Initialize EOF tracking if this is the first EOF error
+		if atomic.LoadInt64(&s.eofTrackingStart) == 0 {
+			atomic.StoreInt64(&s.eofTrackingStart, now)
+		}
+
+		// Increment both consecutive and total EOF counters
 		atomic.AddInt64(&s.eofErrorCount, 1)
+		atomic.AddInt64(&s.totalEOFErrors, 1)
+
+		eofCount := atomic.LoadInt64(&s.eofErrorCount)
+		totalEOFCount := atomic.LoadInt64(&s.totalEOFErrors)
+
 		s.Logger.Warn("EOF error detected on gRPC stream",
 			zap.Error(err),
-			zap.Int64("consecutive_eof_count", atomic.LoadInt64(&s.eofErrorCount)))
+			zap.Int64("consecutive_eof_count", eofCount),
+			zap.Int64("total_eof_count", totalEOFCount))
+	} else {
+		// Non-EOF error, reset consecutive EOF counter but keep total tracking
+		atomic.StoreInt64(&s.eofErrorCount, 0)
 	}
 }
 
@@ -137,29 +181,65 @@ func (s *StreamClient) GetStreamHealthInfo() (bool, time.Time, int64, error) {
 	return healthy, lastHealthyTime, eofCount, lastErr
 }
 
+// GetDetailedStreamHealthInfo returns comprehensive health information including persistent EOF tracking
+func (s *StreamClient) GetDetailedStreamHealthInfo() (bool, time.Time, int64, int64, time.Time, time.Time, error) {
+	healthy := atomic.LoadInt64(&s.streamHealthy) == 1
+	lastHealthyUnix := atomic.LoadInt64(&s.lastHealthyTime)
+	lastHealthyTime := time.Unix(lastHealthyUnix, 0)
+	eofCount := atomic.LoadInt64(&s.eofErrorCount)
+	totalEOFCount := atomic.LoadInt64(&s.totalEOFErrors)
+	eofTrackingStartUnix := atomic.LoadInt64(&s.eofTrackingStart)
+	eofTrackingStart := time.Unix(eofTrackingStartUnix, 0)
+	lastEOFTimeUnix := atomic.LoadInt64(&s.lastEOFTime)
+	lastEOFTime := time.Unix(lastEOFTimeUnix, 0)
+
+	s.healthMu.RLock()
+	lastErr := s.lastError
+	s.healthMu.RUnlock()
+
+	return healthy, lastHealthyTime, eofCount, totalEOFCount, eofTrackingStart, lastEOFTime, lastErr
+}
+
 // IsStreamInEOFLoop returns true if the stream is stuck in an EOF loop
 func (s *StreamClient) IsStreamInEOFLoop() bool {
-	eofCount := atomic.LoadInt64(&s.eofErrorCount)
-	lastHealthyUnix := atomic.LoadInt64(&s.lastHealthyTime)
+	totalEOFErrors := atomic.LoadInt64(&s.totalEOFErrors)
+	eofTrackingStartUnix := atomic.LoadInt64(&s.eofTrackingStart)
+	lastEOFTimeUnix := atomic.LoadInt64(&s.lastEOFTime)
 
-	// Consider it an EOF loop if:
-	// 1. We have 5 or more consecutive EOF errors, AND
-	// 2. It's been more than 5 minutes since the last healthy operation
-	const maxEOFErrors = 5
-	const maxUnhealthyDuration = 5 * time.Minute
-
-	if eofCount >= maxEOFErrors {
-		if lastHealthyUnix == 0 {
-			// Never been healthy
-			return true
-		}
-		lastHealthyTime := time.Unix(lastHealthyUnix, 0)
-		if time.Since(lastHealthyTime) > maxUnhealthyDuration {
-			return true
-		}
+	// No EOF errors recorded, not in a loop
+	if totalEOFErrors == 0 || eofTrackingStartUnix == 0 {
+		return false
 	}
 
-	return false
+	now := time.Now()
+	eofTrackingStart := time.Unix(eofTrackingStartUnix, 0)
+	lastEOFTime := time.Unix(lastEOFTimeUnix, 0)
+
+	// Calculate time since EOF tracking started
+	timeSinceEOFTrackingStarted := now.Sub(eofTrackingStart)
+	timeSinceLastEOF := now.Sub(lastEOFTime)
+
+	// Check if we have enough EOF errors to indicate a persistent problem
+	if totalEOFErrors < minEOFErrorsForLoop {
+		return false
+	}
+
+	// Check if we've been unhealthy long enough to make a determination
+	if timeSinceEOFTrackingStarted < minUnhealthyDuration {
+		return false
+	}
+
+	// Check if the last EOF was recent enough to consider the loop active
+	if timeSinceLastEOF > maxTimeBetweenEOFs {
+		return false
+	}
+
+	s.Logger.Warn("EOF loop detected",
+		zap.Int64("total_eof_errors", totalEOFErrors),
+		zap.Duration("unhealthy_duration", timeSinceEOFTrackingStarted),
+		zap.Duration("time_since_last_eof", timeSinceLastEOF))
+
+	return true
 }
 
 // SimulateEOF simulates EOF errors for testing purposes
@@ -170,15 +250,20 @@ func (s *StreamClient) SimulateEOF() {
 	eofErr := fmt.Errorf("rpc error: code = Unavailable desc = EOF")
 
 	// Simulate multiple EOF errors to trigger EOF loop detection
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 8; i++ {
 		s.recordStreamError(eofErr)
+		// Add small delay between errors to simulate real conditions
+		time.Sleep(10 * time.Millisecond)
 	}
 
-	// Set last healthy time to more than 5 minutes ago to trigger EOF loop
-	atomic.StoreInt64(&s.lastHealthyTime, time.Now().Add(-10*time.Minute).Unix())
+	// Set EOF tracking start time to more than 5 minutes ago to trigger EOF loop
+	atomic.StoreInt64(&s.eofTrackingStart, time.Now().Add(-8*time.Minute).Unix())
+	// Set last EOF time to recent to keep loop active
+	atomic.StoreInt64(&s.lastEOFTime, time.Now().Unix())
 
 	s.Logger.Warn("Simulated EOF loop condition",
-		zap.Int64("eof_count", atomic.LoadInt64(&s.eofErrorCount)),
+		zap.Int64("total_eof_count", atomic.LoadInt64(&s.totalEOFErrors)),
+		zap.Int64("consecutive_eof_count", atomic.LoadInt64(&s.eofErrorCount)),
 		zap.Bool("in_eof_loop", s.IsStreamInEOFLoop()))
 }
 
@@ -268,9 +353,12 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		apiExecutor:   apiExecutor,
 		shellExecutor: shellExecutor,
 		// Initialize health tracking - start as unhealthy until first successful operation
-		streamHealthy:   0,
-		lastHealthyTime: 0,
-		eofErrorCount:   0,
+		streamHealthy:    0,
+		lastHealthyTime:  0,
+		eofErrorCount:    0,
+		totalEOFErrors:   0,
+		eofTrackingStart: 0,
+		lastEOFTime:      0,
 	}, nil
 }
 
