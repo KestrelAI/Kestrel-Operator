@@ -132,6 +132,7 @@ message Workload {
   map<string, string> labels = 5;
   google.protobuf.Timestamp created_at = 6;
   Action action = 7; // CREATE, UPDATE, DELETE
+  string service_account = 8; // Service account used by the workload
 }
 
 // Namespace definition for streaming namespace inventory
@@ -531,6 +532,9 @@ message L7Endpoint {
   
   // Service name (if applicable)
   string service_name = 6;
+  
+  // Service account (for source workloads)
+  string service_account = 7;
 }
 
 // HTTP-specific access log data
