@@ -30,6 +30,7 @@ message StreamDataRequest {
     AuthorizationPolicy authorization_policy = 11;
     YamlDryRunResponse yaml_dry_run_response = 12;
     YamlApplyResponse yaml_apply_response = 13;
+    Pod pod = 14;
   }
 }
 
@@ -142,6 +143,29 @@ message Namespace {
   map<string, string> labels = 3;
   google.protobuf.Timestamp created_at = 4;
   Action action = 5; // CREATE, UPDATE, DELETE
+}
+
+// Pod definition for streaming pod inventory
+message Pod {
+  string name = 1;
+  string namespace = 2;
+  string uid = 3;
+  string pod_ip = 4; // Pod IP address
+  map<string, string> labels = 5;
+  string phase = 6; // Pod phase (Pending, Running, Succeeded, Failed, Unknown)
+  repeated OwnerReference owner_references = 7;
+  google.protobuf.Timestamp created_at = 8;
+  Action action = 9; // CREATE, UPDATE, DELETE
+}
+
+// OwnerReference definition
+message OwnerReference {
+  string api_version = 1;
+  string kind = 2;
+  string name = 3;
+  string uid = 4;
+  bool controller = 5;
+  bool block_owner_deletion = 6;
 }
 
 // Service definition for streaming service inventory
@@ -532,9 +556,6 @@ message L7Endpoint {
   
   // Service name (if applicable)
   string service_name = 6;
-  
-  // Service account (for source workloads)
-  string service_account = 7;
 }
 
 // HTTP-specific access log data
