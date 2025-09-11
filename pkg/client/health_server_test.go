@@ -84,9 +84,9 @@ func TestHealthServer(t *testing.T) {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
 
-		// Verify that the stream is now in EOF loop
-		if !streamClient.IsStreamInEOFLoop() {
-			t.Error("Expected stream to be in EOF loop after simulation")
+		// Verify that the stream is now unhealthy for liveness
+		if !streamClient.IsStreamUnhealthyForLiveness() {
+			t.Error("Expected stream to be unhealthy for liveness after simulation")
 		}
 	})
 
@@ -155,9 +155,9 @@ func TestStreamHealthTracking(t *testing.T) {
 		t.Error("Last healthy time should not be zero")
 	}
 
-	// Test EOF loop detection - should not be in loop when healthy
-	if streamClient.IsStreamInEOFLoop() {
-		t.Error("Should not be in EOF loop when healthy")
+	// Test liveness health detection - should not be unhealthy when healthy
+	if streamClient.IsStreamUnhealthyForLiveness() {
+		t.Error("Should not be unhealthy for liveness when healthy")
 	}
 
 	// Simulate enough EOF errors to potentially trigger loop detection
@@ -169,19 +169,19 @@ func TestStreamHealthTracking(t *testing.T) {
 		t.Error("Stream should be unhealthy after errors")
 	}
 
-	// Should not be in EOF loop yet (not enough time passed and not enough frequency)
-	if streamClient.IsStreamInEOFLoop() {
-		t.Error("Should not be in EOF loop immediately after errors")
+	// Should not be unhealthy for liveness yet (not enough time passed)
+	if streamClient.IsStreamUnhealthyForLiveness() {
+		t.Error("Should not be unhealthy for liveness immediately after errors")
 	}
 
 	// Simulate time passing and set tracking start to make it look like a persistent problem
 	now := time.Now()
-	atomic.StoreInt64(&streamClient.eofTrackingStart, now.Add(-8*time.Minute).Unix())
+	atomic.StoreInt64(&streamClient.eofTrackingStart, now.Add(-2*time.Minute).Unix())
 	atomic.StoreInt64(&streamClient.lastEOFTime, now.Unix())
 
-	// Now should be in EOF loop
-	if !streamClient.IsStreamInEOFLoop() {
-		t.Error("Should be in EOF loop after sufficient time and errors")
+	// Now should be unhealthy for liveness
+	if !streamClient.IsStreamUnhealthyForLiveness() {
+		t.Error("Should be unhealthy for liveness after sufficient time and errors")
 	}
 
 	// Test detailed health info
