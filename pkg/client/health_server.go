@@ -69,8 +69,8 @@ func (hs *HealthServer) Stop() error {
 // Returns 200 OK if the operator should continue running
 // Returns 503 Service Unavailable if the operator should be restarted
 func (hs *HealthServer) livenessHandler(w http.ResponseWriter, r *http.Request) {
-	// Check if the stream is in an EOF loop - if so, restart immediately
-	if hs.streamClient.IsStreamInEOFLoop() {
+	// Check if the stream is unhealthy for liveness - if so, restart immediately
+	if hs.streamClient.IsStreamUnhealthyForLiveness() {
 		_, _, eofCount, lastErr := hs.streamClient.GetStreamHealthInfo()
 		logFields := []zap.Field{
 			zap.Int64("eof_count", eofCount),
@@ -78,12 +78,12 @@ func (hs *HealthServer) livenessHandler(w http.ResponseWriter, r *http.Request) 
 		if lastErr != nil {
 			logFields = append(logFields, zap.Error(lastErr))
 		}
-		hs.logger.Warn("Liveness check failed: stream is in EOF loop, triggering immediate restart", logFields...)
-		hs.writeHealthResponse(w, http.StatusServiceUnavailable, "unhealthy", "Stream is in EOF loop")
+		hs.logger.Warn("Liveness check failed: stream unhealthy with recent EOF errors, triggering restart", logFields...)
+		hs.writeHealthResponse(w, http.StatusServiceUnavailable, "unhealthy", "Stream unhealthy with EOF errors")
 		return
 	}
 
-	// Stream is not in EOF loop - operator should continue running
+	// Stream is healthy for liveness - operator should continue running
 	healthy, _, _, _ := hs.streamClient.GetStreamHealthInfo()
 	var status string
 	if healthy {
@@ -98,7 +98,7 @@ func (hs *HealthServer) livenessHandler(w http.ResponseWriter, r *http.Request) 
 // statusHandler provides detailed status information for debugging
 func (hs *HealthServer) statusHandler(w http.ResponseWriter, r *http.Request) {
 	healthy, lastHealthyTime, eofCount, totalEOFCount, eofTrackingStart, lastEOFTime, lastErr := hs.streamClient.GetDetailedStreamHealthInfo()
-	inEOFLoop := hs.streamClient.IsStreamInEOFLoop()
+	inEOFLoop := hs.streamClient.IsStreamUnhealthyForLiveness()
 
 	response := HealthResponse{
 		StreamHealthy:    healthy,
@@ -150,7 +150,7 @@ func (hs *HealthServer) writeHealthResponse(w http.ResponseWriter, statusCode in
 		TotalEOFErrors:   totalEOFCount,
 		EOFTrackingStart: eofTrackingStart,
 		LastEOFTime:      lastEOFTime,
-		InEOFLoop:        hs.streamClient.IsStreamInEOFLoop(),
+		InEOFLoop:        hs.streamClient.IsStreamUnhealthyForLiveness(),
 		Timestamp:        time.Now(),
 	}
 
