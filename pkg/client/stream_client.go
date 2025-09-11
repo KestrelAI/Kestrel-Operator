@@ -77,10 +77,10 @@ const (
 	defaultHubbleRelayNamespace     = "kube-system"
 	dataplaneV2HubbleRelayNamespace = "gke-managed-dpv2-observability"
 
-	// Constants for EOF loop detection
-	minEOFErrorsForLoop  = 5               // Minimum total EOF errors to consider it a loop
-	maxTimeBetweenEOFs   = 2 * time.Minute // Max time between EOF errors to be considered active
-	minUnhealthyDuration = 5 * time.Minute // Minimum time we should be unhealthy to declare a loop
+	// Constants for liveness probe
+	minEOFErrorsForLiveness  = 3                // Minimum EOF errors for liveness failure
+	minUnhealthyForLiveness  = 1 * time.Minute  // Minimum unhealthy duration for liveness failure
+	maxHealthyGapForLiveness = 30 * time.Second // Max gap between EOFs for liveness failure
 )
 
 // protectedSend ensures thread-safe sending on the gRPC stream
@@ -200,13 +200,13 @@ func (s *StreamClient) GetDetailedStreamHealthInfo() (bool, time.Time, int64, in
 	return healthy, lastHealthyTime, eofCount, totalEOFCount, eofTrackingStart, lastEOFTime, lastErr
 }
 
-// IsStreamInEOFLoop returns true if the stream is stuck in an EOF loop
-func (s *StreamClient) IsStreamInEOFLoop() bool {
+// IsStreamUnhealthyForLiveness returns true if the stream should trigger a liveness probe failure
+func (s *StreamClient) IsStreamUnhealthyForLiveness() bool {
 	totalEOFErrors := atomic.LoadInt64(&s.totalEOFErrors)
 	eofTrackingStartUnix := atomic.LoadInt64(&s.eofTrackingStart)
 	lastEOFTimeUnix := atomic.LoadInt64(&s.lastEOFTime)
 
-	// No EOF errors recorded, not in a loop
+	// No EOF errors recorded, stream is healthy for liveness
 	if totalEOFErrors == 0 || eofTrackingStartUnix == 0 {
 		return false
 	}
@@ -220,21 +220,21 @@ func (s *StreamClient) IsStreamInEOFLoop() bool {
 	timeSinceLastEOF := now.Sub(lastEOFTime)
 
 	// Check if we have enough EOF errors to indicate a persistent problem
-	if totalEOFErrors < minEOFErrorsForLoop {
+	if totalEOFErrors < minEOFErrorsForLiveness {
 		return false
 	}
 
-	// Check if we've been unhealthy long enough to make a determination
-	if timeSinceEOFTrackingStarted < minUnhealthyDuration {
+	// Check if we've been unhealthy long enough to make a liveness determination
+	if timeSinceEOFTrackingStarted < minUnhealthyForLiveness {
 		return false
 	}
 
 	// Check if the last EOF was recent enough to consider the loop active
-	if timeSinceLastEOF > maxTimeBetweenEOFs {
+	if timeSinceLastEOF > maxHealthyGapForLiveness {
 		return false
 	}
 
-	s.Logger.Warn("EOF loop detected",
+	s.Logger.Warn("Stream unhealthy for liveness probe",
 		zap.Int64("total_eof_errors", totalEOFErrors),
 		zap.Duration("unhealthy_duration", timeSinceEOFTrackingStarted),
 		zap.Duration("time_since_last_eof", timeSinceLastEOF))
@@ -264,7 +264,7 @@ func (s *StreamClient) SimulateEOF() {
 	s.Logger.Warn("Simulated EOF loop condition",
 		zap.Int64("total_eof_count", atomic.LoadInt64(&s.totalEOFErrors)),
 		zap.Int64("consecutive_eof_count", atomic.LoadInt64(&s.eofErrorCount)),
-		zap.Bool("in_eof_loop", s.IsStreamInEOFLoop()))
+		zap.Bool("unhealthy_for_liveness", s.IsStreamUnhealthyForLiveness()))
 }
 
 // NewStreamClient creates a new StreamClient with the given configuration
