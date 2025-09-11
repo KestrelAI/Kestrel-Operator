@@ -71,9 +71,9 @@ spec:
               path: /health/live
               port: health
             initialDelaySeconds: {{ .Values.healthcheck.livenessProbe.initialDelaySeconds | default 30 }}
-            periodSeconds: {{ .Values.healthcheck.livenessProbe.periodSeconds | default 30 }}
+            periodSeconds: {{ .Values.healthcheck.livenessProbe.periodSeconds | default 15 }}
             timeoutSeconds: {{ .Values.healthcheck.livenessProbe.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.healthcheck.livenessProbe.failureThreshold | default 3 }}
+            failureThreshold: {{ .Values.healthcheck.livenessProbe.failureThreshold | default 1 }}
             successThreshold: {{ .Values.healthcheck.livenessProbe.successThreshold | default 1 }}
 
           resources:
