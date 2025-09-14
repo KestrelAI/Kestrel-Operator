@@ -72,13 +72,13 @@ POST_EOF_STATUS=$(curl -s http://localhost:$PORT/health/status)
 echo "Status after EOF: $(echo $POST_EOF_STATUS | jq -r '.status')"
 echo "Stream healthy: $(echo $POST_EOF_STATUS | jq -r '.stream_healthy')"
 echo "EOF count: $(echo $POST_EOF_STATUS | jq -r '.eof_error_count')"
-echo "In EOF loop: $(echo $POST_EOF_STATUS | jq -r '.in_eof_loop')"
+echo "Unhealthy for liveness: $(echo $POST_EOF_STATUS | jq -r '.in_eof_loop')"
 echo ""
 
 echo "Testing liveness probe after EOF (should fail)..."
 LIVENESS_CODE_AFTER=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$PORT/health/live)
 if [ "$LIVENESS_CODE_AFTER" = "503" ]; then
-    echo "Liveness probe returns 503 Service Unavailable (EOF detected)"
+    echo "Liveness probe returns 503 Service Unavailable (stream unhealthy detected)"
 else
     echo "Liveness probe returns $LIVENESS_CODE_AFTER (expected 503)"
 fi
@@ -96,13 +96,13 @@ echo "Pod: $CURRENT_POD"
 echo "Restart count before: $RESTART_COUNT_BEFORE"
 echo ""
 echo "Waiting for Kubernetes to restart the pod (this may take up to 2 minutes)..."
-echo "   - Liveness probe period: 30s"
-echo "   - Failure threshold: 3"
-echo "   - Expected restart time: ~90 seconds"
+echo "   - Liveness probe period: 15s"
+echo "   - Failure threshold: 1"
+echo "   - Expected restart time: ~15-20 seconds"
 echo ""
 
-# Wait for restart (up to 3 minutes)
-for i in {1..36}; do
+# Wait for restart (up to 1 minute should be enough now)
+for i in {1..12}; do
     sleep 5
     RESTART_COUNT_NOW=$(kubectl get pod -n $NAMESPACE $CURRENT_POD -o jsonpath='{.status.containerStatuses[0].restartCount}' 2>/dev/null || echo "0")
     
@@ -119,7 +119,7 @@ for i in {1..36}; do
         break
     fi
     
-    echo "   Waiting... (${i}0s elapsed)"
+    echo "   Waiting... (${i}5s elapsed)"
 done
 
 echo ""
@@ -136,7 +136,7 @@ FINAL_STATUS=$(curl -s http://localhost:$PORT/health/status)
 echo "Final status: $(echo $FINAL_STATUS | jq -r '.status')"
 echo "Stream healthy: $(echo $FINAL_STATUS | jq -r '.stream_healthy')"
 echo "EOF count: $(echo $FINAL_STATUS | jq -r '.eof_error_count')"
-echo "In EOF loop: $(echo $FINAL_STATUS | jq -r '.in_eof_loop')"
+echo "Unhealthy for liveness: $(echo $FINAL_STATUS | jq -r '.in_eof_loop')"
 
 FINAL_LIVENESS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$PORT/health/live)
 if [ "$FINAL_LIVENESS" = "200" ]; then
@@ -151,9 +151,9 @@ echo ""
 echo "Summary:"
 echo "- Initial health check passed"
 echo "- EOF simulation worked"
-echo "- EOF loop detection worked"  
+echo "- Stream unhealthy detection worked"  
 echo "- Liveness probe failed as expected"
-echo "- Pod restarted automatically"
+echo "- Pod restarted quickly (~15-20s)"
 echo "- Recovery after restart verified"
 echo ""
 echo "The liveness probe is working correctly! 🚀" 
