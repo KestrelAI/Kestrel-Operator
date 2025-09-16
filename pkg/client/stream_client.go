@@ -274,14 +274,12 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 
 	// Set up credentials based on TLS configuration
 	if config.UseTLS {
-		// Use TLS credentials with skip verification since we're in a cluster
-		// For production, you'd want to use proper CA certificates
 		creds = credentials.NewTLS(&tls.Config{
 			InsecureSkipVerify: false,
 		})
 		logger.Info("Using TLS with InsecureSkipVerify=false")
 	} else {
-		// Use insecure credentials
+		// Use insecure credentials, only for development
 		creds = credentials.NewTLS(&tls.Config{
 			InsecureSkipVerify: true,
 		})
