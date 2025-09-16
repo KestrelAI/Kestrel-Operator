@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	v1 "operator/api/gen/cloud/v1"
 	"operator/pkg/auth"
@@ -47,6 +48,12 @@ type ServerConfig struct {
 	Port   int
 	UseTLS bool
 	Token  string
+	// mTLS configuration
+	UseMTLS        bool
+	ClientCertFile string
+	ClientKeyFile  string
+	CACertFile     string
+	ServerName     string // For SNI and certificate verification
 }
 
 // StreamClient is the client for streaming data to and from the server
@@ -272,8 +279,38 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	var opts []grpc.DialOption
 	var creds credentials.TransportCredentials
 
-	// Set up credentials based on TLS configuration
-	if config.UseTLS {
+	// Set up credentials based on TLS/mTLS configuration
+	if config.UseMTLS {
+		// Load client certificate and key
+		clientCert, err := tls.LoadX509KeyPair(config.ClientCertFile, config.ClientKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate: %w", err)
+		}
+
+		// Load CA certificate for server verification
+		var caCertPool *x509.CertPool
+		if config.CACertFile != "" {
+			caCertData, err := os.ReadFile(config.CACertFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read CA certificate: %w", err)
+			}
+			caCertPool = x509.NewCertPool()
+			if !caCertPool.AppendCertsFromPEM(caCertData) {
+				return nil, fmt.Errorf("failed to parse CA certificate")
+			}
+		}
+
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{clientCert},
+			RootCAs:      caCertPool,
+			ServerName:   config.ServerName,
+		}
+
+		creds = credentials.NewTLS(tlsConfig)
+		logger.Info("Using mTLS with client certificate authentication",
+			zap.String("client_cert", config.ClientCertFile),
+			zap.String("server_name", config.ServerName))
+	} else if config.UseTLS {
 		creds = credentials.NewTLS(&tls.Config{
 			InsecureSkipVerify: false,
 		})
@@ -366,6 +403,13 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	host := getEnvOrDefault("SERVER_HOST", "auto-np-server")
 	portStr := getEnvOrDefault("SERVER_PORT", "50051")
 	useTLSStr := getEnvOrDefault("SERVER_USE_TLS", "true")
+	useMTLSStr := getEnvOrDefault("SERVER_USE_MTLS", "false")
+
+	// mTLS configuration
+	clientCertFile := getEnvOrDefault("CLIENT_CERT_FILE", "/tls/client.crt")
+	clientKeyFile := getEnvOrDefault("CLIENT_KEY_FILE", "/tls/client.key")
+	caCertFile := getEnvOrDefault("CA_CERT_FILE", "/tls/ca.crt")
+	serverName := getEnvOrDefault("SERVER_NAME", host)
 
 	// Token loading strategy: Check runtime secret first, fallback to Helm-managed secret
 	token, err := loadTokenWithFallback()
@@ -389,11 +433,22 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 		useTLS = false
 	}
 
+	// Parse useMTLS as boolean
+	useMTLS := false
+	if useMTLSStr == "true" {
+		useMTLS = true
+	}
+
 	return &ServerConfig{
-		Host:   host,
-		Port:   port,
-		UseTLS: useTLS,
-		Token:  token,
+		Host:           host,
+		Port:           port,
+		UseTLS:         useTLS,
+		Token:          token,
+		UseMTLS:        useMTLS,
+		ClientCertFile: clientCertFile,
+		ClientKeyFile:  clientKeyFile,
+		CACertFile:     caCertFile,
+		ServerName:     serverName,
 	}, nil
 }
 
