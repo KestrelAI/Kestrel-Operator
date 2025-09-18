@@ -31,8 +31,7 @@ func main() {
 	}
 	logger.Info("Loaded server configuration",
 		zap.String("host", config.Host),
-		zap.Int("port", config.Port),
-		zap.Bool("useTLS", config.UseTLS))
+		zap.Int("port", config.Port))
 
 	// Create StreamClient with the loaded configuration
 	streamClient, err := client.NewStreamClient(ctx, logger, *config)
