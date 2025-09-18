@@ -28,11 +28,6 @@ securityContext:
 server:
   host: grpc.platform.usekestrel.ai
   port: 443
-  useMTLS: true
-
-# mTLS Configuration
-# Set to true to enable mutual TLS authentication (recommended for production)
-useMTLS: true
 
 # JWT Authentication configuration
 auth:
