@@ -29,10 +29,6 @@ spec:
               value: "{{ .Values.server.host }}"
             - name: SERVER_PORT
               value: "{{ .Values.server.port | toString }}"
-            - name: SERVER_USE_TLS
-              value: "true"
-            - name: SERVER_USE_MTLS
-              value: "{{ .Values.server.useMTLS | toString }}"
             - name: SERVER_NAME
               value: "{{ .Values.server.host }}"
             
@@ -67,15 +63,13 @@ spec:
             - name: HEALTH_PORT
               value: "{{ .Values.healthcheck.port | default 8081 }}"
             
-            {{- if .Values.server.useMTLS }}
-            # mTLS certificate paths
+            # mTLS certificate paths (always enabled)
             - name: CLIENT_CERT_FILE
               value: "/tls/client.crt"
             - name: CLIENT_KEY_FILE
               value: "/tls/client.key"
             - name: CA_CERT_FILE
               value: "/tls/ca.crt"
-            {{- end }}
           ports:
             - name: health
               containerPort: {{ .Values.healthcheck.port | default 8081 }}
@@ -90,17 +84,15 @@ spec:
             failureThreshold: {{ .Values.healthcheck.livenessProbe.failureThreshold | default 1 }}
             successThreshold: {{ .Values.healthcheck.livenessProbe.successThreshold | default 1 }}
 
-          {{- if .Values.server.useMTLS }}
+          # Always mount mTLS certificates
           volumeMounts:
             - name: client-tls
               mountPath: /tls
               readOnly: true
-          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- if .Values.server.useMTLS }}
+      # Always mount mTLS certificate volume
       volumes:
         - name: client-tls
           secret:
             secretName: {{ .Release.Name }}-client-tls
-      {{- end }}
