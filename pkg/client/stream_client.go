@@ -44,12 +44,10 @@ import (
 
 // ServerConfig holds the configuration for connecting to the server
 type ServerConfig struct {
-	Host   string
-	Port   int
-	UseTLS bool
-	Token  string
-	// mTLS configuration
-	UseMTLS        bool
+	Host  string
+	Port  int
+	Token string
+	// mTLS configuration (always enabled)
 	ClientCertFile string
 	ClientKeyFile  string
 	CACertFile     string
@@ -279,49 +277,36 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	var opts []grpc.DialOption
 	var creds credentials.TransportCredentials
 
-	// Set up credentials based on TLS/mTLS configuration
-	if config.UseMTLS {
-		// Load client certificate and key
-		clientCert, err := tls.LoadX509KeyPair(config.ClientCertFile, config.ClientKeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load client certificate: %w", err)
-		}
-
-		// Load CA certificate for server verification
-		var caCertPool *x509.CertPool
-		if config.CACertFile != "" {
-			caCertData, err := os.ReadFile(config.CACertFile)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read CA certificate: %w", err)
-			}
-			caCertPool = x509.NewCertPool()
-			if !caCertPool.AppendCertsFromPEM(caCertData) {
-				return nil, fmt.Errorf("failed to parse CA certificate")
-			}
-		}
-
-		tlsConfig := &tls.Config{
-			Certificates: []tls.Certificate{clientCert},
-			RootCAs:      caCertPool,
-			ServerName:   config.ServerName,
-		}
-
-		creds = credentials.NewTLS(tlsConfig)
-		logger.Info("Using mTLS with client certificate authentication",
-			zap.String("client_cert", config.ClientCertFile),
-			zap.String("server_name", config.ServerName))
-	} else if config.UseTLS {
-		creds = credentials.NewTLS(&tls.Config{
-			InsecureSkipVerify: false,
-		})
-		logger.Info("Using TLS with InsecureSkipVerify=false")
-	} else {
-		// Use insecure credentials, only for development
-		creds = credentials.NewTLS(&tls.Config{
-			InsecureSkipVerify: true,
-		})
-		logger.Info("Using insecure credentials (no TLS)")
+	// Always use mTLS for server authentication
+	// Load client certificate and key
+	clientCert, err := tls.LoadX509KeyPair(config.ClientCertFile, config.ClientKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load client certificate: %w", err)
 	}
+
+	// Load CA certificate for server verification
+	var caCertPool *x509.CertPool
+	if config.CACertFile != "" {
+		caCertData, err := os.ReadFile(config.CACertFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate: %w", err)
+		}
+		caCertPool = x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCertData) {
+			return nil, fmt.Errorf("failed to parse CA certificate")
+		}
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{clientCert},
+		RootCAs:      caCertPool,
+		ServerName:   config.ServerName,
+	}
+
+	creds = credentials.NewTLS(tlsConfig)
+	logger.Info("Using mTLS with client certificate authentication",
+		zap.String("client_cert", config.ClientCertFile),
+		zap.String("server_name", config.ServerName))
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
 	// Add keepalive parameters for long-lived streams (24 hours)
@@ -402,8 +387,6 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	// Get server configuration from environment variables (set by Helm)
 	host := getEnvOrDefault("SERVER_HOST", "auto-np-server")
 	portStr := getEnvOrDefault("SERVER_PORT", "50051")
-	useTLSStr := getEnvOrDefault("SERVER_USE_TLS", "true")
-	useMTLSStr := getEnvOrDefault("SERVER_USE_MTLS", "false")
 
 	// mTLS configuration
 	clientCertFile := getEnvOrDefault("CLIENT_CERT_FILE", "/tls/client.crt")
@@ -427,24 +410,10 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 		port = 50051 // Default port if parsing fails
 	}
 
-	// Parse useTLS as boolean
-	useTLS := true
-	if useTLSStr == "false" {
-		useTLS = false
-	}
-
-	// Parse useMTLS as boolean
-	useMTLS := false
-	if useMTLSStr == "true" {
-		useMTLS = true
-	}
-
 	return &ServerConfig{
 		Host:           host,
 		Port:           port,
-		UseTLS:         useTLS,
 		Token:          token,
-		UseMTLS:        useMTLS,
 		ClientCertFile: clientCertFile,
 		ClientKeyFile:  clientKeyFile,
 		CACertFile:     caCertFile,
