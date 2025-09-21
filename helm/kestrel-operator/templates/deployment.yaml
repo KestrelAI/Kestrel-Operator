@@ -70,6 +70,12 @@ spec:
               value: "/tls/client.key"
             - name: CA_CERT_FILE
               value: "/tls/ca.crt"
+            
+            # Certificate renewal configuration
+            - name: CLIENT_CERT_SECRET_NAME
+              value: "{{ .Release.Name }}-client-tls"
+            - name: DEPLOYMENT_NAME
+              value: "{{ .Release.Name }}"
           ports:
             - name: health
               containerPort: {{ .Values.healthcheck.port | default 8081 }}
