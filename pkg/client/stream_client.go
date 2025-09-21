@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	v1 "operator/api/gen/cloud/v1"
 	"operator/pkg/auth"
@@ -33,6 +34,8 @@ import (
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/timestamppb"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -41,6 +44,8 @@ import (
 	"operator/pkg/envoy_als"
 	"sync/atomic"
 )
+
+var _ = appsv1.Deployment{}
 
 // ServerConfig holds the configuration for connecting to the server
 type ServerConfig struct {
@@ -279,9 +284,28 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 
 	// Always use mTLS for server authentication
 	// Load client certificate and key
+	logger.Info("Loading client certificates for mTLS",
+		zap.String("client_cert_file", config.ClientCertFile),
+		zap.String("client_key_file", config.ClientKeyFile))
+
 	clientCert, err := tls.LoadX509KeyPair(config.ClientCertFile, config.ClientKeyFile)
 	if err != nil {
+		logger.Error("Failed to load client certificate",
+			zap.Error(err),
+			zap.String("client_cert_file", config.ClientCertFile),
+			zap.String("client_key_file", config.ClientKeyFile))
 		return nil, fmt.Errorf("failed to load client certificate: %w", err)
+	}
+
+	// Log certificate details for debugging
+	if len(clientCert.Certificate) > 0 {
+		cert, err := x509.ParseCertificate(clientCert.Certificate[0])
+		if err == nil {
+			logger.Info("Loaded client certificate successfully",
+				zap.String("subject", cert.Subject.String()),
+				zap.Time("expires_at", cert.NotAfter),
+				zap.String("serial_number", cert.SerialNumber.String()))
+		}
 	}
 
 	// Load CA certificate for server verification
@@ -393,6 +417,9 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	clientKeyFile := getEnvOrDefault("CLIENT_KEY_FILE", "/tls/client.key")
 	caCertFile := getEnvOrDefault("CA_CERT_FILE", "/tls/ca.crt")
 	serverName := getEnvOrDefault("SERVER_NAME", host)
+
+	// Log certificate file paths for debugging
+	log.Printf("Certificate file paths: cert=%s, key=%s, ca=%s", clientCertFile, clientKeyFile, caCertFile)
 
 	// Token loading strategy: Check runtime secret first, fallback to Helm-managed secret
 	token, err := loadTokenWithFallback()
@@ -904,12 +931,22 @@ func (s *StreamClient) createStreamWithTenantContext(ctx context.Context, stream
 	})
 	ctxWithMetadata := metadata.NewOutgoingContext(ctx, md)
 
+	s.Logger.Info("Attempting to establish stream with server",
+		zap.String("tenantID", tenantID),
+		zap.String("serverAddr", fmt.Sprintf("%s:%d", s.Config.Host, s.Config.Port)))
+
 	// Start the bidirectional stream
 	stream, err := streamClient.StreamData(ctxWithMetadata)
 	if err != nil {
-		s.Logger.Error("Failed to establish stream", zap.Error(err))
+		s.Logger.Error("Failed to establish stream",
+			zap.Error(err),
+			zap.String("tenantID", tenantID),
+			zap.String("serverAddr", fmt.Sprintf("%s:%d", s.Config.Host, s.Config.Port)))
 		return nil, nil, err
 	}
+
+	s.Logger.Info("Successfully established stream with server",
+		zap.String("tenantID", tenantID))
 
 	return stream, ctxWithMetadata, nil
 }
@@ -1006,6 +1043,9 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 			// Successfully received a message - mark stream as healthy
 			s.recordStreamHealthy()
 
+			// Log all received messages for debugging
+			s.Logger.Debug("Received message from server", zap.String("message_type", fmt.Sprintf("%T", response.Response)))
+
 			// Handle the response based on its type
 			switch resp := response.Response.(type) {
 			case *v1.StreamDataResponse_Ack:
@@ -1021,6 +1061,11 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 				s.handleYamlDryRunRequest(ctx, stream, resp.YamlDryRunRequest)
 			case *v1.StreamDataResponse_YamlApplyRequest:
 				s.handleYamlApplyRequest(ctx, stream, resp.YamlApplyRequest)
+			case *v1.StreamDataResponse_CertificateRenewalRequest:
+				s.handleCertificateRenewalRequest(ctx, stream, resp.CertificateRenewalRequest)
+			default:
+				s.Logger.Warn("Received unhandled message type from server",
+					zap.String("message_type", fmt.Sprintf("%T", response.Response)))
 			}
 		}
 	}
@@ -1920,4 +1965,187 @@ func (s *StreamClient) sendL7FlowsToStreamWithDone(ctx context.Context, stream v
 			}
 		}
 	}
+}
+
+// handleCertificateRenewalRequest processes certificate renewal requests from the server
+func (s *StreamClient) handleCertificateRenewalRequest(
+	ctx context.Context,
+	stream v1.StreamService_StreamDataClient,
+	renewalRequest *v1.CertificateRenewalRequest,
+) {
+	s.Logger.Info("Received certificate renewal request from server",
+		zap.String("request_id", renewalRequest.RequestId),
+		zap.String("serial_number", renewalRequest.SerialNumber),
+		zap.Time("expires_at", renewalRequest.ExpiresAt.AsTime()))
+
+	// Apply the new certificates
+	success, errorMessage := s.applyCertificateRenewal(ctx, renewalRequest)
+
+	// Send response back to server
+	response := &v1.CertificateRenewalResponse{
+		RequestId:    renewalRequest.RequestId,
+		Success:      success,
+		ErrorMessage: errorMessage,
+		AppliedAt:    timestamppb.Now(),
+	}
+
+	responseMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_CertificateRenewalResponse{
+			CertificateRenewalResponse: response,
+		},
+	}
+
+	if err := s.protectedSend(stream, responseMsg); err != nil {
+		s.Logger.Error("Failed to send certificate renewal response to server",
+			zap.String("request_id", renewalRequest.RequestId),
+			zap.Error(err))
+	} else {
+		s.Logger.Info("Successfully sent certificate renewal response to server",
+			zap.String("request_id", renewalRequest.RequestId),
+			zap.Bool("success", success))
+	}
+}
+
+// applyCertificateRenewal applies new certificates by updating the mounted secret
+func (s *StreamClient) applyCertificateRenewal(ctx context.Context, renewalRequest *v1.CertificateRenewalRequest) (bool, string) {
+	s.Logger.Info("Applying certificate renewal",
+		zap.String("request_id", renewalRequest.RequestId))
+
+	// Decode base64-encoded certificate data
+	clientCertData, err := base64.StdEncoding.DecodeString(renewalRequest.ClientCert)
+	if err != nil {
+		s.Logger.Error("Failed to decode base64 client certificate", zap.Error(err))
+		return false, fmt.Sprintf("Failed to decode client certificate: %v", err)
+	}
+
+	clientKeyData, err := base64.StdEncoding.DecodeString(renewalRequest.ClientKey)
+	if err != nil {
+		s.Logger.Error("Failed to decode base64 client key", zap.Error(err))
+		return false, fmt.Sprintf("Failed to decode client key: %v", err)
+	}
+
+	caCertData, err := base64.StdEncoding.DecodeString(renewalRequest.CaCert)
+	if err != nil {
+		s.Logger.Error("Failed to decode base64 CA certificate", zap.Error(err))
+		return false, fmt.Sprintf("Failed to decode CA certificate: %v", err)
+	}
+
+	s.Logger.Info("Successfully decoded certificate data",
+		zap.Int("client_cert_bytes", len(clientCertData)),
+		zap.Int("client_key_bytes", len(clientKeyData)),
+		zap.Int("ca_cert_bytes", len(caCertData)))
+
+	// Need to update the secret that contains the client certificates
+	// The operator deployment mounts this secret at /tls
+	secretName := os.Getenv("CLIENT_CERT_SECRET_NAME")
+	if secretName == "" {
+		s.Logger.Error("CLIENT_CERT_SECRET_NAME environment variable is not set")
+		return false, "CLIENT_CERT_SECRET_NAME environment variable is not set"
+	}
+
+	namespace := os.Getenv("POD_NAMESPACE")
+	if namespace == "" {
+		s.Logger.Error("POD_NAMESPACE environment variable is not set")
+		return false, "POD_NAMESPACE environment variable is not set"
+	}
+
+	// Create Kubernetes client
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		s.Logger.Error("Failed to create Kubernetes config for certificate renewal", zap.Error(err))
+		return false, fmt.Sprintf("Failed to create Kubernetes config: %v", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		s.Logger.Error("Failed to create Kubernetes clientset for certificate renewal", zap.Error(err))
+		return false, fmt.Sprintf("Failed to create Kubernetes clientset: %v", err)
+	}
+
+	// Get the existing secret first to preserve any additional data
+	existingSecret, err := clientset.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		s.Logger.Error("Failed to get existing certificate secret",
+			zap.String("secret_name", secretName),
+			zap.String("namespace", namespace),
+			zap.Error(err))
+		return false, fmt.Sprintf("Failed to get existing certificate secret: %v", err)
+	}
+
+	// Update the certificate data while preserving other fields
+	// Use the decoded certificate data (already converted from base64)
+	existingSecret.Data["tls.crt"] = clientCertData
+	existingSecret.Data["tls.key"] = clientKeyData
+	existingSecret.Data["ca.crt"] = caCertData
+	// Alternative names for backward compatibility
+	existingSecret.Data["client.crt"] = clientCertData
+	existingSecret.Data["client.key"] = clientKeyData
+
+	// Add annotation to trigger pod restart for certificate pickup
+	if existingSecret.Annotations == nil {
+		existingSecret.Annotations = make(map[string]string)
+	}
+	existingSecret.Annotations["kestrel.ai/cert-renewed-at"] = time.Now().Format(time.RFC3339)
+
+	// Update the secret
+	_, err = clientset.CoreV1().Secrets(namespace).Update(ctx, existingSecret, metav1.UpdateOptions{})
+	if err != nil {
+		s.Logger.Error("Failed to update certificate secret",
+			zap.String("secret_name", secretName),
+			zap.String("namespace", namespace),
+			zap.Error(err))
+		return false, fmt.Sprintf("Failed to update certificate secret: %v", err)
+	}
+
+	s.Logger.Info("Successfully updated certificate secret",
+		zap.String("secret_name", secretName),
+		zap.String("namespace", namespace),
+		zap.String("expires_at", renewalRequest.ExpiresAt.AsTime().Format(time.RFC3339)))
+
+	// Trigger pod restart by updating deployment annotation
+	// This ensures the new certificates are picked up immediately
+	err = s.triggerPodRestart(ctx, clientset, namespace)
+	if err != nil {
+		s.Logger.Warn("Failed to trigger pod restart for certificate renewal",
+			zap.Error(err))
+		// Don't fail the renewal for this - the certificates are updated
+	} else {
+		s.Logger.Info("Triggered pod restart to apply new certificates")
+	}
+
+	return true, ""
+}
+
+// triggerPodRestart triggers a rolling restart of the operator deployment to pick up new certificates
+func (s *StreamClient) triggerPodRestart(ctx context.Context, clientset *kubernetes.Clientset, namespace string) error {
+	// Get deployment name from environment or infer from hostname
+	deploymentName := os.Getenv("DEPLOYMENT_NAME")
+	if deploymentName == "" {
+		s.Logger.Error("DEPLOYMENT_NAME environment variable is not set")
+		return fmt.Errorf("DEPLOYMENT_NAME environment variable is not set")
+	}
+
+	// Get the deployment
+	deployment, err := clientset.AppsV1().Deployments(namespace).Get(ctx, deploymentName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get deployment %s: %w", deploymentName, err)
+	}
+
+	// Add annotation to trigger rolling restart
+	if deployment.Spec.Template.Annotations == nil {
+		deployment.Spec.Template.Annotations = make(map[string]string)
+	}
+	deployment.Spec.Template.Annotations["kestrel.ai/cert-renewed-at"] = time.Now().Format(time.RFC3339)
+
+	// Update the deployment
+	_, err = clientset.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update deployment %s: %w", deploymentName, err)
+	}
+
+	s.Logger.Info("Successfully triggered rolling restart for certificate renewal",
+		zap.String("deployment", deploymentName),
+		zap.String("namespace", namespace))
+
+	return nil
 }
