@@ -12,4 +12,9 @@ rules:
   # Allow managing secrets in the {{ .Release.Namespace }} namespace only
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"] 
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # Allow managing deployments in the {{ .Release.Namespace }} namespace for certificate renewal (self-restart)
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "update", "patch"] 
