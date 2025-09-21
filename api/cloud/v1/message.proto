@@ -31,6 +31,7 @@ message StreamDataRequest {
     YamlDryRunResponse yaml_dry_run_response = 12;
     YamlApplyResponse yaml_apply_response = 13;
     Pod pod = 14;
+    CertificateRenewalResponse certificate_renewal_response = 15;
   }
 }
 
@@ -118,6 +119,8 @@ message StreamDataResponse {
     YamlDryRunRequest yaml_dry_run_request = 5;
     // YAML apply request from server to operator
     YamlApplyRequest yaml_apply_request = 6;
+    // Certificate renewal request from server to operator
+    CertificateRenewalRequest certificate_renewal_request = 7;
   }
 }
 
@@ -750,6 +753,45 @@ enum AuthorizationPolicyAction {
   AUTHORIZATION_POLICY_ACTION_DENY = 2;
   AUTHORIZATION_POLICY_ACTION_AUDIT = 3;
   AUTHORIZATION_POLICY_ACTION_CUSTOM = 4;
+}
+
+// Certificate renewal request message
+message CertificateRenewalRequest {
+  // Unique identifier for tracking this renewal request
+  string request_id = 1;
+  
+  // New client certificate (base64-encoded PEM data)
+  string client_cert = 2;
+  
+  // New client private key (base64-encoded PEM data)
+  string client_key = 3;
+  
+  // CA certificate for server verification (base64-encoded PEM data)
+  string ca_cert = 4;
+  
+  // When the new certificate was issued
+  google.protobuf.Timestamp issued_at = 5;
+  
+  // When the new certificate expires
+  google.protobuf.Timestamp expires_at = 6;
+  
+  // Certificate serial number for tracking
+  string serial_number = 7;
+}
+
+// Certificate renewal response message
+message CertificateRenewalResponse {
+  // Request identifier that matches the request
+  string request_id = 1;
+  
+  // Whether the certificate renewal was successful
+  bool success = 2;
+  
+  // Error message if renewal failed
+  string error_message = 3;
+  
+  // When the certificate was successfully applied
+  google.protobuf.Timestamp applied_at = 4;
 }
 
 // Service definition with bi-directional streaming RPC
