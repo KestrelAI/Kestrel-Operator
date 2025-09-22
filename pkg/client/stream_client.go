@@ -308,17 +308,30 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		}
 	}
 
-	// Load CA certificate for server verification
+	// For server certificate verification, we need to use the system CA bundle
+	// which includes Let's Encrypt and other public CAs. The custom CA certificate
+	// provided in config.CACertFile is for mTLS client certificate verification.
 	var caCertPool *x509.CertPool
+
+	// Start with system CA bundle for server certificate verification
+	caCertPool, err = x509.SystemCertPool()
+	if err != nil {
+		logger.Warn("Failed to load system CA pool, using empty pool", zap.Error(err))
+		caCertPool = x509.NewCertPool()
+	}
+
+	// If a custom CA certificate is provided, add it to the pool
+	// (this allows for custom/self-signed server certificates in development)
 	if config.CACertFile != "" {
 		caCertData, err := os.ReadFile(config.CACertFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read CA certificate: %w", err)
 		}
-		caCertPool = x509.NewCertPool()
 		if !caCertPool.AppendCertsFromPEM(caCertData) {
 			return nil, fmt.Errorf("failed to parse CA certificate")
 		}
+		logger.Info("Added CA certificate to cert pool",
+			zap.String("ca_cert_file", config.CACertFile))
 	}
 
 	tlsConfig := &tls.Config{
