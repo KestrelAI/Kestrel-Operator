@@ -321,7 +321,6 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	}
 
 	// If a custom CA certificate is provided, add it to the pool
-	// (this allows for custom/self-signed server certificates in development)
 	if config.CACertFile != "" {
 		caCertData, err := os.ReadFile(config.CACertFile)
 		if err != nil {
@@ -330,8 +329,7 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		if !caCertPool.AppendCertsFromPEM(caCertData) {
 			return nil, fmt.Errorf("failed to parse CA certificate")
 		}
-		logger.Info("Added CA certificate to cert pool",
-			zap.String("ca_cert_file", config.CACertFile))
+		logger.Info("Added CA certificate to cert pool", zap.String("ca_cert_file", config.CACertFile))
 	}
 
 	tlsConfig := &tls.Config{
