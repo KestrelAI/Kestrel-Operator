@@ -2,10 +2,10 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "Kestrel AI",
   "logo": {
-    "dark": "/logo/dark.svg",
-    "light": "/logo/light.svg"
+    "dark": "/logo/dark.png",
+    "light": "/logo/light.png"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/favicon.png",
   "colors": {
     "primary": "#3B82F6",
     "light": "#93C5FD",
@@ -46,14 +46,9 @@
   ],
   "anchors": [
     {
-      "name": "Community",
-      "icon": "discord",
-      "url": "https://discord.gg/kestrelai"
-    },
-    {
       "name": "Blog",
       "icon": "newspaper",
-      "url": "https://blog.usekestrel.ai"
+      "url": "https://usekestrel.ai/blog"
     },
     {
       "name": "Status",
@@ -65,7 +60,6 @@
     {
       "group": "Get Started",
       "pages": [
-        "introduction",
         "quickstart"
       ]
     },
@@ -76,33 +70,6 @@
         "operator/onboarding",
         "operator/configuration",
         "operator/troubleshooting"
-      ]
-    },
-    {
-      "group": "Platform Features",
-      "pages": [
-        "platform/dashboard",
-        "platform/ai-chat",
-        "platform/network-policies",
-        "platform/audit-logs"
-      ]
-    },
-    {
-      "group": "Security & Compliance",
-      "pages": [
-        "security/overview",
-        "security/rbac",
-        "security/safe-apply",
-        "security/compliance"
-      ]
-    },
-    {
-      "group": "API Reference",
-      "pages": [
-        "api-reference/authentication",
-        "api-reference/operators",
-        "api-reference/policies",
-        "api-reference/flows"
       ]
     }
   ],

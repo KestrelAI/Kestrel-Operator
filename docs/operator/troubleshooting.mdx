@@ -41,7 +41,7 @@ kubectl logs -n kestrel-ai -l app=kestrel-operator --previous
 <AccordionGroup>
   <Accordion title="Invalid or missing token">
     **Error message:**
-    ```
+    ```bash
     Error: authentication failed: invalid token
     ```
 
@@ -58,7 +58,7 @@ kubectl logs -n kestrel-ai -l app=kestrel-operator --previous
 
   <Accordion title="Cannot connect to server">
     **Error message:**
-    ```
+    ```bash
     Failed to connect to server: connection refused
     ```
 
@@ -76,7 +76,7 @@ kubectl logs -n kestrel-ai -l app=kestrel-operator --previous
 
   <Accordion title="Insufficient permissions">
     **Error message:**
-    ```
+    ```bash
     Error creating informer: forbidden: User "system:serviceaccount:kestrel-ai:kestrel-operator" cannot list resource
     ```
 
@@ -149,28 +149,6 @@ kubectl rollout restart deployment/kestrel-operator -n kestrel-ai
 
 - Verify network connectivity to Kestrel platform
 - Check for proxy or firewall configurations
-
-#### Intermittent Disconnections
-
-**Symptoms:**
-- Connection status flips between connected/disconnected
-- Logs show "EOF" errors
-
-**Solutions:**
-
-1. **Increase liveness probe tolerance:**
-```yaml
-healthcheck:
-  livenessProbe:
-    failureThreshold: 5  # Increase from 3
-    periodSeconds: 60    # Increase from 30
-```
-
-2. **Check for network instability:**
-```bash
-# Monitor operator logs for patterns
-kubectl logs -n kestrel-ai -l app=kestrel-operator -f | grep -i "disconnect\|reconnect\|eof"
-```
 
 ### Flow Collection Issues
 
@@ -291,137 +269,6 @@ helm upgrade kestrel-operator \
   -f values.yaml
 ```
 
-### Resource Issues
-
-#### High Memory Usage
-
-**Symptoms:**
-- Operator pod using excessive memory
-- OOMKilled errors
-
-**Solutions:**
-
-1. **Increase memory limits:**
-```yaml
-resources:
-  limits:
-    memory: 4Gi  # Increase from 2Gi
-  requests:
-    memory: 2Gi  # Increase from 1Gi
-```
-
-2. **Check for memory leaks in logs:**
-```bash
-kubectl top pod -n kestrel-ai -l app=kestrel-operator
-```
-
-3. **For large clusters, tune batch sizes** (contact support)
-
-#### High CPU Usage
-
-**Symptoms:**
-- Constant high CPU utilization
-- Slow response times
-
-**Solutions:**
-
-1. **Increase CPU limits:**
-```yaml
-resources:
-  limits:
-    cpu: 1000m  # Increase from 500m
-  requests:
-    cpu: 500m   # Increase from 250m
-```
-
-2. **Check for processing bottlenecks:**
-```bash
-kubectl logs -n kestrel-ai -l app=kestrel-operator | grep -i "slow\|timeout\|backpressure"
-```
-
-## Debug Mode
-
-Enable debug logging for more detailed troubleshooting:
-
-```yaml
-# In your values.yaml
-operator:
-  debug: true  # Enable debug logging
-```
-
-Then check logs:
-```bash
-kubectl logs -n kestrel-ai -l app=kestrel-operator -f | grep DEBUG
-```
-
-## Health Check Endpoints
-
-Access operator health endpoints for debugging:
-
-```bash
-# Port-forward to access health endpoint
-kubectl port-forward -n kestrel-ai deployment/kestrel-operator 8081:8081
-
-# In another terminal, check health
-curl localhost:8081/health
-curl localhost:8081/ready
-```
-
-## Collecting Support Bundle
-
-When contacting support, collect a diagnostic bundle:
-
-```bash
-# Create support bundle script
-cat << 'EOF' > collect-support-bundle.sh
-#!/bin/bash
-
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-BUNDLE_DIR="kestrel-support-$TIMESTAMP"
-
-mkdir -p $BUNDLE_DIR
-
-echo "Collecting operator information..."
-kubectl get all -n kestrel-ai > $BUNDLE_DIR/resources.txt
-kubectl describe pod -n kestrel-ai -l app=kestrel-operator > $BUNDLE_DIR/pod-describe.txt
-kubectl logs -n kestrel-ai -l app=kestrel-operator --tail=1000 > $BUNDLE_DIR/operator-logs.txt
-kubectl logs -n kestrel-ai -l app=kestrel-operator --tail=1000 --previous > $BUNDLE_DIR/operator-logs-previous.txt 2>/dev/null
-kubectl get events -n kestrel-ai --sort-by='.lastTimestamp' > $BUNDLE_DIR/events.txt
-kubectl get nodes -o wide > $BUNDLE_DIR/nodes.txt
-kubectl version > $BUNDLE_DIR/k8s-version.txt
-
-# Get Cilium status if available
-cilium status > $BUNDLE_DIR/cilium-status.txt 2>/dev/null
-
-# Get Istio status if available
-istioctl version > $BUNDLE_DIR/istio-version.txt 2>/dev/null
-
-echo "Creating archive..."
-tar czf $BUNDLE_DIR.tar.gz $BUNDLE_DIR/
-rm -rf $BUNDLE_DIR
-
-echo "Support bundle created: $BUNDLE_DIR.tar.gz"
-echo "Please send this file to hello@usekestrel.ai"
-EOF
-
-chmod +x collect-support-bundle.sh
-./collect-support-bundle.sh
-```
-
-## Rollback Procedure
-
-If issues persist after an upgrade:
-
-```bash
-# List helm releases
-helm list -n kestrel-ai
-
-# Rollback to previous version
-helm rollback kestrel-operator -n kestrel-ai
-
-# Verify rollback
-kubectl rollout status deployment/kestrel-operator -n kestrel-ai
-```
 
 ## Getting Help
 
@@ -467,14 +314,6 @@ If you can't resolve an issue:
         disableFlows: true
     ```
     Then upgrade the helm release.
-  </Accordion>
-
-  <Accordion title="How much bandwidth does the operator use?">
-    Typically less than 1 Mbps for clusters with:
-    - 100 pods
-    - 1000 flows/minute
-
-    Bandwidth scales linearly with flow volume.
   </Accordion>
 </AccordionGroup>
 

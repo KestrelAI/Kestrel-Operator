@@ -78,7 +78,7 @@ After generating credentials, you'll receive:
 2. **Operator Token**: A JWT token for manual configuration
 
 Click **Download** to save the Helm values file locally. The file will be named:
-```
+```bash
 kestrel-ai-operator-values-<cluster-name>.yaml
 ```
 
@@ -91,7 +91,7 @@ Deploy the Kestrel Operator using the downloaded values file:
 ```bash
 helm install kestrel-operator \
   oci://ghcr.io/kestrelai/charts/kestrel-operator \
-  --version latest \
+  --version <version_number> \
   --namespace kestrel-ai \
   --create-namespace \
   -f kestrel-ai-operator-values-<cluster-name>.yaml
@@ -139,7 +139,7 @@ kubectl get pods -n kestrel-ai -l app=kestrel-operator
 ```
 
 Expected output:
-```
+```bash
 NAME                               READY   STATUS    RESTARTS   AGE
 kestrel-operator-xxxxxxxxx-xxxxx   1/1     Running   0          1m
 ```
@@ -197,7 +197,7 @@ To update to the latest operator version:
 ```bash
 helm upgrade kestrel-operator \
   oci://ghcr.io/kestrelai/charts/kestrel-operator \
-  --version latest \
+  --version <version_number> \
   --namespace kestrel-ai \
   -f kestrel-ai-operator-values-<cluster-name>.yaml
 ```
