@@ -38,10 +38,6 @@
     {
       "name": "Documentation",
       "url": "/"
-    },
-    {
-      "name": "API Reference",
-      "url": "api-reference"
     }
   ],
   "anchors": [
@@ -76,33 +72,6 @@
         "operator/onboarding",
         "operator/configuration",
         "operator/troubleshooting"
-      ]
-    },
-    {
-      "group": "Platform Features",
-      "pages": [
-        "platform/dashboard",
-        "platform/ai-chat",
-        "platform/network-policies",
-        "platform/audit-logs"
-      ]
-    },
-    {
-      "group": "Security & Compliance",
-      "pages": [
-        "security/overview",
-        "security/rbac",
-        "security/safe-apply",
-        "security/compliance"
-      ]
-    },
-    {
-      "group": "API Reference",
-      "pages": [
-        "api-reference/authentication",
-        "api-reference/operators",
-        "api-reference/policies",
-        "api-reference/flows"
       ]
     }
   ],
