@@ -1,6 +1,6 @@
 ---
-title: Troubleshooting Guide
-description: Common issues and solutions for the Kestrel Operator
+title: "Troubleshooting Guide"
+description: "Common issues and solutions for the Kestrel Operator"
 ---
 
 ## Diagnostic Commands
@@ -156,7 +156,7 @@ kubectl rollout restart deployment/kestrel-operator -n kestrel-ai
 
 **Symptoms:**
 - Operator is connected but no network flows appear
-- Dashboard shows empty flow data
+- Topology map shows no flows
 
 **Diagnostic steps:**
 
@@ -182,19 +182,10 @@ kubectl exec -n kestrel-ai deployment/kestrel-operator -- nc -zv hubble-relay.ku
 cilium hubble enable --relay
 ```
 
-- If using TLS, verify certificates:
-```yaml
-operator:
-  cilium:
-    hubble:
-      tls:
-        forceDisable: true  # Temporarily disable to test
-```
-
 #### No Flows from Istio
 
 **Symptoms:**
-- Istio is enabled but no L7 logs collected
+- Istio is enabled but no L7 flows appear on Topology map
 - ALS endpoint not receiving data
 
 **Diagnostic steps:**
@@ -268,7 +259,6 @@ helm upgrade kestrel-operator \
   --set operator.safeApply.enabled=true \
   -f values.yaml
 ```
-
 
 ## Getting Help
 

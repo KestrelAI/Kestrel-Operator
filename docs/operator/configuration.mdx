@@ -1,6 +1,6 @@
 ---
-title: Configuration Reference
-description: Complete reference for all Kestrel Operator configuration options
+title: "Configuration Reference"
+description: "Complete reference for all Kestrel Operator configuration options"
 ---
 
 ## Helm Values Reference
@@ -51,14 +51,6 @@ operator:
 
 ## Complete Values Reference
 
-### Core Settings
-
-#### `replicaCount`
-- **Type**: integer
-- **Default**: `1`
-- **Description**: Number of operator replicas to deploy
-
-
 ### Image Configuration
 
 #### `image.repository`
@@ -74,7 +66,6 @@ operator:
 #### `image.pullPolicy`
 - **Type**: string
 - **Default**: `IfNotPresent`
-- **Options**: `Always`, `IfNotPresent`, `Never`
 - **Description**: Image pull policy
 
 ### Authentication
@@ -100,23 +91,6 @@ operator:
 - **Type**: integer
 - **Default**: `443`
 - **Description**: gRPC server port
-
-#### `server.useTLS`
-- **Type**: boolean
-- **Default**: `true`
-- **Description**: Enable TLS for server connection
-
-### Operator Configuration
-
-#### `operator.cluster.id`
-- **Type**: string
-- **Description**: Unique cluster identifier (UUID)
-- **Generated**: Automatically provided when generating token
-
-#### `operator.cluster.name`
-- **Type**: string
-- **Description**: Human-readable cluster name
-- **Example**: `"production-us-west"`
 
 ### Cilium Integration
 
