@@ -1,0 +1,485 @@
+---
+title: Troubleshooting Guide
+description: Common issues and solutions for the Kestrel Operator
+---
+
+## Diagnostic Commands
+
+Before troubleshooting, gather diagnostic information:
+
+```bash
+# Check operator pod status
+kubectl get pods -n kestrel-ai -l app=kestrel-operator
+
+# View operator logs
+kubectl logs -n kestrel-ai -l app=kestrel-operator --tail=100
+
+# Describe pod for events
+kubectl describe pod -n kestrel-ai -l app=kestrel-operator
+
+# Check service account permissions
+kubectl auth can-i --list --as=system:serviceaccount:kestrel-ai:kestrel-operator
+```
+
+## Common Issues
+
+### Operator Not Starting
+
+#### Pod in CrashLoopBackOff
+
+**Symptoms:**
+- Pod repeatedly restarts
+- Status shows `CrashLoopBackOff`
+
+**Check logs:**
+```bash
+kubectl logs -n kestrel-ai -l app=kestrel-operator --previous
+```
+
+**Common causes and solutions:**
+
+<AccordionGroup>
+  <Accordion title="Invalid or missing token">
+    **Error message:**
+    ```
+    Error: authentication failed: invalid token
+    ```
+
+    **Solution:**
+    1. Verify token is correctly set in values file
+    2. Ensure token hasn't been truncated
+    3. Generate a new token from the dashboard if needed
+
+    ```bash
+    # Check current token (first few characters)
+    kubectl get secret -n kestrel-ai kestrel-operator -o jsonpath='{.data.token}' | base64 -d | head -c 20
+    ```
+  </Accordion>
+
+  <Accordion title="Cannot connect to server">
+    **Error message:**
+    ```
+    Failed to connect to server: connection refused
+    ```
+
+    **Solution:**
+    1. Check network policies or firewalls
+    2. Verify egress is allowed to `grpc.platform.usekestrel.ai:443`
+    3. Test connectivity:
+
+    ```bash
+    kubectl run test-connection --rm -i --tty --image=busybox -- sh
+    # Inside the pod:
+    nc -zv grpc.platform.usekestrel.ai 443
+    ```
+  </Accordion>
+
+  <Accordion title="Insufficient permissions">
+    **Error message:**
+    ```
+    Error creating informer: forbidden: User "system:serviceaccount:kestrel-ai:kestrel-operator" cannot list resource
+    ```
+
+    **Solution:**
+    1. Verify RBAC is properly configured
+    2. Check ClusterRole and ClusterRoleBinding:
+
+    ```bash
+    kubectl get clusterrole kestrel-operator
+    kubectl get clusterrolebinding kestrel-operator
+    ```
+  </Accordion>
+</AccordionGroup>
+
+#### Pod in Pending State
+
+**Symptoms:**
+- Pod stays in `Pending` status
+- Not scheduled to any node
+
+**Solutions:**
+
+1. **Check resource availability:**
+```bash
+kubectl describe nodes | grep -A 5 "Allocated resources"
+```
+
+2. **Review pod events:**
+```bash
+kubectl describe pod -n kestrel-ai -l app=kestrel-operator | grep -A 10 Events
+```
+
+3. **Adjust resource requests if needed:**
+```yaml
+resources:
+  requests:
+    cpu: 100m      # Lower CPU request
+    memory: 256Mi  # Lower memory request
+```
+
+### Connection Issues
+
+#### Operator Shows as Offline
+
+**Dashboard shows cluster as offline but pod is running**
+
+**Diagnostic steps:**
+
+1. **Check operator logs for connection errors:**
+```bash
+kubectl logs -n kestrel-ai -l app=kestrel-operator | grep -i "error\|failed\|connection"
+```
+
+2. **Verify gRPC stream health:**
+```bash
+kubectl logs -n kestrel-ai -l app=kestrel-operator | grep "stream"
+```
+
+3. **Check liveness probe:**
+```bash
+kubectl get pod -n kestrel-ai -l app=kestrel-operator -o json | jq '.items[0].status.conditions'
+```
+
+**Common solutions:**
+
+- Restart the operator pod:
+```bash
+kubectl rollout restart deployment/kestrel-operator -n kestrel-ai
+```
+
+- Verify network connectivity to Kestrel platform
+- Check for proxy or firewall configurations
+
+#### Intermittent Disconnections
+
+**Symptoms:**
+- Connection status flips between connected/disconnected
+- Logs show "EOF" errors
+
+**Solutions:**
+
+1. **Increase liveness probe tolerance:**
+```yaml
+healthcheck:
+  livenessProbe:
+    failureThreshold: 5  # Increase from 3
+    periodSeconds: 60    # Increase from 30
+```
+
+2. **Check for network instability:**
+```bash
+# Monitor operator logs for patterns
+kubectl logs -n kestrel-ai -l app=kestrel-operator -f | grep -i "disconnect\|reconnect\|eof"
+```
+
+### Flow Collection Issues
+
+#### No Flows from Cilium
+
+**Symptoms:**
+- Operator is connected but no network flows appear
+- Dashboard shows empty flow data
+
+**Diagnostic steps:**
+
+1. **Verify Hubble is enabled:**
+```bash
+cilium hubble status
+```
+
+2. **Check Hubble Relay is running:**
+```bash
+kubectl get pods -n kube-system -l k8s-app=hubble-relay
+```
+
+3. **Test Hubble connectivity:**
+```bash
+kubectl exec -n kestrel-ai deployment/kestrel-operator -- nc -zv hubble-relay.kube-system.svc.cluster.local 4245
+```
+
+**Solutions:**
+
+- Enable Hubble in Cilium:
+```bash
+cilium hubble enable --relay
+```
+
+- If using TLS, verify certificates:
+```yaml
+operator:
+  cilium:
+    hubble:
+      tls:
+        forceDisable: true  # Temporarily disable to test
+```
+
+#### No Flows from Istio
+
+**Symptoms:**
+- Istio is enabled but no L7 logs collected
+- ALS endpoint not receiving data
+
+**Diagnostic steps:**
+
+1. **Verify Istio telemetry configuration:**
+```bash
+kubectl get telemetry -A
+```
+
+2. **Check Envoy configuration:**
+```bash
+kubectl exec -n <namespace> <pod> -c istio-proxy -- curl -s localhost:15000/config_dump | grep access_log
+```
+
+3. **Verify ALS port is accessible:**
+```bash
+kubectl get svc -n kestrel-ai kestrel-operator -o yaml | grep -A 5 ports
+```
+
+**Solutions:**
+
+- Configure Istio telemetry to send logs to operator:
+```yaml
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: kestrel-als
+  namespace: istio-system
+spec:
+  accessLogging:
+  - providers:
+    - name: kestrel
+```
+
+- Ensure operator service exposes ALS port:
+```yaml
+operator:
+  istio:
+    enabled: true
+    alsPort: 8080
+```
+
+### Safe-Apply Issues
+
+#### Permissions Denied
+
+**Symptoms:**
+- Safe-apply enabled but cannot apply resources
+- Error: "cannot create/update/delete resource"
+
+**Solutions:**
+
+1. **Verify safe-apply is enabled in both places:**
+   - Dashboard: Check cluster safe-apply toggle
+   - Helm values: `operator.safeApply.enabled: true`
+
+2. **Check RBAC permissions:**
+```bash
+# List operator permissions
+kubectl auth can-i create networkpolicies --as=system:serviceaccount:kestrel-ai:kestrel-operator
+
+# Check ClusterRole
+kubectl get clusterrole kestrel-operator -o yaml | grep -A 10 rules
+```
+
+3. **Re-deploy with correct permissions:**
+```bash
+helm upgrade kestrel-operator \
+  oci://ghcr.io/kestrelai/charts/kestrel-operator \
+  --namespace kestrel-ai \
+  --set operator.safeApply.enabled=true \
+  -f values.yaml
+```
+
+### Resource Issues
+
+#### High Memory Usage
+
+**Symptoms:**
+- Operator pod using excessive memory
+- OOMKilled errors
+
+**Solutions:**
+
+1. **Increase memory limits:**
+```yaml
+resources:
+  limits:
+    memory: 4Gi  # Increase from 2Gi
+  requests:
+    memory: 2Gi  # Increase from 1Gi
+```
+
+2. **Check for memory leaks in logs:**
+```bash
+kubectl top pod -n kestrel-ai -l app=kestrel-operator
+```
+
+3. **For large clusters, tune batch sizes** (contact support)
+
+#### High CPU Usage
+
+**Symptoms:**
+- Constant high CPU utilization
+- Slow response times
+
+**Solutions:**
+
+1. **Increase CPU limits:**
+```yaml
+resources:
+  limits:
+    cpu: 1000m  # Increase from 500m
+  requests:
+    cpu: 500m   # Increase from 250m
+```
+
+2. **Check for processing bottlenecks:**
+```bash
+kubectl logs -n kestrel-ai -l app=kestrel-operator | grep -i "slow\|timeout\|backpressure"
+```
+
+## Debug Mode
+
+Enable debug logging for more detailed troubleshooting:
+
+```yaml
+# In your values.yaml
+operator:
+  debug: true  # Enable debug logging
+```
+
+Then check logs:
+```bash
+kubectl logs -n kestrel-ai -l app=kestrel-operator -f | grep DEBUG
+```
+
+## Health Check Endpoints
+
+Access operator health endpoints for debugging:
+
+```bash
+# Port-forward to access health endpoint
+kubectl port-forward -n kestrel-ai deployment/kestrel-operator 8081:8081
+
+# In another terminal, check health
+curl localhost:8081/health
+curl localhost:8081/ready
+```
+
+## Collecting Support Bundle
+
+When contacting support, collect a diagnostic bundle:
+
+```bash
+# Create support bundle script
+cat << 'EOF' > collect-support-bundle.sh
+#!/bin/bash
+
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BUNDLE_DIR="kestrel-support-$TIMESTAMP"
+
+mkdir -p $BUNDLE_DIR
+
+echo "Collecting operator information..."
+kubectl get all -n kestrel-ai > $BUNDLE_DIR/resources.txt
+kubectl describe pod -n kestrel-ai -l app=kestrel-operator > $BUNDLE_DIR/pod-describe.txt
+kubectl logs -n kestrel-ai -l app=kestrel-operator --tail=1000 > $BUNDLE_DIR/operator-logs.txt
+kubectl logs -n kestrel-ai -l app=kestrel-operator --tail=1000 --previous > $BUNDLE_DIR/operator-logs-previous.txt 2>/dev/null
+kubectl get events -n kestrel-ai --sort-by='.lastTimestamp' > $BUNDLE_DIR/events.txt
+kubectl get nodes -o wide > $BUNDLE_DIR/nodes.txt
+kubectl version > $BUNDLE_DIR/k8s-version.txt
+
+# Get Cilium status if available
+cilium status > $BUNDLE_DIR/cilium-status.txt 2>/dev/null
+
+# Get Istio status if available
+istioctl version > $BUNDLE_DIR/istio-version.txt 2>/dev/null
+
+echo "Creating archive..."
+tar czf $BUNDLE_DIR.tar.gz $BUNDLE_DIR/
+rm -rf $BUNDLE_DIR
+
+echo "Support bundle created: $BUNDLE_DIR.tar.gz"
+echo "Please send this file to hello@usekestrel.ai"
+EOF
+
+chmod +x collect-support-bundle.sh
+./collect-support-bundle.sh
+```
+
+## Rollback Procedure
+
+If issues persist after an upgrade:
+
+```bash
+# List helm releases
+helm list -n kestrel-ai
+
+# Rollback to previous version
+helm rollback kestrel-operator -n kestrel-ai
+
+# Verify rollback
+kubectl rollout status deployment/kestrel-operator -n kestrel-ai
+```
+
+## Getting Help
+
+If you can't resolve an issue:
+
+1. **Check documentation**: Review configuration and onboarding guides
+2. **Collect diagnostics**: Run the support bundle script
+3. **Contact support**: Email hello@usekestrel.ai with:
+   - Cluster name and ID
+   - Support bundle
+   - Description of the issue
+   - Steps to reproduce
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Can I run multiple operators in one cluster?">
+    No, only one Kestrel operator should run per cluster. Multiple operators would cause conflicts and duplicate data.
+  </Accordion>
+
+  <Accordion title="How do I change the cluster name after deployment?">
+    The cluster name is tied to the authentication token. To change it:
+    1. Generate a new token with the desired name
+    2. Update your values file with the new token
+    3. Upgrade the helm release
+  </Accordion>
+
+  <Accordion title="What ports need to be open for the operator?">
+    Outbound:
+    - 443/tcp to grpc.platform.usekestrel.ai (gRPC)
+    - 4245/tcp to Hubble Relay (if using Cilium)
+
+    Inbound:
+    - 8080/tcp from Envoy proxies (if using Istio)
+    - 8081/tcp for health checks (internal)
+  </Accordion>
+
+  <Accordion title="Can I pause flow collection temporarily?">
+    Yes, you can disable flows without removing the operator:
+    ```yaml
+    operator:
+      cilium:
+        disableFlows: true
+    ```
+    Then upgrade the helm release.
+  </Accordion>
+
+  <Accordion title="How much bandwidth does the operator use?">
+    Typically less than 1 Mbps for clusters with:
+    - 100 pods
+    - 1000 flows/minute
+
+    Bandwidth scales linearly with flow volume.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+- [Review configuration options](/operator/configuration)
+- [Optimize operator performance](/operator/best-practices)
+- [Set up monitoring](/operator/monitoring)

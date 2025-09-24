@@ -1,0 +1,224 @@
+---
+title: Onboarding the Kestrel Operator
+description: Step-by-step guide to deploy and configure the Kestrel Operator in your Kubernetes cluster
+---
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- A Kubernetes cluster (version 1.21 or later)
+- `kubectl` configured to access your cluster
+- `helm` CLI installed (version 3.0 or later)
+- Administrative access to the Kestrel AI platform
+
+## Step 1: Generate Operator Credentials
+
+First, you need to generate credentials for your operator to authenticate with the Kestrel AI platform.
+
+1. Log in to the [Kestrel AI Dashboard](https://platform.usekestrel.ai)
+2. Navigate to **Settings** → **Operator Credentials**
+3. Click **Generate New Credential**
+4. Configure the following settings:
+
+### Basic Configuration
+
+- **Cluster Name**: A unique identifier for your cluster (e.g., `production-cluster`)
+  - Must contain only alphanumeric characters, dots, dashes, and underscores
+  - This name will be used to identify your cluster in the Kestrel AI platform
+
+- **Description** (Optional): Add notes about this cluster's purpose or environment
+
+### Flow Collection Source
+
+Choose how the operator will collect network traffic data:
+
+<Tabs>
+  <Tab title="Cilium (L3/L4)">
+    **Cilium with Hubble Relay** (Default)
+    - Collects Layer 3/4 network flows from Cilium CNI
+    - Requires Cilium installed with Hubble enabled
+    - Provides visibility into TCP/UDP connections between workloads
+
+    Use this option if:
+    - You're using Cilium as your CNI
+    - You need network-level visibility
+    - You want to monitor all traffic flows
+  </Tab>
+
+  <Tab title="Istio (L7)">
+    **Istio Service Mesh**
+    - Collects Layer 7 access logs from Envoy proxies
+    - Requires Istio service mesh installed
+    - Provides application-level HTTP/gRPC visibility
+
+    Use this option if:
+    - You're using Istio service mesh
+    - You need application-level insights
+    - You want HTTP request/response details
+  </Tab>
+</Tabs>
+
+### Safe-Apply Permissions
+
+<Warning>
+  Safe-Apply permissions allow the operator to create, update, and delete Kubernetes resources. Only enable if you plan to use the AI-powered resource management features.
+</Warning>
+
+Toggle **Grant Safe-Apply Permissions** if you want to:
+- Apply AI-generated network policies directly from the chat interface
+- Allow approved YAML configurations to be deployed automatically
+- Enable automated remediation workflows
+
+## Step 2: Download Configuration
+
+After generating credentials, you'll receive:
+
+1. **Helm Values File**: A pre-configured `values.yaml` file with your token
+2. **Operator Token**: A JWT token for manual configuration
+
+Click **Download** to save the Helm values file locally. The file will be named:
+```
+kestrel-ai-operator-values-<cluster-name>.yaml
+```
+
+## Step 3: Deploy the Operator
+
+### Using Helm (Recommended)
+
+Deploy the Kestrel Operator using the downloaded values file:
+
+```bash
+helm install kestrel-operator \
+  oci://ghcr.io/kestrelai/charts/kestrel-operator \
+  --version latest \
+  --namespace kestrel-ai \
+  --create-namespace \
+  -f kestrel-ai-operator-values-<cluster-name>.yaml
+```
+
+<Note>
+  The operator token automatically renews every 24 hours, ensuring your cluster remains connected without manual intervention.
+</Note>
+
+### Manual Configuration
+
+If you prefer to customize the installation, create your own `values.yaml`:
+
+```yaml
+auth:
+  token: "your-generated-token-here"
+
+operator:
+  cluster:
+    id: "cluster-uuid"
+    name: "your-cluster-name"
+
+  # For Cilium-based flow collection (default)
+  cilium:
+    disableFlows: false
+  istio:
+    enabled: false
+
+  # For Istio-based flow collection
+  # cilium:
+  #   disableFlows: true
+  # istio:
+  #   enabled: true
+
+  # Enable safe-apply if granted permissions
+  safeApply:
+    enabled: false  # Set to true if you enabled permissions
+```
+
+## Step 4: Verify Installation
+
+1. **Check pod status**:
+```bash
+kubectl get pods -n kestrel-ai -l app=kestrel-operator
+```
+
+Expected output:
+```
+NAME                               READY   STATUS    RESTARTS   AGE
+kestrel-operator-xxxxxxxxx-xxxxx   1/1     Running   0          1m
+```
+
+2. **View operator logs**:
+```bash
+kubectl logs -n kestrel-ai -l app=kestrel-operator --tail=50
+```
+
+3. **Verify connection in dashboard**:
+   - Return to the Kestrel AI Dashboard
+   - Navigate to **Settings** → **Operator Credentials**
+   - Your cluster status should show as **Connected** (green badge)
+
+## Step 5: Configure Safe-Apply (Optional)
+
+If you didn't enable Safe-Apply during initial setup but want to enable it later:
+
+1. In the Dashboard, go to **Settings** → **Operator Credentials**
+2. Find your cluster in the list
+3. Toggle the **Safe-Apply** switch
+4. Confirm the action in the dialog
+
+<Info>
+  With Safe-Apply enabled:
+  - Resources require approval from namespace owners and security admins
+  - All changes are logged in the Audit Log
+  - You can create, update, or delete resources from the AI chat interface
+</Info>
+
+## Connection Status Indicators
+
+The dashboard shows your cluster's connection status:
+
+- **Connected** (Green): Actively sending data
+- **Offline** (Gray): Previously connected but currently offline
+- **Pending** (Red): Never connected with this token
+
+## Managing Multiple Clusters
+
+You can connect multiple clusters to a single Kestrel AI organization:
+
+1. Generate a unique credential for each cluster
+2. Deploy the operator to each cluster with its specific token
+3. Manage all clusters from a unified dashboard
+
+<Note>
+  Your subscription tier determines the maximum number of clusters you can connect. Contact [hello@usekestrel.ai](mailto:hello@usekestrel.ai) to upgrade your plan.
+</Note>
+
+## Updating the Operator
+
+To update to the latest operator version:
+
+```bash
+helm upgrade kestrel-operator \
+  oci://ghcr.io/kestrelai/charts/kestrel-operator \
+  --version latest \
+  --namespace kestrel-ai \
+  -f kestrel-ai-operator-values-<cluster-name>.yaml
+```
+
+## Uninstalling
+
+To remove the operator and revoke access:
+
+1. **Delete from cluster**:
+```bash
+helm uninstall kestrel-operator -n kestrel-ai
+```
+
+2. **Revoke credentials**:
+   - In the Dashboard, go to **Settings** → **Operator Credentials**
+   - Click the delete icon next to your cluster
+   - Confirm the deletion
+
+## Next Steps
+
+- [Configure flow collection settings](/operator/configuration)
+- [Set up namespace permissions](/permissions/namespaces)
+- [Generate your first AI network policy](/policies/quickstart)
+- [Troubleshoot common issues](/operator/troubleshooting)

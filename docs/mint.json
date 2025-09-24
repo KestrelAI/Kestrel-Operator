@@ -1,0 +1,143 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Kestrel AI",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#3B82F6",
+    "light": "#93C5FD",
+    "dark": "#1E3A8A",
+    "background": {
+      "dark": "#020617",
+      "light": "#F8FAFC"
+    },
+    "anchors": {
+      "from": "#3B82F6",
+      "to": "#60A5FA"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "mailto:hello@usekestrel.ai"
+    },
+    {
+      "name": "GitHub",
+      "url": "https://github.com/kestrelai"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Dashboard",
+    "url": "https://platform.usekestrel.ai",
+    "style": "roundedRectangle"
+  },
+  "tabs": [
+    {
+      "name": "Documentation",
+      "url": "/"
+    },
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "Community",
+      "icon": "discord",
+      "url": "https://discord.gg/kestrelai"
+    },
+    {
+      "name": "Blog",
+      "icon": "newspaper",
+      "url": "https://blog.usekestrel.ai"
+    },
+    {
+      "name": "Status",
+      "icon": "signal",
+      "url": "https://status.usekestrel.ai"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "introduction",
+        "quickstart"
+      ]
+    },
+    {
+      "group": "Operator",
+      "pages": [
+        "operator/overview",
+        "operator/onboarding",
+        "operator/configuration",
+        "operator/troubleshooting"
+      ]
+    },
+    {
+      "group": "Platform Features",
+      "pages": [
+        "platform/dashboard",
+        "platform/ai-chat",
+        "platform/network-policies",
+        "platform/audit-logs"
+      ]
+    },
+    {
+      "group": "Security & Compliance",
+      "pages": [
+        "security/overview",
+        "security/rbac",
+        "security/safe-apply",
+        "security/compliance"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api-reference/authentication",
+        "api-reference/operators",
+        "api-reference/policies",
+        "api-reference/flows"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/kestrelai",
+    "linkedin": "https://www.linkedin.com/company/kestrelai",
+    "x": "https://x.com/kestrelai"
+  },
+  "feedback": {
+    "suggestEdit": true,
+    "raiseIssue": true,
+    "thumbsRating": true
+  },
+  "modeToggle": {
+    "default": "light",
+    "isHidden": false
+  },
+  "search": {
+    "prompt": "Search documentation..."
+  },
+  "metadata": {
+    "og:title": "Kestrel AI Documentation",
+    "og:description": "Complete documentation for Kestrel AI Kubernetes Security Platform",
+    "og:image": "https://usekestrel.ai/og-image.png",
+    "twitter:card": "summary_large_image"
+  },
+  "analytics": {
+    "ga4": {
+      "measurementId": "G-XXXXXXXXXX"
+    }
+  },
+  "redirects": [
+    {
+      "source": "/docs/operator",
+      "destination": "/operator/overview"
+    }
+  ]
+}
