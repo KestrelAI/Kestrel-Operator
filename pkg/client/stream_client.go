@@ -1074,6 +1074,8 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 				s.handleYamlApplyRequest(ctx, stream, resp.YamlApplyRequest)
 			case *v1.StreamDataResponse_CertificateRenewalRequest:
 				s.handleCertificateRenewalRequest(ctx, stream, resp.CertificateRenewalRequest)
+			case *v1.StreamDataResponse_OperatorRestartRequest:
+				s.handleOperatorRestartRequest(ctx, stream, resp.OperatorRestartRequest)
 			default:
 				s.Logger.Warn("Received unhandled message type from server",
 					zap.String("message_type", fmt.Sprintf("%T", response.Response)))
@@ -2159,4 +2161,167 @@ func (s *StreamClient) triggerPodRestart(ctx context.Context, clientset *kuberne
 		zap.String("namespace", namespace))
 
 	return nil
+}
+
+// handleOperatorRestartRequest processes operator restart requests from the server
+func (s *StreamClient) handleOperatorRestartRequest(
+	ctx context.Context,
+	stream v1.StreamService_StreamDataClient,
+	restartRequest *v1.OperatorRestartRequest,
+) {
+	s.Logger.Info("Received operator restart request from server",
+		zap.String("request_id", restartRequest.RequestId),
+		zap.String("reason", restartRequest.Reason),
+		zap.Int32("delay_seconds", restartRequest.DelaySeconds),
+		zap.Bool("graceful", restartRequest.Graceful))
+
+	// Apply the operator restart
+	success, errorMessage := s.applyOperatorRestart(ctx, restartRequest)
+
+	// Send response back to server
+	response := &v1.OperatorRestartResponse{
+		RequestId:    restartRequest.RequestId,
+		Success:      success,
+		ErrorMessage: errorMessage,
+		InitiatedAt:  timestamppb.Now(),
+	}
+
+	responseMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_OperatorRestartResponse{
+			OperatorRestartResponse: response,
+		},
+	}
+
+	if err := s.protectedSend(stream, responseMsg); err != nil {
+		s.Logger.Error("Failed to send operator restart response to server",
+			zap.String("request_id", restartRequest.RequestId),
+			zap.Error(err))
+	} else {
+		s.Logger.Info("Successfully sent operator restart response to server",
+			zap.String("request_id", restartRequest.RequestId),
+			zap.Bool("success", success))
+	}
+}
+
+// applyOperatorRestart handles the actual operator restart process
+func (s *StreamClient) applyOperatorRestart(ctx context.Context, restartRequest *v1.OperatorRestartRequest) (bool, string) {
+	s.Logger.Info("Applying operator restart",
+		zap.String("request_id", restartRequest.RequestId),
+		zap.String("reason", restartRequest.Reason))
+
+	// Get required environment variables for restart
+	deploymentName := os.Getenv("DEPLOYMENT_NAME")
+	if deploymentName == "" {
+		s.Logger.Error("DEPLOYMENT_NAME environment variable is not set")
+		return false, "DEPLOYMENT_NAME environment variable is not set"
+	}
+
+	namespace := os.Getenv("POD_NAMESPACE")
+	if namespace == "" {
+		s.Logger.Error("POD_NAMESPACE environment variable is not set")
+		return false, "POD_NAMESPACE environment variable is not set"
+	}
+
+	// Create Kubernetes client
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		s.Logger.Error("Failed to create Kubernetes config for operator restart", zap.Error(err))
+		return false, fmt.Sprintf("Failed to create Kubernetes config: %v", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		s.Logger.Error("Failed to create Kubernetes clientset for operator restart", zap.Error(err))
+		return false, fmt.Sprintf("Failed to create Kubernetes clientset: %v", err)
+	}
+
+	// Apply delay if specified
+	if restartRequest.DelaySeconds > 0 {
+		s.Logger.Info("Applying restart delay",
+			zap.Int32("delay_seconds", restartRequest.DelaySeconds))
+		time.Sleep(time.Duration(restartRequest.DelaySeconds) * time.Second)
+	}
+
+	// Determine restart strategy
+	if restartRequest.Graceful {
+		s.Logger.Info("Performing graceful operator restart via deployment annotation update")
+		return s.performGracefulRestart(ctx, clientset, namespace, deploymentName, restartRequest.Reason)
+	} else {
+		s.Logger.Info("Performing immediate operator restart via pod deletion")
+		return s.performImmediateRestart(ctx, clientset, namespace, deploymentName)
+	}
+}
+
+// performGracefulRestart triggers a rolling restart by updating deployment annotations
+func (s *StreamClient) performGracefulRestart(ctx context.Context, clientset *kubernetes.Clientset, namespace, deploymentName, reason string) (bool, string) {
+	// Get the deployment
+	deployment, err := clientset.AppsV1().Deployments(namespace).Get(ctx, deploymentName, metav1.GetOptions{})
+	if err != nil {
+		s.Logger.Error("Failed to get deployment for graceful restart",
+			zap.String("deployment", deploymentName),
+			zap.String("namespace", namespace),
+			zap.Error(err))
+		return false, fmt.Sprintf("Failed to get deployment %s: %v", deploymentName, err)
+	}
+
+	// Add annotation to trigger rolling restart
+	if deployment.Spec.Template.Annotations == nil {
+		deployment.Spec.Template.Annotations = make(map[string]string)
+	}
+
+	// Use timestamp and reason for the restart annotation
+	restartAnnotation := fmt.Sprintf("admin-restart-%d", time.Now().Unix())
+	deployment.Spec.Template.Annotations["kestrel.ai/admin-restart"] = restartAnnotation
+	deployment.Spec.Template.Annotations["kestrel.ai/restart-reason"] = reason
+	deployment.Spec.Template.Annotations["kestrel.ai/restart-timestamp"] = time.Now().Format(time.RFC3339)
+
+	// Update the deployment
+	_, err = clientset.AppsV1().Deployments(namespace).Update(ctx, deployment, metav1.UpdateOptions{})
+	if err != nil {
+		s.Logger.Error("Failed to update deployment for graceful restart",
+			zap.String("deployment", deploymentName),
+			zap.String("namespace", namespace),
+			zap.Error(err))
+		return false, fmt.Sprintf("Failed to update deployment %s: %v", deploymentName, err)
+	}
+
+	s.Logger.Info("Successfully triggered graceful operator restart",
+		zap.String("deployment", deploymentName),
+		zap.String("namespace", namespace),
+		zap.String("reason", reason),
+		zap.String("restart_annotation", restartAnnotation))
+
+	return true, ""
+}
+
+// performImmediateRestart deletes the current pod to force immediate restart
+func (s *StreamClient) performImmediateRestart(ctx context.Context, clientset *kubernetes.Clientset, namespace, deploymentName string) (bool, string) {
+	// Get current pod name from hostname
+	hostname, err := os.Hostname()
+	if err != nil {
+		s.Logger.Error("Failed to get hostname for immediate restart", zap.Error(err))
+		return false, fmt.Sprintf("Failed to get hostname: %v", err)
+	}
+
+	s.Logger.Info("Performing immediate restart by deleting current pod",
+		zap.String("pod_name", hostname),
+		zap.String("namespace", namespace))
+
+	// Delete current pod to trigger immediate restart
+	err = clientset.CoreV1().Pods(namespace).Delete(ctx, hostname, metav1.DeleteOptions{
+		GracePeriodSeconds: func() *int64 { grace := int64(0); return &grace }(), // Immediate deletion
+	})
+	if err != nil {
+		s.Logger.Error("Failed to delete current pod for immediate restart",
+			zap.String("pod_name", hostname),
+			zap.String("namespace", namespace),
+			zap.Error(err))
+		return false, fmt.Sprintf("Failed to delete pod %s: %v", hostname, err)
+	}
+
+	s.Logger.Info("Successfully initiated immediate operator restart",
+		zap.String("pod_name", hostname),
+		zap.String("namespace", namespace))
+
+	return true, ""
 }
