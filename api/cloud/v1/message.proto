@@ -32,6 +32,7 @@ message StreamDataRequest {
     YamlApplyResponse yaml_apply_response = 13;
     Pod pod = 14;
     CertificateRenewalResponse certificate_renewal_response = 15;
+    OperatorRestartResponse operator_restart_response = 16;
   }
 }
 
@@ -121,6 +122,8 @@ message StreamDataResponse {
     YamlApplyRequest yaml_apply_request = 6;
     // Certificate renewal request from server to operator
     CertificateRenewalRequest certificate_renewal_request = 7;
+    // Operator restart request from server to operator
+    OperatorRestartRequest operator_restart_request = 8;
   }
 }
 
@@ -792,6 +795,36 @@ message CertificateRenewalResponse {
   
   // When the certificate was successfully applied
   google.protobuf.Timestamp applied_at = 4;
+}
+
+// Operator restart request message
+message OperatorRestartRequest {
+  // Unique identifier for tracking this restart request
+  string request_id = 1;
+  
+  // Reason for the restart (for logging purposes)
+  string reason = 2;
+  
+  // Optional delay before restart (in seconds)
+  int32 delay_seconds = 3;
+  
+  // Whether to perform a graceful restart (default: true)
+  bool graceful = 4;
+}
+
+// Operator restart response message
+message OperatorRestartResponse {
+  // Request identifier that matches the request
+  string request_id = 1;
+  
+  // Whether the restart was initiated successfully
+  bool success = 2;
+  
+  // Error message if restart failed
+  string error_message = 3;
+  
+  // When the restart was initiated
+  google.protobuf.Timestamp initiated_at = 4;
 }
 
 // Service definition with bi-directional streaming RPC
