@@ -82,22 +82,18 @@ spec:
             - name: S2_AUTH_TOKEN
               valueFrom:
                 secretKeyRef:
-                  {{- if .Values.s2Streaming.existingSecret.name }}
-                  name: {{ .Values.s2Streaming.existingSecret.name }}
-                  key: {{ .Values.s2Streaming.existingSecret.key }}
-                  {{- else }}
                   name: {{ .Release.Name }}-s2-credentials
                   key: auth-token
-                  {{- end }}
-                  optional: true
             - name: S2_BASIN
               value: {{ .Values.s2Streaming.basin | quote }}
+            {{- if .Values.operator.cluster.id }}
             - name: S2_STREAM
-              value: {{ tpl .Values.s2Streaming.stream . | quote }}
+              value: "{{ .Values.s2Streaming.streamPrefix }}/{{ .Values.operator.cluster.id }}"
+            - name: CLUSTER_ID
+              value: {{ .Values.operator.cluster.id | quote }}
+            {{- end }}
             - name: S2_ENABLE_COMPRESSION
               value: {{ .Values.s2Streaming.compression | quote }}
-            - name: CLUSTER_ID
-              value: {{ .Values.clusterID | quote }}
             {{- end }}
           ports:
             - name: health
