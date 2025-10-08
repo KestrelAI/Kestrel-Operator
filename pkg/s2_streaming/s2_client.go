@@ -106,8 +106,8 @@ func (c *S2StreamClient) GetStreamClient() *s2.StreamClient {
 }
 
 // LoadS2ConfigFromEnv loads S2 configuration from environment variables
-func LoadS2ConfigFromEnv() (*S2Config, error) {
-	authToken := os.Getenv("S2_AUTH_TOKEN")
+func LoadS2ConfigFromEnv(logger *zap.Logger) (*S2Config, error) {
+	authToken := os.Getenv("S2_AUTH_TOKEN") // Access token scoped to this operator
 	if authToken == "" {
 		return nil, fmt.Errorf("S2_AUTH_TOKEN environment variable is not set")
 	}
@@ -119,13 +119,10 @@ func LoadS2ConfigFromEnv() (*S2Config, error) {
 
 	stream := os.Getenv("S2_STREAM")
 	if stream == "" {
-		// Use cluster ID or pod namespace as part of stream name
+		// Use cluster ID as part of stream name
 		clusterID := os.Getenv("CLUSTER_ID")
 		if clusterID == "" {
-			clusterID = os.Getenv("POD_NAMESPACE")
-		}
-		if clusterID == "" {
-			clusterID = "default"
+			return nil, fmt.Errorf("CLUSTER_ID and S2_STREAM environment variables are both not set")
 		}
 		stream = fmt.Sprintf("operator-logs/%s", clusterID)
 	}
