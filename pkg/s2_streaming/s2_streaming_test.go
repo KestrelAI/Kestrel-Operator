@@ -77,9 +77,6 @@ func TestS2ConfigValidation(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error with empty stream")
 	}
-
-	// Note: Can't test successful creation without valid S2 credentials
-	// and network access, so we only test validation errors
 }
 
 // TestLogManagerWithoutS2 tests that log manager handles missing S2 config gracefully
@@ -193,16 +190,18 @@ func TestIntegrationHelpersWithNilManager(t *testing.T) {
 
 // TestLoadConfigFromEnv tests loading configuration from environment
 func TestLoadConfigFromEnv(t *testing.T) {
+	logger := zap.NewNop()
+
 	// Test with no environment variables
 	t.Setenv("S2_AUTH_TOKEN", "")
-	_, err := LoadS2ConfigFromEnv()
+	_, err := LoadS2ConfigFromEnv(logger)
 	if err == nil {
 		t.Error("Expected error with no S2_AUTH_TOKEN")
 	}
 
 	// Test with minimal config
 	t.Setenv("S2_AUTH_TOKEN", "test-token")
-	config, err := LoadS2ConfigFromEnv()
+	config, err := LoadS2ConfigFromEnv(logger)
 	if err != nil {
 		t.Errorf("Expected no error with auth token set, got: %v", err)
 	}
@@ -221,7 +220,7 @@ func TestLoadConfigFromEnv(t *testing.T) {
 	t.Setenv("S2_STREAM", "custom-stream")
 	t.Setenv("S2_ENABLE_COMPRESSION", "true")
 
-	config, err = LoadS2ConfigFromEnv()
+	config, err = LoadS2ConfigFromEnv(logger)
 	if err != nil {
 		t.Errorf("Expected no error, got: %v", err)
 	}
