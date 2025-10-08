@@ -20,7 +20,7 @@ type LogManager struct {
 // NewLogManager creates a new log manager
 func NewLogManager(ctx context.Context, logger *zap.Logger) (*LogManager, error) {
 	// Load S2 configuration from environment
-	s2Config, err := LoadS2ConfigFromEnv()
+	s2Config, err := LoadS2ConfigFromEnv(logger)
 	if err != nil {
 		logger.Info("S2 streaming not enabled, skipping initialization", zap.Error(err))
 		return &LogManager{
