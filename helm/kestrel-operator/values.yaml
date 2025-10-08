@@ -111,19 +111,13 @@ s2Streaming:
   enabled: false
   
   # S2 authentication token
-  # Option 1: Provide token directly (not recommended for production)
   authToken: ""
-  
-  # Option 2: Reference an existing secret (recommended)
-  existingSecret:
-    name: ""
-    key: "auth-token"
   
   # S2 basin name (top-level container for streams)
   basin: "kestrel-logs"
   
-  # S2 stream name (supports templating with .Values.clusterID)
-  stream: "operator-logs/{{ .Values.clusterID }}"
+  # S2 stream prefix (cluster ID will be appended from operator.cluster.id)
+  streamPrefix: "operator-logs"
   
   # Enable compression for better performance
   compression: true
@@ -136,9 +130,6 @@ s2Streaming:
   
   # Linger time in seconds before sending partial batches
   lingerTime: 5
-
-# Cluster identifier for stream naming
-clusterID: "default-cluster"
 
 certificates:
   client:
