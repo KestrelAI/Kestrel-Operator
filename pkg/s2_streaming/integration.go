@@ -83,8 +83,6 @@ func LogOperatorEvent(logManager *LogManager, level LogLevel, component, message
 	}
 }
 
-// Example helper functions for common operator events
-
 // LogFlowEvent logs a network flow event
 func LogFlowEvent(logManager *LogManager, srcIP, dstIP string, port uint32, protocol string, allowed bool) {
 	if logManager == nil || !logManager.IsEnabled() {
