@@ -33,6 +33,7 @@ message StreamDataRequest {
     Pod pod = 14;
     CertificateRenewalResponse certificate_renewal_response = 15;
     OperatorRestartResponse operator_restart_response = 16;
+    Node node = 17;
   }
 }
 
@@ -162,6 +163,21 @@ message Pod {
   repeated OwnerReference owner_references = 7;
   google.protobuf.Timestamp created_at = 8;
   Action action = 9; // CREATE, UPDATE, DELETE
+}
+
+// Node definition for streaming node inventory (for VPC Flow Logs IP resolution)
+message Node {
+  string name = 1;
+  string uid = 2;
+  map<string, string> labels = 3;
+  repeated string internal_ips = 4; // Internal IP addresses of the node
+  repeated string external_ips = 5; // External IP addresses of the node (if any)
+  string hostname = 6; // Node hostname
+  bool ready = 7; // Whether the node is ready
+  string instance_type = 8; // Instance type (e.g., m6i.large)
+  string zone = 9; // Availability zone (e.g., us-west-1a)
+  google.protobuf.Timestamp created_at = 10;
+  Action action = 11; // CREATE, UPDATE, DELETE
 }
 
 // OwnerReference definition
