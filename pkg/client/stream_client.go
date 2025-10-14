@@ -540,6 +540,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	serviceChan := make(chan *v1.Service, 100)
 	authorizationPolicyChan := make(chan *v1.AuthorizationPolicy, 100)
 	podChan := make(chan *v1.Pod, 2000) // Larger buffer for pods
+	nodeChan := make(chan *v1.Node, 100)
 
 	// Create network policy ingester (only if Cilium flows are enabled)
 	var networkPolicyIngester *ingestion.NetworkPolicyIngester
@@ -584,6 +585,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		return err
 	}
 
+	// Create node ingester (for VPC Flow Logs node IP resolution)
+	nodeIngester, err := ingestion.NewNodeIngester(s.Logger, nodeChan)
+	if err != nil {
+		s.Logger.Error("Failed to create node ingester", zap.Error(err))
+		return err
+	}
+
 	// Create authorization policy ingester (only if Istio is enabled)
 	var authorizationPolicyIngester *ingestion.AuthorizationPolicyIngester
 	enableIstioALS := getEnvOrDefault("ENABLE_ISTIO_ALS", "false")
@@ -612,7 +620,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		// Start sending inventory channel readers before ingesters start
 		inventoryDone := make(chan error, 1)
-		go s.sendInventoryData(ctx, stream, workloadChan, namespaceChan, networkPolicyChan, serviceChan, authorizationPolicyChan, podChan, inventoryDone)
+		go s.sendInventoryData(ctx, stream, workloadChan, namespaceChan, networkPolicyChan, serviceChan, authorizationPolicyChan, podChan, nodeChan, inventoryDone)
 
 		// Create channels to signal when initial inventory sync is complete
 		workloadSyncDone := make(chan error, 1)
@@ -621,6 +629,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		serviceSyncDone := make(chan error, 1)
 		authorizationPolicySyncDone := make(chan error, 1)
 		podSyncDone := make(chan error, 1)
+		nodeSyncDone := make(chan error, 1)
 
 		// Start workload ingester
 		workloadCtx, workloadCancel := context.WithCancel(ctx)
@@ -649,6 +658,16 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			if err := podIngester.StartSync(podCtx, podSyncDone); err != nil {
 				s.Logger.Error("Pod ingester failed", zap.Error(err))
 				podSyncDone <- err
+			}
+		}()
+
+		// Start node ingester
+		nodeCtx, nodeCancel := context.WithCancel(ctx)
+		defer nodeCancel()
+		go func() {
+			if err := nodeIngester.StartSync(nodeCtx, nodeSyncDone); err != nil {
+				s.Logger.Error("Node ingester failed", zap.Error(err))
+				nodeSyncDone <- err
 			}
 		}()
 
@@ -1458,7 +1477,7 @@ func (s *StreamClient) sendFlowToServer(stream v1.StreamService_StreamDataClient
 }
 
 // sendInventoryData collects workload, namespace, network policy, service, and authorization policy data and sends it to the server
-func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamService_StreamDataClient, workloadChan <-chan *v1.Workload, namespaceChan <-chan *v1.Namespace, networkPolicyChan <-chan *v1.NetworkPolicy, serviceChan <-chan *v1.Service, authorizationPolicyChan <-chan *v1.AuthorizationPolicy, podChan <-chan *v1.Pod, done chan<- error) {
+func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamService_StreamDataClient, workloadChan <-chan *v1.Workload, namespaceChan <-chan *v1.Namespace, networkPolicyChan <-chan *v1.NetworkPolicy, serviceChan <-chan *v1.Service, authorizationPolicyChan <-chan *v1.AuthorizationPolicy, podChan <-chan *v1.Pod, nodeChan <-chan *v1.Node, done chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -1614,6 +1633,32 @@ func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamSe
 					return
 				}
 			}
+
+		case node, ok := <-nodeChan:
+			// Check if node channel was closed
+			if !ok {
+				s.Logger.Warn("Node channel closed unexpectedly")
+				select {
+				case done <- fmt.Errorf("node channel closed"):
+				default:
+				}
+				return
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendNodeToServer(stream, node); err != nil {
+					s.Logger.Error("Failed to send node data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
 		}
 	}
 }
@@ -1682,6 +1727,17 @@ func (s *StreamClient) sendPodToServer(stream v1.StreamService_StreamDataClient,
 		},
 	}
 	return s.protectedSend(stream, podMsg)
+}
+
+// sendNodeToServer sends a single node to the server
+func (s *StreamClient) sendNodeToServer(stream v1.StreamService_StreamDataClient, node *v1.Node) error {
+	// Convert node data to proto message and send
+	nodeMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_Node{
+			Node: node,
+		},
+	}
+	return s.protectedSend(stream, nodeMsg)
 }
 
 // convertToProtoFlow converts a FlowCount to our proto Flow
