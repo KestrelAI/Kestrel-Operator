@@ -65,24 +65,15 @@ func NewPodStatusMonitor(logger *zap.Logger, statusChangeChan chan *v1.PodStatus
 func (psm *PodStatusMonitor) StartSync(ctx context.Context, syncDone chan<- error) error {
 	psm.logger.Info("Starting pod status monitor for incident detection")
 
-	// Set up pod informer
+	// Set up pod informer - AddFunc will be called for all existing pods during cache sync
 	psm.setupPodInformer()
 
-	// Send initial inventory (pods in problematic states)
-	if err := psm.sendInitialPodStatusInventory(ctx); err != nil {
-		psm.logger.Error("Failed to send initial pod status inventory", zap.Error(err))
-		if syncDone != nil {
-			syncDone <- err
-		}
-		return err
-	}
-
-	// Signal that initial sync is complete
+	// Signal that setup is complete
 	if syncDone != nil {
 		syncDone <- nil
 	}
 
-	// Start all informers
+	// Start all informers - AddFunc will be called for all existing problematic pods during sync
 	psm.informerFactory.Start(psm.stopCh)
 
 	// Wait for all caches to sync before processing events
