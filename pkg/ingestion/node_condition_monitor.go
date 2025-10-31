@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -67,24 +66,15 @@ func NewNodeConditionMonitor(logger *zap.Logger, conditionChan chan *v1.NodeCond
 func (ncm *NodeConditionMonitor) StartSync(ctx context.Context, syncDone chan<- error) error {
 	ncm.logger.Info("Starting node condition monitor for incident detection")
 
-	// Set up node informer
+	// Set up node informer - AddFunc will be called for all existing nodes during cache sync
 	ncm.setupNodeInformer()
 
-	// Send initial inventory (nodes in problematic states)
-	if err := ncm.sendInitialNodeConditionInventory(ctx); err != nil {
-		ncm.logger.Error("Failed to send initial node condition inventory", zap.Error(err))
-		if syncDone != nil {
-			syncDone <- err
-		}
-		return err
-	}
-
-	// Signal that initial sync is complete
+	// Signal that setup is complete
 	if syncDone != nil {
 		syncDone <- nil
 	}
 
-	// Start all informers
+	// Start all informers - AddFunc will be called for all nodes during cache sync
 	ncm.informerFactory.Start(ncm.stopCh)
 
 	// Wait for all caches to sync before processing events
@@ -337,29 +327,4 @@ func (ncm *NodeConditionMonitor) sendNodeCondition(node *corev1.Node, action str
 			zap.String("name", protoNodeCondition.Name),
 			zap.String("action", protoNodeCondition.Action.String()))
 	}
-}
-
-// sendInitialNodeConditionInventory sends nodes with problematic conditions
-func (ncm *NodeConditionMonitor) sendInitialNodeConditionInventory(ctx context.Context) error {
-	ncm.logger.Info("Sending initial node condition inventory (problematic nodes only)")
-
-	nodes, err := ncm.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to list nodes: %w", err)
-	}
-
-	problematicCount := 0
-	for _, node := range nodes.Items {
-		if ncm.isNodeProblematic(&node) {
-			ncm.sendNodeCondition(&node, "CREATE")
-			problematicCount++
-		}
-		// Store initial state for all nodes
-		ncm.updateNodeConditionSnapshot(&node)
-	}
-
-	ncm.logger.Info("Completed sending initial node condition inventory",
-		zap.Int("total_nodes", len(nodes.Items)),
-		zap.Int("problematic_nodes", problematicCount))
-	return nil
 }
