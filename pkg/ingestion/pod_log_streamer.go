@@ -16,7 +16,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -66,24 +65,15 @@ func NewPodLogStreamer(logger *zap.Logger, logChan chan *v1.PodLogs) (*PodLogStr
 func (pls *PodLogStreamer) StartSync(ctx context.Context, syncDone chan<- error) error {
 	pls.logger.Info("Starting pod log streamer for incident investigation")
 
-	// Set up pod informer to detect pods that need log streaming
+	// Set up pod informer - AddFunc will be called for all existing pods during cache sync
 	pls.setupPodInformer(ctx)
 
-	// Send initial logs from all application pods
-	if err := pls.streamInitialPodLogs(ctx); err != nil {
-		pls.logger.Error("Failed to stream initial pod logs", zap.Error(err))
-		if syncDone != nil {
-			syncDone <- err
-		}
-		return err
-	}
-
-	// Signal that initial sync is complete
+	// Signal that setup is complete
 	if syncDone != nil {
 		syncDone <- nil
 	}
 
-	// Start informer
+	// Start informer - AddFunc will start log streaming for existing problematic pods during sync
 	pls.informerFactory.Start(pls.stopCh)
 
 	// Wait for cache sync
@@ -231,31 +221,6 @@ func (pls *PodLogStreamer) shouldStreamLogs(pod *corev1.Pod) bool {
 
 	// Stream logs for all other application pods (Running, Failed, Unknown)
 	return true
-}
-
-// streamInitialPodLogs streams logs from all application pods
-func (pls *PodLogStreamer) streamInitialPodLogs(ctx context.Context) error {
-	pls.logger.Info("Streaming initial logs from all application pods (excluding system namespaces)")
-
-	pods, err := pls.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
-	}
-
-	streamingCount := 0
-	for _, pod := range pods.Items {
-		if pls.shouldStreamLogs(&pod) {
-			// Start streaming logs for this pod in background
-			go pls.startPodLogStreaming(ctx, &pod)
-			streamingCount++
-		}
-	}
-
-	pls.logger.Info("Started streaming logs from application pods",
-		zap.Int("total_pods", len(pods.Items)),
-		zap.Int("streaming_pods", streamingCount),
-		zap.String("strategy", "all_application_pods"))
-	return nil
 }
 
 // startPodLogStreaming starts streaming logs for a specific pod
