@@ -13,7 +13,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -70,25 +69,17 @@ func (wrm *WorkloadRolloutMonitor) StartSync(ctx context.Context, syncDone chan<
 	wrm.logger.Info("Starting workload rollout monitor for incident detection")
 
 	// Set up informers for Deployments, StatefulSets, and DaemonSets
+	// AddFunc will be called for all existing workloads during cache sync
 	wrm.setupDeploymentInformer()
 	wrm.setupStatefulSetInformer()
 	wrm.setupDaemonSetInformer()
 
-	// Send initial inventory (workloads with rollout issues)
-	if err := wrm.sendInitialRolloutInventory(ctx); err != nil {
-		wrm.logger.Error("Failed to send initial rollout inventory", zap.Error(err))
-		if syncDone != nil {
-			syncDone <- err
-		}
-		return err
-	}
-
-	// Signal that initial sync is complete
+	// Signal that setup is complete
 	if syncDone != nil {
 		syncDone <- nil
 	}
 
-	// Start all informers
+	// Start all informers - AddFunc will be called for all existing workloads during cache sync
 	wrm.informerFactory.Start(wrm.stopCh)
 
 	// Wait for all caches to sync before processing events
@@ -718,57 +709,4 @@ func (wrm *WorkloadRolloutMonitor) determineDaemonSetRolloutStatus(ds *appsv1.Da
 	}
 
 	return "Unknown", "", ""
-}
-
-// sendInitialRolloutInventory sends workloads with problematic rollout states
-func (wrm *WorkloadRolloutMonitor) sendInitialRolloutInventory(ctx context.Context) error {
-	wrm.logger.Info("Sending initial workload rollout inventory (problematic rollouts only)")
-
-	problematicCount := 0
-
-	// Check deployments
-	deployments, err := wrm.clientset.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to list deployments: %w", err)
-	}
-	for _, deployment := range deployments.Items {
-		if wrm.isDeploymentProblematic(&deployment) {
-			wrm.sendDeploymentRolloutStatus(&deployment, "CREATE")
-			problematicCount++
-		}
-		wrm.updateDeploymentRolloutSnapshot(&deployment)
-	}
-
-	// Check statefulsets
-	statefulSets, err := wrm.clientset.AppsV1().StatefulSets("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to list statefulsets: %w", err)
-	}
-	for _, sts := range statefulSets.Items {
-		if wrm.isStatefulSetProblematic(&sts) {
-			wrm.sendStatefulSetRolloutStatus(&sts, "CREATE")
-			problematicCount++
-		}
-		wrm.updateStatefulSetRolloutSnapshot(&sts)
-	}
-
-	// Check daemonsets
-	daemonSets, err := wrm.clientset.AppsV1().DaemonSets("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to list daemonsets: %w", err)
-	}
-	for _, ds := range daemonSets.Items {
-		if wrm.isDaemonSetProblematic(&ds) {
-			wrm.sendDaemonSetRolloutStatus(&ds, "CREATE")
-			problematicCount++
-		}
-		wrm.updateDaemonSetRolloutSnapshot(&ds)
-	}
-
-	wrm.logger.Info("Completed sending initial workload rollout inventory",
-		zap.Int("total_deployments", len(deployments.Items)),
-		zap.Int("total_statefulsets", len(statefulSets.Items)),
-		zap.Int("total_daemonsets", len(daemonSets.Items)),
-		zap.Int("problematic_workloads", problematicCount))
-	return nil
 }
