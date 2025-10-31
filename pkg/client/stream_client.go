@@ -549,107 +549,114 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	rolloutStatusChan := make(chan *v1.WorkloadRolloutStatus, 200) // Workload rollout status
 	podLogsChan := make(chan *v1.PodLogs, 1000)                    // Pod logs (larger buffer for log batches)
 
-	// Create network policy ingester (only if Cilium flows are enabled)
-	var networkPolicyIngester *ingestion.NetworkPolicyIngester
-	disableCilium := getEnvOrDefault("DISABLE_CILIUM_FLOWS", "false")
-	if disableCilium != "true" {
-		var err error
-		networkPolicyIngester, err = ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
-		if err != nil {
-			s.Logger.Error("Failed to create network policy ingester", zap.Error(err))
-			return err
-		}
-		s.Logger.Info("Network policy ingester enabled")
-	} else {
-		s.Logger.Info("Network policy ingester disabled (Cilium flows disabled)")
-	}
-
-	// Create workload ingester
-	workloadIngester, err := ingestion.NewWorkloadIngester(s.Logger, workloadChan)
-	if err != nil {
-		s.Logger.Error("Failed to create workload ingester", zap.Error(err))
-		return err
-	}
-
-	// Create namespace ingester
-	namespaceIngester, err := ingestion.NewNamespaceIngester(s.Logger, namespaceChan)
-	if err != nil {
-		s.Logger.Error("Failed to create namespace ingester", zap.Error(err))
-		return err
-	}
-
-	// Create service ingester
-	serviceIngester, err := ingestion.NewServiceIngester(s.Logger, serviceChan)
-	if err != nil {
-		s.Logger.Error("Failed to create service ingester", zap.Error(err))
-		return err
-	}
-
-	// Create pod ingester
-	podIngester, err := ingestion.NewPodIngester(s.Logger, podChan)
-	if err != nil {
-		s.Logger.Error("Failed to create pod ingester", zap.Error(err))
-		return err
-	}
-
-	// Create node ingester (for VPC Flow Logs node IP resolution)
-	nodeIngester, err := ingestion.NewNodeIngester(s.Logger, nodeChan)
-	if err != nil {
-		s.Logger.Error("Failed to create node ingester", zap.Error(err))
-		return err
-	}
-
-	// Create incident detection ingesters
-	eventIngester, err := ingestion.NewEventIngester(s.Logger, eventChan)
-	if err != nil {
-		s.Logger.Error("Failed to create event ingester", zap.Error(err))
-		return err
-	}
-
-	podStatusMonitor, err := ingestion.NewPodStatusMonitor(s.Logger, podStatusChan)
-	if err != nil {
-		s.Logger.Error("Failed to create pod status monitor", zap.Error(err))
-		return err
-	}
-
-	nodeConditionMonitor, err := ingestion.NewNodeConditionMonitor(s.Logger, nodeConditionChan)
-	if err != nil {
-		s.Logger.Error("Failed to create node condition monitor", zap.Error(err))
-		return err
-	}
-
-	rolloutMonitor, err := ingestion.NewWorkloadRolloutMonitor(s.Logger, rolloutStatusChan)
-	if err != nil {
-		s.Logger.Error("Failed to create workload rollout monitor", zap.Error(err))
-		return err
-	}
-
-	podLogStreamer, err := ingestion.NewPodLogStreamer(s.Logger, podLogsChan)
-	if err != nil {
-		s.Logger.Error("Failed to create pod log streamer", zap.Error(err))
-		return err
-	}
-
-	// Create authorization policy ingester (only if Istio is enabled)
-	var authorizationPolicyIngester *ingestion.AuthorizationPolicyIngester
-	enableIstioALS := getEnvOrDefault("ENABLE_ISTIO_ALS", "false")
-	if enableIstioALS == "true" {
-		var err error
-		authorizationPolicyIngester, err = ingestion.NewAuthorizationPolicyIngester(s.Logger, authorizationPolicyChan)
-		if err != nil {
-			s.Logger.Error("Failed to create authorization policy ingester", zap.Error(err))
-			return err
-		}
-		s.Logger.Info("Authorization policy ingester enabled")
-	} else {
-		s.Logger.Info("Authorization policy ingester disabled (Istio ALS not enabled)")
-	}
-
 	// Create a new stream service client
 	streamClient := v1.NewStreamServiceClient(s.Client)
 
 	// Define the stream function that will be retried
 	streamFunc := func(ctx context.Context) error {
+		// Create fresh ingesters for each connection attempt
+		// SharedInformerFactories cannot be restarted after stopping,
+		// so we must create new ingesters (with new factories) on each reconnection
+		s.Logger.Info("Creating fresh ingesters for this connection")
+
+		// Create network policy ingester (only if Cilium flows are enabled)
+		var networkPolicyIngester *ingestion.NetworkPolicyIngester
+		disableCilium := getEnvOrDefault("DISABLE_CILIUM_FLOWS", "false")
+		if disableCilium != "true" {
+			var err error
+			networkPolicyIngester, err = ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
+			if err != nil {
+				s.Logger.Error("Failed to create network policy ingester", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Network policy ingester created")
+		} else {
+			s.Logger.Info("Network policy ingester disabled (Cilium flows disabled)")
+		}
+
+		// Create workload ingester
+		workloadIngester, err := ingestion.NewWorkloadIngester(s.Logger, workloadChan)
+		if err != nil {
+			s.Logger.Error("Failed to create workload ingester", zap.Error(err))
+			return err
+		}
+
+		// Create namespace ingester
+		namespaceIngester, err := ingestion.NewNamespaceIngester(s.Logger, namespaceChan)
+		if err != nil {
+			s.Logger.Error("Failed to create namespace ingester", zap.Error(err))
+			return err
+		}
+
+		// Create service ingester
+		serviceIngester, err := ingestion.NewServiceIngester(s.Logger, serviceChan)
+		if err != nil {
+			s.Logger.Error("Failed to create service ingester", zap.Error(err))
+			return err
+		}
+
+		// Create pod ingester
+		podIngester, err := ingestion.NewPodIngester(s.Logger, podChan)
+		if err != nil {
+			s.Logger.Error("Failed to create pod ingester", zap.Error(err))
+			return err
+		}
+
+		// Create node ingester (for VPC Flow Logs node IP resolution)
+		nodeIngester, err := ingestion.NewNodeIngester(s.Logger, nodeChan)
+		if err != nil {
+			s.Logger.Error("Failed to create node ingester", zap.Error(err))
+			return err
+		}
+
+		// Create authorization policy ingester (only if Istio is enabled)
+		var authorizationPolicyIngester *ingestion.AuthorizationPolicyIngester
+		enableIstioALS := getEnvOrDefault("ENABLE_ISTIO_ALS", "false")
+		if enableIstioALS == "true" {
+			var err error
+			authorizationPolicyIngester, err = ingestion.NewAuthorizationPolicyIngester(s.Logger, authorizationPolicyChan)
+			if err != nil {
+				s.Logger.Error("Failed to create authorization policy ingester", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Authorization policy ingester created")
+		} else {
+			s.Logger.Info("Authorization policy ingester disabled (Istio ALS not enabled)")
+		}
+
+		// Create incident detection ingesters
+		eventIngester, err := ingestion.NewEventIngester(s.Logger, eventChan)
+		if err != nil {
+			s.Logger.Error("Failed to create event ingester", zap.Error(err))
+			return err
+		}
+
+		podStatusMonitor, err := ingestion.NewPodStatusMonitor(s.Logger, podStatusChan)
+		if err != nil {
+			s.Logger.Error("Failed to create pod status monitor", zap.Error(err))
+			return err
+		}
+
+		nodeConditionMonitor, err := ingestion.NewNodeConditionMonitor(s.Logger, nodeConditionChan)
+		if err != nil {
+			s.Logger.Error("Failed to create node condition monitor", zap.Error(err))
+			return err
+		}
+
+		rolloutMonitor, err := ingestion.NewWorkloadRolloutMonitor(s.Logger, rolloutStatusChan)
+		if err != nil {
+			s.Logger.Error("Failed to create workload rollout monitor", zap.Error(err))
+			return err
+		}
+
+		podLogStreamer, err := ingestion.NewPodLogStreamer(s.Logger, podLogsChan)
+		if err != nil {
+			s.Logger.Error("Failed to create pod log streamer", zap.Error(err))
+			return err
+		}
+
+		s.Logger.Info("All ingesters created successfully for this connection")
+
 		// Create stream with tenant context
 		stream, ctx, err := s.createStreamWithTenantContext(ctx, streamClient)
 		if err != nil {
@@ -1479,6 +1486,7 @@ func (s *StreamClient) applyYamlManifest(ctx context.Context, manifest *v1.YamlM
 }
 
 // applyResourceToCluster applies YAML content to the cluster using kubectl
+// For Pods with spec changes, it uses delete+recreate instead of apply due to Kubernetes limitations
 func (s *StreamClient) applyResourceToCluster(ctx context.Context, yamlContent, resourceType, namespace string) error {
 	// Create a temporary file for the YAML content
 	tmpFile, err := os.CreateTemp("", "kestrel-apply-*.yaml")
@@ -1494,7 +1502,48 @@ func (s *StreamClient) applyResourceToCluster(ctx context.Context, yamlContent, 
 	}
 	tmpFile.Close()
 
-	// Apply using kubectl with timeout
+	// For Pods, use replace (delete + recreate) instead of apply
+	// This is necessary because Kubernetes doesn't allow updating most pod spec fields
+	// (only image, activeDeadlineSeconds, tolerations, and terminationGracePeriodSeconds can be updated)
+	if strings.ToLower(resourceType) == "pod" {
+		s.Logger.Info("Detected Pod resource - using replace strategy (delete + recreate) instead of apply",
+			zap.String("namespace", namespace))
+
+		// Use kubectl replace --force which does delete + recreate
+		cmd := exec.CommandContext(ctx, "kubectl", "replace", "--force", "-f", tmpFile.Name(), "--timeout=30s")
+
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			// If replace fails because pod doesn't exist, try create instead
+			if strings.Contains(string(output), "not found") {
+				s.Logger.Info("Pod not found, using create instead of replace",
+					zap.String("namespace", namespace))
+
+				createCmd := exec.CommandContext(ctx, "kubectl", "create", "-f", tmpFile.Name(), "--timeout=30s")
+				createOutput, createErr := createCmd.CombinedOutput()
+				if createErr != nil {
+					return fmt.Errorf("kubectl create failed: %w, output: %s", createErr, string(createOutput))
+				}
+
+				s.Logger.Info("kubectl create completed successfully",
+					zap.String("output", string(createOutput)),
+					zap.String("resource_type", resourceType),
+					zap.String("namespace", namespace))
+				return nil
+			}
+
+			return fmt.Errorf("kubectl replace failed: %w, output: %s", err, string(output))
+		}
+
+		s.Logger.Info("kubectl replace completed successfully (pod deleted and recreated)",
+			zap.String("output", string(output)),
+			zap.String("resource_type", resourceType),
+			zap.String("namespace", namespace))
+
+		return nil
+	}
+
+	// For all other resources, use regular kubectl apply
 	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", tmpFile.Name(), "--timeout=30s")
 
 	output, err := cmd.CombinedOutput()
