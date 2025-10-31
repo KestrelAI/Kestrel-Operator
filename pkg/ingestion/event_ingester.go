@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -52,24 +51,17 @@ func NewEventIngester(logger *zap.Logger, eventChan chan *v1.KubernetesEvent) (*
 func (ei *EventIngester) StartSync(ctx context.Context, syncDone chan<- error) error {
 	ei.logger.Info("Starting Kubernetes event ingester for incident detection")
 
-	// Set up event informer
+	// Set up event informer before starting
+	// The informer's AddFunc will be called for all existing events during cache sync
 	ei.setupEventInformer()
 
-	// Send initial inventory before starting informers
-	if err := ei.sendInitialEventInventory(ctx); err != nil {
-		ei.logger.Error("Failed to send initial event inventory", zap.Error(err))
-		if syncDone != nil {
-			syncDone <- err
-		}
-		return err
-	}
-
-	// Signal that initial sync is complete
+	// Signal that setup is complete (informer will handle all events including existing ones)
 	if syncDone != nil {
 		syncDone <- nil
 	}
 
 	// Start all informers
+	// During cache sync, AddFunc will be called for ALL existing Warning events
 	ei.informerFactory.Start(ei.stopCh)
 
 	// Wait for all caches to sync before processing events
@@ -79,7 +71,7 @@ func (ei *EventIngester) StartSync(ctx context.Context, syncDone chan<- error) e
 	) {
 		return fmt.Errorf("failed to wait for event informer cache to sync")
 	}
-	ei.logger.Info("Event informer cache synced successfully")
+	ei.logger.Info("Event informer cache synced successfully - all existing events processed via AddFunc")
 
 	// Wait for context cancellation
 	<-ctx.Done()
@@ -110,8 +102,7 @@ func (ei *EventIngester) setupEventInformer() {
 	_, err := eventInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if event, ok := obj.(*corev1.Event); ok {
-				// Only send Warning events for incident detection
-				// Normal events are typically informational and not indicative of incidents
+				// Send Warning events for incident detection
 				if event.Type == corev1.EventTypeWarning {
 					ei.sendEvent(event, "CREATE")
 				}
@@ -199,38 +190,4 @@ func (ei *EventIngester) sendEvent(event *corev1.Event, action string) {
 			zap.String("reason", protoEvent.Reason),
 			zap.String("action", protoEvent.Action.String()))
 	}
-}
-
-// sendInitialEventInventory sends recent warning events to the server
-func (ei *EventIngester) sendInitialEventInventory(ctx context.Context) error {
-	ei.logger.Info("Sending initial event inventory (recent Warning events only)")
-
-	// Get recent events - we only want Warning events from the last hour for incident detection
-	// Events older than that are likely already resolved or not relevant to active incidents
-	events, err := ei.clientset.CoreV1().Events("").List(ctx, metav1.ListOptions{
-		FieldSelector: "type=Warning",
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list events: %w", err)
-	}
-
-	// Filter to recent events (last hour)
-	recentCutoff := time.Now().Add(-1 * time.Hour)
-	recentEvents := []corev1.Event{}
-	for _, event := range events.Items {
-		if event.LastTimestamp.Time.After(recentCutoff) {
-			recentEvents = append(recentEvents, event)
-		}
-	}
-
-	ei.logger.Info("Sending recent warning events",
-		zap.Int("total_warning_events", len(events.Items)),
-		zap.Int("recent_warning_events", len(recentEvents)))
-
-	for _, event := range recentEvents {
-		ei.sendEvent(&event, "CREATE")
-	}
-
-	ei.logger.Info("Completed sending initial event inventory", zap.Int("count", len(recentEvents)))
-	return nil
 }
