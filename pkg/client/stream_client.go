@@ -542,76 +542,121 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	podChan := make(chan *v1.Pod, 2000) // Larger buffer for pods
 	nodeChan := make(chan *v1.Node, 100)
 
-	// Create network policy ingester (only if Cilium flows are enabled)
-	var networkPolicyIngester *ingestion.NetworkPolicyIngester
-	disableCilium := getEnvOrDefault("DISABLE_CILIUM_FLOWS", "false")
-	if disableCilium != "true" {
-		var err error
-		networkPolicyIngester, err = ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
-		if err != nil {
-			s.Logger.Error("Failed to create network policy ingester", zap.Error(err))
-			return err
-		}
-		s.Logger.Info("Network policy ingester enabled")
-	} else {
-		s.Logger.Info("Network policy ingester disabled (Cilium flows disabled)")
-	}
-
-	// Create workload ingester
-	workloadIngester, err := ingestion.NewWorkloadIngester(s.Logger, workloadChan)
-	if err != nil {
-		s.Logger.Error("Failed to create workload ingester", zap.Error(err))
-		return err
-	}
-
-	// Create namespace ingester
-	namespaceIngester, err := ingestion.NewNamespaceIngester(s.Logger, namespaceChan)
-	if err != nil {
-		s.Logger.Error("Failed to create namespace ingester", zap.Error(err))
-		return err
-	}
-
-	// Create service ingester
-	serviceIngester, err := ingestion.NewServiceIngester(s.Logger, serviceChan)
-	if err != nil {
-		s.Logger.Error("Failed to create service ingester", zap.Error(err))
-		return err
-	}
-
-	// Create pod ingester
-	podIngester, err := ingestion.NewPodIngester(s.Logger, podChan)
-	if err != nil {
-		s.Logger.Error("Failed to create pod ingester", zap.Error(err))
-		return err
-	}
-
-	// Create node ingester (for VPC Flow Logs node IP resolution)
-	nodeIngester, err := ingestion.NewNodeIngester(s.Logger, nodeChan)
-	if err != nil {
-		s.Logger.Error("Failed to create node ingester", zap.Error(err))
-		return err
-	}
-
-	// Create authorization policy ingester (only if Istio is enabled)
-	var authorizationPolicyIngester *ingestion.AuthorizationPolicyIngester
-	enableIstioALS := getEnvOrDefault("ENABLE_ISTIO_ALS", "false")
-	if enableIstioALS == "true" {
-		var err error
-		authorizationPolicyIngester, err = ingestion.NewAuthorizationPolicyIngester(s.Logger, authorizationPolicyChan)
-		if err != nil {
-			s.Logger.Error("Failed to create authorization policy ingester", zap.Error(err))
-			return err
-		}
-		s.Logger.Info("Authorization policy ingester enabled")
-	} else {
-		s.Logger.Info("Authorization policy ingester disabled (Istio ALS not enabled)")
-	}
+	// Set up incident detection channels
+	eventChan := make(chan *v1.KubernetesEvent, 500)               // Kubernetes events
+	podStatusChan := make(chan *v1.PodStatusChange, 500)           // Pod status changes
+	nodeConditionChan := make(chan *v1.NodeConditionChange, 100)   // Node condition changes
+	rolloutStatusChan := make(chan *v1.WorkloadRolloutStatus, 200) // Workload rollout status
+	podLogsChan := make(chan *v1.PodLogs, 1000)                    // Pod logs (larger buffer for log batches)
 
 	// Create a new stream service client
 	streamClient := v1.NewStreamServiceClient(s.Client)
 
 	// Define the stream function that will be retried
 	streamFunc := func(ctx context.Context) error {
+		// Create fresh ingesters for each connection attempt
+		// SharedInformerFactories cannot be restarted after stopping,
+		// so we must create new ingesters (with new factories) on each reconnection
+		s.Logger.Info("Creating fresh ingesters for this connection")
+
+		// Create network policy ingester (only if Cilium flows are enabled)
+		var networkPolicyIngester *ingestion.NetworkPolicyIngester
+		disableCilium := getEnvOrDefault("DISABLE_CILIUM_FLOWS", "false")
+		if disableCilium != "true" {
+			var err error
+			networkPolicyIngester, err = ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
+			if err != nil {
+				s.Logger.Error("Failed to create network policy ingester", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Network policy ingester created")
+		} else {
+			s.Logger.Info("Network policy ingester disabled (Cilium flows disabled)")
+		}
+
+		// Create workload ingester
+		workloadIngester, err := ingestion.NewWorkloadIngester(s.Logger, workloadChan)
+		if err != nil {
+			s.Logger.Error("Failed to create workload ingester", zap.Error(err))
+			return err
+		}
+
+		// Create namespace ingester
+		namespaceIngester, err := ingestion.NewNamespaceIngester(s.Logger, namespaceChan)
+		if err != nil {
+			s.Logger.Error("Failed to create namespace ingester", zap.Error(err))
+			return err
+		}
+
+		// Create service ingester
+		serviceIngester, err := ingestion.NewServiceIngester(s.Logger, serviceChan)
+		if err != nil {
+			s.Logger.Error("Failed to create service ingester", zap.Error(err))
+			return err
+		}
+
+		// Create pod ingester
+		podIngester, err := ingestion.NewPodIngester(s.Logger, podChan)
+		if err != nil {
+			s.Logger.Error("Failed to create pod ingester", zap.Error(err))
+			return err
+		}
+
+		// Create node ingester (for VPC Flow Logs node IP resolution)
+		nodeIngester, err := ingestion.NewNodeIngester(s.Logger, nodeChan)
+		if err != nil {
+			s.Logger.Error("Failed to create node ingester", zap.Error(err))
+			return err
+		}
+
+		// Create authorization policy ingester (only if Istio is enabled)
+		var authorizationPolicyIngester *ingestion.AuthorizationPolicyIngester
+		enableIstioALS := getEnvOrDefault("ENABLE_ISTIO_ALS", "false")
+		if enableIstioALS == "true" {
+			var err error
+			authorizationPolicyIngester, err = ingestion.NewAuthorizationPolicyIngester(s.Logger, authorizationPolicyChan)
+			if err != nil {
+				s.Logger.Error("Failed to create authorization policy ingester", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Authorization policy ingester created")
+		} else {
+			s.Logger.Info("Authorization policy ingester disabled (Istio ALS not enabled)")
+		}
+
+		// Create incident detection ingesters
+		eventIngester, err := ingestion.NewEventIngester(s.Logger, eventChan)
+		if err != nil {
+			s.Logger.Error("Failed to create event ingester", zap.Error(err))
+			return err
+		}
+
+		podStatusMonitor, err := ingestion.NewPodStatusMonitor(s.Logger, podStatusChan)
+		if err != nil {
+			s.Logger.Error("Failed to create pod status monitor", zap.Error(err))
+			return err
+		}
+
+		nodeConditionMonitor, err := ingestion.NewNodeConditionMonitor(s.Logger, nodeConditionChan)
+		if err != nil {
+			s.Logger.Error("Failed to create node condition monitor", zap.Error(err))
+			return err
+		}
+
+		rolloutMonitor, err := ingestion.NewWorkloadRolloutMonitor(s.Logger, rolloutStatusChan)
+		if err != nil {
+			s.Logger.Error("Failed to create workload rollout monitor", zap.Error(err))
+			return err
+		}
+
+		podLogStreamer, err := ingestion.NewPodLogStreamer(s.Logger, podLogsChan)
+		if err != nil {
+			s.Logger.Error("Failed to create pod log streamer", zap.Error(err))
+			return err
+		}
+
+		s.Logger.Info("All ingesters created successfully for this connection")
+
 		// Create stream with tenant context
 		stream, ctx, err := s.createStreamWithTenantContext(ctx, streamClient)
 		if err != nil {
@@ -622,6 +667,10 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		inventoryDone := make(chan error, 1)
 		go s.sendInventoryData(ctx, stream, workloadChan, namespaceChan, networkPolicyChan, serviceChan, authorizationPolicyChan, podChan, nodeChan, inventoryDone)
 
+		// Start sending incident detection data (separate from inventory)
+		incidentDone := make(chan error, 1)
+		go s.sendIncidentData(ctx, stream, eventChan, podStatusChan, nodeConditionChan, rolloutStatusChan, podLogsChan, incidentDone)
+
 		// Create channels to signal when initial inventory sync is complete
 		workloadSyncDone := make(chan error, 1)
 		namespaceSyncDone := make(chan error, 1)
@@ -630,6 +679,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		authorizationPolicySyncDone := make(chan error, 1)
 		podSyncDone := make(chan error, 1)
 		nodeSyncDone := make(chan error, 1)
+
+		// Create channels for incident detection sync
+		eventSyncDone := make(chan error, 1)
+		podStatusSyncDone := make(chan error, 1)
+		nodeConditionSyncDone := make(chan error, 1)
+		rolloutSyncDone := make(chan error, 1)
+		podLogsSyncDone := make(chan error, 1)
 
 		// Start workload ingester
 		workloadCtx, workloadCancel := context.WithCancel(ctx)
@@ -719,6 +775,59 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			}()
 		}
 
+		// Start incident detection ingesters
+		s.Logger.Info("Starting incident detection ingesters")
+
+		// Event ingester
+		eventCtx, eventCancel := context.WithCancel(ctx)
+		defer eventCancel()
+		go func() {
+			if err := eventIngester.StartSync(eventCtx, eventSyncDone); err != nil {
+				s.Logger.Error("Event ingester failed", zap.Error(err))
+				eventSyncDone <- err
+			}
+		}()
+
+		// Pod status monitor
+		podStatusCtx, podStatusCancel := context.WithCancel(ctx)
+		defer podStatusCancel()
+		go func() {
+			if err := podStatusMonitor.StartSync(podStatusCtx, podStatusSyncDone); err != nil {
+				s.Logger.Error("Pod status monitor failed", zap.Error(err))
+				podStatusSyncDone <- err
+			}
+		}()
+
+		// Node condition monitor
+		nodeConditionCtx, nodeConditionCancel := context.WithCancel(ctx)
+		defer nodeConditionCancel()
+		go func() {
+			if err := nodeConditionMonitor.StartSync(nodeConditionCtx, nodeConditionSyncDone); err != nil {
+				s.Logger.Error("Node condition monitor failed", zap.Error(err))
+				nodeConditionSyncDone <- err
+			}
+		}()
+
+		// Workload rollout monitor
+		rolloutCtx, rolloutCancel := context.WithCancel(ctx)
+		defer rolloutCancel()
+		go func() {
+			if err := rolloutMonitor.StartSync(rolloutCtx, rolloutSyncDone); err != nil {
+				s.Logger.Error("Workload rollout monitor failed", zap.Error(err))
+				rolloutSyncDone <- err
+			}
+		}()
+
+		// Pod log streamer
+		podLogsCtx, podLogsCancel := context.WithCancel(ctx)
+		defer podLogsCancel()
+		go func() {
+			if err := podLogStreamer.StartSync(podLogsCtx, podLogsSyncDone); err != nil {
+				s.Logger.Error("Pod log streamer failed", zap.Error(err))
+				podLogsSyncDone <- err
+			}
+		}()
+
 		// Wait for all ingesters to complete their initial sync
 		s.Logger.Info("Waiting for initial inventory sync to complete...")
 
@@ -782,6 +891,71 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			return ctx.Err()
 		}
 
+		// Wait for incident detection ingesters to complete initial sync
+		s.Logger.Info("Waiting for incident detection ingesters to complete initial sync...")
+
+		// Wait for event sync
+		select {
+		case err := <-eventSyncDone:
+			if err != nil {
+				s.Logger.Error("Event ingester initial sync failed", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Event ingester initial sync completed")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		// Wait for pod status sync
+		select {
+		case err := <-podStatusSyncDone:
+			if err != nil {
+				s.Logger.Error("Pod status monitor initial sync failed", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Pod status monitor initial sync completed")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		// Wait for node condition sync
+		select {
+		case err := <-nodeConditionSyncDone:
+			if err != nil {
+				s.Logger.Error("Node condition monitor initial sync failed", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Node condition monitor initial sync completed")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		// Wait for rollout monitor sync
+		select {
+		case err := <-rolloutSyncDone:
+			if err != nil {
+				s.Logger.Error("Workload rollout monitor initial sync failed", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Workload rollout monitor initial sync completed")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		// Wait for pod log streamer sync
+		select {
+		case err := <-podLogsSyncDone:
+			if err != nil {
+				s.Logger.Error("Pod log streamer initial sync failed", zap.Error(err))
+				return err
+			}
+			s.Logger.Info("Pod log streamer initial sync completed")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+
+		s.Logger.Info("All incident detection ingesters initialized successfully")
+
 		// Send inventory commit message to signal that initial inventory is complete
 		s.Logger.Info("Sending inventory commit message to server")
 		commitMsg := &v1.StreamDataRequest{
@@ -806,8 +980,8 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			s.Logger.Info("Cilium flow collection disabled, continuing without network flow data")
 		}
 
-		// Handle bidirectional streaming (inventory data already being sent via earlier goroutine)
-		return s.handleBidirectionalStreamWithFlows(ctx, stream, flowChan, inventoryDone, l7FlowChan)
+		// Handle bidirectional streaming (inventory and incident data already being sent via earlier goroutines)
+		return s.handleBidirectionalStreamWithFlows(ctx, stream, flowChan, inventoryDone, incidentDone, l7FlowChan)
 	}
 
 	// Use the retry logic to handle stream reconnection
@@ -992,8 +1166,8 @@ func (s *StreamClient) exportCiliumFlows(ctx context.Context, flowCollector *cil
 }
 
 // handleBidirectionalStreamWithFlows manages the bidirectional streaming for flows only
-// (inventory data is already being handled by a separate goroutine)
-func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, stream v1.StreamService_StreamDataClient, flowChan chan smartcache.FlowCount, inventoryDone <-chan error, l7FlowChan <-chan smartcache.L7Flow) error {
+// (inventory and incident data are already being handled by separate goroutines)
+func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, stream v1.StreamService_StreamDataClient, flowChan chan smartcache.FlowCount, inventoryDone <-chan error, incidentDone <-chan error, l7FlowChan <-chan smartcache.L7Flow) error {
 	// Create a channel to handle stream closure
 	done := make(chan error, 1)
 
@@ -1020,6 +1194,22 @@ func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, s
 		case err := <-inventoryDone:
 			if err != nil {
 				s.Logger.Error("Inventory data sending failed", zap.Error(err))
+				select {
+				case done <- err:
+				default:
+				}
+			}
+		case <-ctx.Done():
+			return
+		}
+	}()
+
+	// Monitor the incident data goroutine for errors
+	go func() {
+		select {
+		case err := <-incidentDone:
+			if err != nil {
+				s.Logger.Error("Incident data sending failed", zap.Error(err))
 				select {
 				case done <- err:
 				default:
@@ -1296,6 +1486,7 @@ func (s *StreamClient) applyYamlManifest(ctx context.Context, manifest *v1.YamlM
 }
 
 // applyResourceToCluster applies YAML content to the cluster using kubectl
+// For Pods with spec changes, it uses delete+recreate instead of apply due to Kubernetes limitations
 func (s *StreamClient) applyResourceToCluster(ctx context.Context, yamlContent, resourceType, namespace string) error {
 	// Create a temporary file for the YAML content
 	tmpFile, err := os.CreateTemp("", "kestrel-apply-*.yaml")
@@ -1311,7 +1502,48 @@ func (s *StreamClient) applyResourceToCluster(ctx context.Context, yamlContent, 
 	}
 	tmpFile.Close()
 
-	// Apply using kubectl with timeout
+	// For Pods, use replace (delete + recreate) instead of apply
+	// This is necessary because Kubernetes doesn't allow updating most pod spec fields
+	// (only image, activeDeadlineSeconds, tolerations, and terminationGracePeriodSeconds can be updated)
+	if strings.ToLower(resourceType) == "pod" {
+		s.Logger.Info("Detected Pod resource - using replace strategy (delete + recreate) instead of apply",
+			zap.String("namespace", namespace))
+
+		// Use kubectl replace --force which does delete + recreate
+		cmd := exec.CommandContext(ctx, "kubectl", "replace", "--force", "-f", tmpFile.Name(), "--timeout=30s")
+
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			// If replace fails because pod doesn't exist, try create instead
+			if strings.Contains(string(output), "not found") {
+				s.Logger.Info("Pod not found, using create instead of replace",
+					zap.String("namespace", namespace))
+
+				createCmd := exec.CommandContext(ctx, "kubectl", "create", "-f", tmpFile.Name(), "--timeout=30s")
+				createOutput, createErr := createCmd.CombinedOutput()
+				if createErr != nil {
+					return fmt.Errorf("kubectl create failed: %w, output: %s", createErr, string(createOutput))
+				}
+
+				s.Logger.Info("kubectl create completed successfully",
+					zap.String("output", string(createOutput)),
+					zap.String("resource_type", resourceType),
+					zap.String("namespace", namespace))
+				return nil
+			}
+
+			return fmt.Errorf("kubectl replace failed: %w, output: %s", err, string(output))
+		}
+
+		s.Logger.Info("kubectl replace completed successfully (pod deleted and recreated)",
+			zap.String("output", string(output)),
+			zap.String("resource_type", resourceType),
+			zap.String("namespace", namespace))
+
+		return nil
+	}
+
+	// For all other resources, use regular kubectl apply
 	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", tmpFile.Name(), "--timeout=30s")
 
 	output, err := cmd.CombinedOutput()
@@ -1738,6 +1970,192 @@ func (s *StreamClient) sendNodeToServer(stream v1.StreamService_StreamDataClient
 		},
 	}
 	return s.protectedSend(stream, nodeMsg)
+}
+
+// sendIncidentData collects incident detection data and sends it to the server
+func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, done chan<- error) {
+	for {
+		select {
+		case <-ctx.Done():
+			// Context is done, exit the goroutine
+			return
+		case event, ok := <-eventChan:
+			// Check if event channel was closed
+			if !ok {
+				s.Logger.Warn("Event channel closed unexpectedly")
+				select {
+				case done <- fmt.Errorf("event channel closed"):
+				default:
+				}
+				return
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendKubernetesEventToServer(stream, event); err != nil {
+					s.Logger.Error("Failed to send Kubernetes event data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
+		case podStatus, ok := <-podStatusChan:
+			// Check if pod status channel was closed
+			if !ok {
+				s.Logger.Warn("Pod status channel closed unexpectedly")
+				select {
+				case done <- fmt.Errorf("pod status channel closed"):
+				default:
+				}
+				return
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendPodStatusChangeToServer(stream, podStatus); err != nil {
+					s.Logger.Error("Failed to send pod status change data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
+		case nodeCondition, ok := <-nodeConditionChan:
+			// Check if node condition channel was closed
+			if !ok {
+				s.Logger.Warn("Node condition channel closed unexpectedly")
+				select {
+				case done <- fmt.Errorf("node condition channel closed"):
+				default:
+				}
+				return
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendNodeConditionChangeToServer(stream, nodeCondition); err != nil {
+					s.Logger.Error("Failed to send node condition change data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
+		case rolloutStatus, ok := <-rolloutStatusChan:
+			// Check if rollout status channel was closed
+			if !ok {
+				s.Logger.Warn("Rollout status channel closed unexpectedly")
+				select {
+				case done <- fmt.Errorf("rollout status channel closed"):
+				default:
+				}
+				return
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendWorkloadRolloutStatusToServer(stream, rolloutStatus); err != nil {
+					s.Logger.Error("Failed to send workload rollout status data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
+		case podLogs, ok := <-podLogsChan:
+			// Check if pod logs channel was closed
+			if !ok {
+				s.Logger.Warn("Pod logs channel closed unexpectedly")
+				select {
+				case done <- fmt.Errorf("pod logs channel closed"):
+				default:
+				}
+				return
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendPodLogsToServer(stream, podLogs); err != nil {
+					s.Logger.Error("Failed to send pod logs data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
+		}
+	}
+}
+
+// sendKubernetesEventToServer sends a Kubernetes event to the server
+func (s *StreamClient) sendKubernetesEventToServer(stream v1.StreamService_StreamDataClient, event *v1.KubernetesEvent) error {
+	eventMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_KubernetesEvent{
+			KubernetesEvent: event,
+		},
+	}
+	return s.protectedSend(stream, eventMsg)
+}
+
+// sendPodStatusChangeToServer sends a pod status change to the server
+func (s *StreamClient) sendPodStatusChangeToServer(stream v1.StreamService_StreamDataClient, podStatus *v1.PodStatusChange) error {
+	podStatusMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_PodStatusChange{
+			PodStatusChange: podStatus,
+		},
+	}
+	return s.protectedSend(stream, podStatusMsg)
+}
+
+// sendNodeConditionChangeToServer sends a node condition change to the server
+func (s *StreamClient) sendNodeConditionChangeToServer(stream v1.StreamService_StreamDataClient, nodeCondition *v1.NodeConditionChange) error {
+	nodeConditionMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_NodeConditionChange{
+			NodeConditionChange: nodeCondition,
+		},
+	}
+	return s.protectedSend(stream, nodeConditionMsg)
+}
+
+// sendWorkloadRolloutStatusToServer sends a workload rollout status to the server
+func (s *StreamClient) sendWorkloadRolloutStatusToServer(stream v1.StreamService_StreamDataClient, rolloutStatus *v1.WorkloadRolloutStatus) error {
+	rolloutStatusMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_WorkloadRolloutStatus{
+			WorkloadRolloutStatus: rolloutStatus,
+		},
+	}
+	return s.protectedSend(stream, rolloutStatusMsg)
+}
+
+// sendPodLogsToServer sends pod logs to the server
+func (s *StreamClient) sendPodLogsToServer(stream v1.StreamService_StreamDataClient, podLogs *v1.PodLogs) error {
+	podLogsMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_PodLogs{
+			PodLogs: podLogs,
+		},
+	}
+	return s.protectedSend(stream, podLogsMsg)
 }
 
 // convertToProtoFlow converts a FlowCount to our proto Flow

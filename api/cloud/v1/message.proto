@@ -34,6 +34,11 @@ message StreamDataRequest {
     CertificateRenewalResponse certificate_renewal_response = 15;
     OperatorRestartResponse operator_restart_response = 16;
     Node node = 17;
+    KubernetesEvent kubernetes_event = 18;
+    PodStatusChange pod_status_change = 19;
+    NodeConditionChange node_condition_change = 20;
+    WorkloadRolloutStatus workload_rollout_status = 21;
+    PodLogs pod_logs = 22;
   }
 }
 
@@ -841,6 +846,288 @@ message OperatorRestartResponse {
   
   // When the restart was initiated
   google.protobuf.Timestamp initiated_at = 4;
+}
+
+// Kubernetes Event message for incident detection
+message KubernetesEvent {
+  string name = 1;
+  string namespace = 2;
+  string uid = 3;
+  
+  // Event metadata
+  string event_type = 4; // Normal, Warning
+  string reason = 5; // FailedScheduling, Unhealthy, FailedMount, etc.
+  string message = 6; // Detailed event message
+  
+  // Involved object (what the event is about)
+  ObjectReference involved_object = 7;
+  
+  // Event source
+  EventSource source = 8;
+  
+  // Event timing
+  google.protobuf.Timestamp first_timestamp = 9;
+  google.protobuf.Timestamp last_timestamp = 10;
+  int32 count = 11; // How many times this event occurred
+  
+  // Action performed on this event
+  Action action = 12; // CREATE, UPDATE, DELETE
+}
+
+// Object reference for events
+message ObjectReference {
+  string kind = 1; // Pod, Deployment, Node, etc.
+  string namespace = 2;
+  string name = 3;
+  string uid = 4;
+  string api_version = 5;
+  string resource_version = 6;
+  string field_path = 7;
+}
+
+// Event source information
+message EventSource {
+  string component = 1; // kubelet, default-scheduler, etc.
+  string host = 2; // Node hostname
+}
+
+// Pod status change message for incident detection
+message PodStatusChange {
+  string name = 1;
+  string namespace = 2;
+  string uid = 3;
+  string pod_ip = 4;
+  string node_name = 5;
+  
+  // Pod phase
+  string phase = 6; // Pending, Running, Succeeded, Failed, Unknown
+  
+  // Container statuses
+  repeated ContainerStatus container_statuses = 7;
+  repeated ContainerStatus init_container_statuses = 8;
+  
+  // Conditions
+  repeated PodCondition conditions = 9;
+  
+  // QoS class
+  string qos_class = 10; // Guaranteed, Burstable, BestEffort
+  
+  // Restart count (sum of all container restarts)
+  int32 total_restart_count = 11;
+  
+  // Resource usage at the time of status change (if available)
+  ResourceUsage resource_usage = 12;
+  
+  // Owner references
+  repeated OwnerReference owner_references = 13;
+  
+  // Timestamps
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp status_timestamp = 15;
+  
+  // Action performed
+  Action action = 16; // CREATE, UPDATE, DELETE
+}
+
+// Container status within a pod
+message ContainerStatus {
+  string name = 1;
+  string image = 2;
+  string image_id = 3;
+  string container_id = 4;
+  
+  bool ready = 5;
+  int32 restart_count = 6;
+  
+  // Current state
+  ContainerState state = 7;
+  
+  // Last terminated state (if container was terminated)
+  ContainerState last_termination_state = 8;
+  
+  bool started = 9;
+}
+
+// Container state (waiting, running, or terminated)
+message ContainerState {
+  oneof state {
+    ContainerStateWaiting waiting = 1;
+    ContainerStateRunning running = 2;
+    ContainerStateTerminated terminated = 3;
+  }
+}
+
+// Container waiting state
+message ContainerStateWaiting {
+  string reason = 1; // CrashLoopBackOff, ImagePullBackOff, ErrImagePull, etc.
+  string message = 2;
+}
+
+// Container running state
+message ContainerStateRunning {
+  google.protobuf.Timestamp started_at = 1;
+}
+
+// Container terminated state
+message ContainerStateTerminated {
+  int32 exit_code = 1;
+  int32 signal = 2;
+  string reason = 3; // OOMKilled, Error, Completed, etc.
+  string message = 4;
+  google.protobuf.Timestamp started_at = 5;
+  google.protobuf.Timestamp finished_at = 6;
+  string container_id = 7;
+}
+
+// Pod condition
+message PodCondition {
+  string type = 1; // Ready, Initialized, ContainersReady, PodScheduled
+  string status = 2; // True, False, Unknown
+  google.protobuf.Timestamp last_probe_time = 3;
+  google.protobuf.Timestamp last_transition_time = 4;
+  string reason = 5;
+  string message = 6;
+}
+
+// Resource usage metrics
+message ResourceUsage {
+  int64 cpu_usage_nano_cores = 1;
+  int64 memory_usage_bytes = 2;
+  int64 cpu_limit_nano_cores = 3;
+  int64 memory_limit_bytes = 4;
+  int64 cpu_request_nano_cores = 5;
+  int64 memory_request_bytes = 6;
+}
+
+// Node condition change message for incident detection
+message NodeConditionChange {
+  string name = 1;
+  string uid = 2;
+  
+  // Node conditions
+  repeated NodeCondition conditions = 3;
+  
+  // Node addresses
+  repeated string internal_ips = 4;
+  repeated string external_ips = 5;
+  string hostname = 6;
+  
+  // Node info
+  string instance_type = 7;
+  string zone = 8;
+  
+  // Resource capacity and allocatable
+  map<string, string> capacity = 9; // cpu, memory, pods, etc.
+  map<string, string> allocatable = 10;
+  
+  // Timestamps
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp condition_timestamp = 12;
+  
+  // Action performed
+  Action action = 13; // CREATE, UPDATE, DELETE
+}
+
+// Node condition
+message NodeCondition {
+  string type = 1; // Ready, MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable
+  string status = 2; // True, False, Unknown
+  google.protobuf.Timestamp last_heartbeat_time = 3;
+  google.protobuf.Timestamp last_transition_time = 4;
+  string reason = 5;
+  string message = 6;
+}
+
+// Workload rollout status message for incident detection
+message WorkloadRolloutStatus {
+  string name = 1;
+  string namespace = 2;
+  string uid = 3;
+  string kind = 4; // Deployment, StatefulSet, DaemonSet
+  
+  // Rollout status
+  string rollout_status = 5; // Progressing, Complete, Failed, TimedOut
+  string rollout_reason = 6; // ProgressDeadlineExceeded, NewReplicaSetAvailable, etc.
+  string rollout_message = 7;
+  
+  // Replica information
+  int32 desired_replicas = 8;
+  int32 current_replicas = 9;
+  int32 ready_replicas = 10;
+  int32 available_replicas = 11;
+  int32 updated_replicas = 12;
+  int32 unavailable_replicas = 13;
+  
+  // Conditions
+  repeated WorkloadCondition conditions = 14;
+  
+  // Observed generation for rollout tracking
+  int64 observed_generation = 15;
+  int64 metadata_generation = 16;
+  
+  // Timestamps
+  google.protobuf.Timestamp created_at = 17;
+  google.protobuf.Timestamp status_timestamp = 18;
+  
+  // Action performed
+  Action action = 19; // CREATE, UPDATE, DELETE
+}
+
+// Workload condition
+message WorkloadCondition {
+  string type = 1; // Available, Progressing, ReplicaFailure (Deployment); PartitionRollout (StatefulSet)
+  string status = 2; // True, False, Unknown
+  google.protobuf.Timestamp last_update_time = 3;
+  google.protobuf.Timestamp last_transition_time = 4;
+  string reason = 5;
+  string message = 6;
+}
+
+// Pod logs message for incident investigation and root cause analysis
+message PodLogs {
+  string pod_name = 1;
+  string namespace = 2;
+  string pod_uid = 3;
+  string container_name = 4;
+  
+  // Log entries (batched for efficiency)
+  repeated LogEntry log_entries = 5;
+  
+  // Whether these are logs from a previous container instance (for crashed containers)
+  bool previous_container = 6;
+  
+  // Log metadata
+  google.protobuf.Timestamp collection_timestamp = 7;
+  int64 total_lines = 8; // Total lines in this batch
+  
+  // Log streaming control
+  bool stream_complete = 9; // True if this is the last batch for this pod/container
+  int64 stream_offset = 10; // Offset for pagination/continuation
+  
+  // Owner references for correlation with incidents
+  repeated OwnerReference owner_references = 11;
+  
+  // Node where pod is running (for correlation)
+  string node_name = 12;
+}
+
+// Individual log entry with metadata
+message LogEntry {
+  google.protobuf.Timestamp timestamp = 1; // Log timestamp (parsed if available)
+  string message = 2; // Actual log message
+  string level = 3; // Log level (ERROR, WARN, INFO, DEBUG) - parsed if detectable
+  int64 line_number = 4; // Line number in the log stream
+  
+  // Parsed error information (if detected)
+  LogErrorInfo error_info = 5;
+}
+
+// Error information parsed from log entries
+message LogErrorInfo {
+  string error_type = 1; // OutOfMemoryException, NullPointerException, SegmentationFault, etc.
+  string stack_trace = 2; // Stack trace if available
+  string error_message = 3; // Detailed error message
+  int32 exit_code = 4; // Exit code if this log indicates termination
 }
 
 // Service definition with bi-directional streaming RPC

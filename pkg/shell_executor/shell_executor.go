@@ -156,15 +156,31 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, command string) *v1.
 
 	var cmd *exec.Cmd
 
+	// Check if command needs shell interpretation
+	needsShell := strings.Contains(command, "|") || // pipes
+		strings.Contains(command, ">") || // redirection
+		strings.Contains(command, "<") || // input redirection
+		strings.Contains(command, "$(") || // command substitution
+		strings.Contains(command, "&&") || // logical AND
+		strings.Contains(command, "||") || // logical OR
+		strings.Contains(command, ";") || // command separator
+		strings.Contains(command, "`") // backtick substitution
+
 	if strings.HasPrefix(command, "bash -c") {
 		// Use bash -c to interpret operators like pipes, redirection, etc.
 		command = strings.TrimPrefix(command, "bash -c")
+		command = strings.TrimSpace(command)
 		e.Logger.Debug("Executing bash -c command", zap.String("command", command))
 		cmd = exec.CommandContext(ctx, "bash", "-c", command)
 	} else if strings.HasPrefix(command, "bash") {
 		// Use bash -c to interpret operators like pipes, redirection, etc.
 		command = strings.TrimPrefix(command, "bash")
+		command = strings.TrimSpace(command)
 		e.Logger.Debug("Executing bash command", zap.String("command", command))
+		cmd = exec.CommandContext(ctx, "bash", "-c", command)
+	} else if needsShell {
+		// Command has shell operators but doesn't have bash prefix - wrap it automatically
+		e.Logger.Debug("Command contains shell operators, wrapping in bash -c", zap.String("command", command))
 		cmd = exec.CommandContext(ctx, "bash", "-c", command)
 	} else {
 		// Parse command into parts using proper shell argument parsing for simple commands
