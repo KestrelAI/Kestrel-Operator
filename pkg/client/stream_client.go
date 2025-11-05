@@ -351,6 +351,12 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		PermitWithoutStream: true,             // Send pings even without active streams
 	}))
 
+	maxMsgSize := 10 * 1024 * 1024 // 10MB
+	opts = append(opts, grpc.WithDefaultCallOptions(
+		grpc.MaxCallRecvMsgSize(maxMsgSize),
+		grpc.MaxCallSendMsgSize(maxMsgSize),
+	))
+
 	// Create the connection to the server
 	serverAddr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	logger.Info("Connecting to server at", zap.String("serverAddr", serverAddr))
