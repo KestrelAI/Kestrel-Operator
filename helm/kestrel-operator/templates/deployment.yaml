@@ -76,6 +76,25 @@ spec:
               value: "{{ .Release.Name }}-client-tls"
             - name: DEPLOYMENT_NAME
               value: "{{ .Release.Name }}"
+            
+            {{- if .Values.s2Streaming.enabled }}
+            # S2 streaming configuration
+            - name: S2_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-s2-credentials
+                  key: auth-token
+            - name: S2_BASIN
+              value: {{ .Values.s2Streaming.basin | quote }}
+            {{- if .Values.operator.cluster.id }}
+            - name: S2_STREAM
+              value: "{{ .Values.s2Streaming.streamPrefix }}/{{ .Values.operator.cluster.id }}"
+            - name: CLUSTER_ID
+              value: {{ .Values.operator.cluster.id | quote }}
+            {{- end }}
+            - name: S2_ENABLE_COMPRESSION
+              value: {{ .Values.s2Streaming.compression | quote }}
+            {{- end }}
           ports:
             - name: health
               containerPort: {{ .Values.healthcheck.port | default 8081 }}

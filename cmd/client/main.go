@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"operator/pkg/client"
+	"operator/pkg/s2_streaming"
 
 	"go.uber.org/zap"
 )
@@ -22,6 +23,15 @@ func main() {
 	// Create a context with cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Initialize S2 log streaming and wrap logger to stream runtime logs
+	logManager, wrappedLogger, err := s2_streaming.InitializeLogStreamingWithLogger(ctx, logger)
+	if err != nil {
+		logger.Warn("S2 log streaming initialization failed, continuing without it", zap.Error(err))
+	} else if logManager != nil && logManager.IsEnabled() {
+		logger = wrappedLogger // Use wrapped logger for all subsequent logging
+		defer logManager.Close()
+	}
 
 	// Load configuration from environment variables (populated by Helm)
 	config, err := client.LoadConfigFromEnv()
