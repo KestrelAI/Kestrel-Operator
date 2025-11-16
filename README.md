@@ -6,7 +6,7 @@ An operator for streaming Kubernetes resource metadata, events, logs, and networ
 
 The Kestrel Operator connects to Kestrel Cloud using gRPC bidirectional streaming. It authenticates using OAuth2 credentials, establishes an mTLS HTTP/2 connection, and performs the following functions:
 
-- **Event Ingestion**: Collects Kubernetes events, pod logs and statuses, node conditions, etc. for 24/7, real-time incident detection
+- **Event and Log Ingestion**: Collects Kubernetes events, pod logs and statuses, node conditions, etc. for 24/7, real-time incident detection
 - **Resource Ingestion**: Monitors and streams Kubernetes workloads, services, namespaces, and network policies
 - **Network Flow Collection**: Collects L3/L4 network flow data from Cilium Hubble Relay (optional)
 - **L7 Access Log Collection**: Collects L7 access logs from Istio Envoy proxies via a gRPC Access Log Service (optional)
@@ -129,3 +129,4 @@ To install the Kestrel Operator on your cluster, simply copy the command from th
 helm install kestrel-operator oci://ghcr.io/kestrelai/charts/kestrel-operator --version 0.1.0 --namespace kestrel-ai --create-namespace -f kestrel-ai-operator-values-<cluster-name>.yaml
 
 ```
+
