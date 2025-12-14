@@ -105,6 +105,31 @@ serviceAccount:
   annotations: {}
   name: ""
 
+# S2 Log Streaming configuration
+s2Streaming:
+  # Enable S2 runtime log streaming
+  enabled: false
+  
+  # S2 authentication token
+  authToken: ""
+  
+  # S2 basin name (top-level container for streams)
+  basin: "kestrel-logs"
+  
+  # S2 stream prefix (cluster ID will be appended from operator.cluster.id)
+  streamPrefix: "operator-logs"
+  
+  # Enable compression for better performance
+  compression: true
+  
+  # Buffer size for log entries
+  bufferSize: 10000
+  
+  # Batch size for sending logs
+  batchSize: 100
+  
+  # Linger time in seconds before sending partial batches
+  lingerTime: 5
 
 certificates:
   client:
