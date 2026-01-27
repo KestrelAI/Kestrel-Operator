@@ -10,6 +10,11 @@ on:
         required: true
         default: '1.0.0'
         type: string
+      chart_name:
+        description: 'Chart name (kestrel-operator or kestrel-operator-onprem)'
+        required: false
+        default: 'kestrel-operator'
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -38,9 +43,11 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Update chart version
+    - name: Update chart name and version
       run: |
+        CHART_NAME="${{ github.event.inputs.chart_name || 'kestrel-operator' }}"
         CHART_VERSION="${{ github.event.inputs.chart_version || '0.1.0' }}"
+        sed -i "s/^name:.*/name: $CHART_NAME/" helm/kestrel-operator/Chart.yaml
         sed -i "s/^version:.*/version: $CHART_VERSION/" helm/kestrel-operator/Chart.yaml
 
     - name: Package Helm chart
@@ -49,6 +56,7 @@ jobs:
 
     - name: Push Helm chart to GHCR
       run: |
+        CHART_NAME="${{ github.event.inputs.chart_name || 'kestrel-operator' }}"
         CHART_VERSION="${{ github.event.inputs.chart_version || '0.1.0' }}"
         REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-        helm push kestrel-operator-$CHART_VERSION.tgz oci://${{ env.REGISTRY }}/${REPO_OWNER}/charts
+        helm push ${CHART_NAME}-${CHART_VERSION}.tgz oci://${{ env.REGISTRY }}/${REPO_OWNER}/charts
