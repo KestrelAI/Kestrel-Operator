@@ -13,12 +13,15 @@ rules:
   # Allow creating, updating, and deleting core resources for safe-apply
   - apiGroups: [""]
     resources: 
+      - "pods"
       - "configmaps"
       - "secrets"
       - "services"
       - "serviceaccounts"
       - "persistentvolumeclaims"
       - "replicationcontrollers"
+      - "resourcequotas"
+      - "limitranges"
     verbs: ["create", "update", "patch", "delete"]
   
   # Allow creating, updating, and deleting workload resources for safe-apply

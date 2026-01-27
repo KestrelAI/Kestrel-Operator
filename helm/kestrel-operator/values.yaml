@@ -4,7 +4,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/kestrelai/kestrel-operator
   tag: latest
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 
 # Pod configuration
@@ -70,12 +70,12 @@ healthcheck:
   
   # Liveness probe configuration
   # The liveness probe determines if the pod should be restarted
-  # It will fail if the gRPC stream is in an EOF loop or unhealthy for too long
+  # It will fail immediately when the gRPC stream encounters EOF errors
   livenessProbe:
     initialDelaySeconds: 30  # Wait 30 seconds after container starts
-    periodSeconds: 30        # Check every 30 seconds
+    periodSeconds: 10        # Check every 10 seconds (responsive)
     timeoutSeconds: 5        # Timeout after 5 seconds
-    failureThreshold: 3      # Restart after 3 consecutive failures
+    failureThreshold: 1      # Restart immediately on first failure (no retries)
     successThreshold: 1      # Consider healthy after 1 success
   
 

@@ -46,7 +46,12 @@ rules:
   # Allow reading pods for ingestion
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get", "list", "watch"] 
+    verbs: ["get", "list", "watch"]
+  
+  # Allow reading pod logs for incident investigation
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list"] 
 
   # Allow reading additional core resources to enable chat functionality
   - apiGroups: [""]
