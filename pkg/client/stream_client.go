@@ -57,6 +57,9 @@ type ServerConfig struct {
 	ClientKeyFile  string
 	CACertFile     string
 	ServerName     string // For SNI and certificate verification
+	// InsecureSkipVerify skips server certificate verification (for on-prem)
+	// When true, still uses TLS encryption but doesn't verify server cert hostname
+	InsecureSkipVerify bool
 }
 
 // StreamClient is the client for streaming data to and from the server
@@ -333,15 +336,22 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{clientCert},
-		RootCAs:      caCertPool,
-		ServerName:   config.ServerName,
+		Certificates:       []tls.Certificate{clientCert},
+		RootCAs:            caCertPool,
+		ServerName:         config.ServerName,
+		InsecureSkipVerify: config.InsecureSkipVerify,
 	}
 
 	creds = credentials.NewTLS(tlsConfig)
-	logger.Info("Using mTLS with client certificate authentication",
-		zap.String("client_cert", config.ClientCertFile),
-		zap.String("server_name", config.ServerName))
+	if config.InsecureSkipVerify {
+		logger.Info("Using TLS with client certificate (server verification DISABLED - on-prem mode)",
+			zap.String("client_cert", config.ClientCertFile),
+			zap.String("server_name", config.ServerName))
+	} else {
+		logger.Info("Using mTLS with client certificate authentication",
+			zap.String("client_cert", config.ClientCertFile),
+			zap.String("server_name", config.ServerName))
+	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
 	// Add keepalive parameters for long-lived streams (24 hours)
@@ -435,8 +445,11 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	caCertFile := getEnvOrDefault("CA_CERT_FILE", "/tls/ca.crt")
 	serverName := getEnvOrDefault("SERVER_NAME", host)
 
+	// TLS verification configuration (for on-prem deployments)
+	insecureSkipVerify := getEnvOrDefault("TLS_INSECURE_SKIP_VERIFY", "false") == "true"
+
 	// Log certificate file paths for debugging
-	log.Printf("Certificate file paths: cert=%s, key=%s, ca=%s", clientCertFile, clientKeyFile, caCertFile)
+	log.Printf("Certificate file paths: cert=%s, key=%s, ca=%s, insecureSkipVerify=%v", clientCertFile, clientKeyFile, caCertFile, insecureSkipVerify)
 
 	// Token loading strategy: Check runtime secret first, fallback to Helm-managed secret
 	token, err := loadTokenWithFallback()
@@ -455,13 +468,14 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	}
 
 	return &ServerConfig{
-		Host:           host,
-		Port:           port,
-		Token:          token,
-		ClientCertFile: clientCertFile,
-		ClientKeyFile:  clientKeyFile,
-		CACertFile:     caCertFile,
-		ServerName:     serverName,
+		Host:               host,
+		Port:               port,
+		Token:              token,
+		ClientCertFile:     clientCertFile,
+		ClientKeyFile:      clientKeyFile,
+		CACertFile:         caCertFile,
+		ServerName:         serverName,
+		InsecureSkipVerify: insecureSkipVerify,
 	}, nil
 }
 
