@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
@@ -95,9 +96,14 @@ func TestOTelReceiverExport(t *testing.T) {
 	assert.Equal(t, 2, stats.SeriesCount, "Expected 2 series to be stored")
 
 	// Query metrics to verify content
+	// Use explicit time range that encompasses the test data points
+	startTime := time.Now().Add(-1 * time.Minute)
+	endTime := time.Now().Add(1 * time.Minute)
 	queryResp, err := store.Query(&v1.MetricsQueryRequest{
 		RequestId: "test-query",
 		Namespace: "production",
+		StartTime: timestamppb.New(startTime),
+		EndTime:   timestamppb.New(endTime),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), queryResp.TotalSeriesMatched)

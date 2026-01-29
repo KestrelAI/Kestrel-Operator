@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"sync"
 	"time"
 
@@ -87,6 +88,10 @@ func (s *OTelReceiverServer) Start(ctx context.Context) error {
 	errChan := make(chan error, 1)
 	go func() {
 		if err := s.server.Serve(listener); err != nil {
+			// Ignore the normal shutdown sentinel error
+			if err == grpc.ErrServerStopped {
+				return
+			}
 			errChan <- err
 		}
 	}()
@@ -98,7 +103,8 @@ func (s *OTelReceiverServer) Start(ctx context.Context) error {
 			s.logger.Info("Shutting down OTEL receiver due to context cancellation")
 			s.Stop()
 		case err := <-errChan:
-			if err != nil {
+			// Only log actual errors, not shutdown signals
+			if err != nil && err != grpc.ErrServerStopped {
 				s.logger.Error("OTEL receiver server error", zap.Error(err))
 			}
 		}
@@ -551,21 +557,27 @@ func (s *OTelReceiverServer) createMetricFromAttrs(
 }
 
 // extractAttributes converts OTLP KeyValue slice to map.
+// Uses type switch on the protobuf oneof to properly handle zero/false values.
 func extractAttributes(kvs []*commonpb.KeyValue) map[string]string {
 	attrs := make(map[string]string)
 	for _, kv := range kvs {
 		if kv == nil || kv.Value == nil {
 			continue
 		}
-		// Only extract string values for now
-		if sv := kv.Value.GetStringValue(); sv != "" {
-			attrs[kv.Key] = sv
-		} else if iv := kv.Value.GetIntValue(); iv != 0 {
-			attrs[kv.Key] = fmt.Sprintf("%d", iv)
-		} else if bv := kv.Value.GetBoolValue(); bv {
-			attrs[kv.Key] = "true"
-		} else if dv := kv.Value.GetDoubleValue(); dv != 0 {
-			attrs[kv.Key] = fmt.Sprintf("%f", dv)
+		// Use type switch on the oneof to preserve zero/false values
+		switch v := kv.Value.Value.(type) {
+		case *commonpb.AnyValue_StringValue:
+			attrs[kv.Key] = v.StringValue
+		case *commonpb.AnyValue_IntValue:
+			attrs[kv.Key] = fmt.Sprintf("%d", v.IntValue)
+		case *commonpb.AnyValue_BoolValue:
+			if v.BoolValue {
+				attrs[kv.Key] = "true"
+			} else {
+				attrs[kv.Key] = "false"
+			}
+		case *commonpb.AnyValue_DoubleValue:
+			attrs[kv.Key] = fmt.Sprintf("%f", v.DoubleValue)
 		}
 	}
 	return attrs
@@ -629,11 +641,23 @@ func filterK8sAttributes(attrs map[string]string) map[string]string {
 }
 
 // computeSeriesKeyFromAttrs creates a unique key for a series based on metric name and attributes.
+// Keys are sorted to ensure deterministic output regardless of map iteration order.
 func computeSeriesKeyFromAttrs(metricName string, attrs map[string]string) string {
-	// Simple concatenation for uniqueness - the metrics_store will hash this
+	if len(attrs) == 0 {
+		return metricName
+	}
+
+	// Collect and sort keys for deterministic ordering
+	keys := make([]string, 0, len(attrs))
+	for k := range attrs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// Build the series key with sorted key=value pairs
 	key := metricName
-	for k, v := range attrs {
-		key += "|" + k + "=" + v
+	for _, k := range keys {
+		key += "|" + k + "=" + attrs[k]
 	}
 	return key
 }

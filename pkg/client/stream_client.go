@@ -2921,8 +2921,74 @@ func (s *StreamClient) handleMetricsQueryRequest(
 	stream v1.StreamService_StreamDataClient,
 	queryRequest *v1.MetricsQueryRequest,
 ) {
+	// Validate that queryRequest is not nil
+	if queryRequest == nil {
+		s.Logger.Warn("Received nil metrics query request from server")
+		response := &v1.MetricsQueryResponse{
+			RequestId:    "",
+			ErrorMessage: "invalid request: query request is nil",
+		}
+		responseMsg := &v1.StreamDataRequest{
+			Request: &v1.StreamDataRequest_MetricsQueryResponse{
+				MetricsQueryResponse: response,
+			},
+		}
+		if err := s.protectedSend(stream, responseMsg); err != nil {
+			s.Logger.Error("Failed to send error response for nil metrics query request", zap.Error(err))
+		}
+		return
+	}
+
+	reqID := queryRequest.RequestId
+
+	// Validate time range fields
+	if queryRequest.StartTime == nil || queryRequest.EndTime == nil {
+		s.Logger.Warn("Metrics query request missing required time range fields",
+			zap.String("request_id", reqID))
+		response := &v1.MetricsQueryResponse{
+			RequestId:    reqID,
+			ErrorMessage: "invalid request: start_time and end_time are required",
+		}
+		responseMsg := &v1.StreamDataRequest{
+			Request: &v1.StreamDataRequest_MetricsQueryResponse{
+				MetricsQueryResponse: response,
+			},
+		}
+		if err := s.protectedSend(stream, responseMsg); err != nil {
+			s.Logger.Error("Failed to send error response for invalid metrics query request",
+				zap.String("request_id", reqID),
+				zap.Error(err))
+		}
+		return
+	}
+
+	startTime := queryRequest.StartTime.AsTime()
+	endTime := queryRequest.EndTime.AsTime()
+	if startTime.After(endTime) {
+		s.Logger.Warn("Metrics query request has invalid time range: start_time > end_time",
+			zap.String("request_id", reqID),
+			zap.Time("start_time", startTime),
+			zap.Time("end_time", endTime))
+		response := &v1.MetricsQueryResponse{
+			RequestId:    reqID,
+			ErrorMessage: "invalid request: start_time must be <= end_time",
+		}
+		responseMsg := &v1.StreamDataRequest{
+			Request: &v1.StreamDataRequest_MetricsQueryResponse{
+				MetricsQueryResponse: response,
+			},
+		}
+		if err := s.protectedSend(stream, responseMsg); err != nil {
+			s.Logger.Error("Failed to send error response for invalid time range",
+				zap.String("request_id", reqID),
+				zap.Error(err))
+		}
+		return
+	}
+
+	// Log after successful validation
 	s.Logger.Info("Received metrics query request from server",
-		zap.String("request_id", queryRequest.RequestId),
+		zap.String("request_id", reqID),
 		zap.String("namespace", queryRequest.Namespace),
 		zap.String("workload_name", queryRequest.WorkloadName),
 		zap.String("workload_kind", queryRequest.WorkloadKind),
