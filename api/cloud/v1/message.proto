@@ -39,6 +39,10 @@ message StreamDataRequest {
     NodeConditionChange node_condition_change = 20;
     WorkloadRolloutStatus workload_rollout_status = 21;
     PodLogs pod_logs = 22;
+    // OTEL metrics (for future cloud forwarding if needed)
+    OTelMetricBatch otel_metric_batch = 23;
+    // Response to server's metrics query
+    MetricsQueryResponse metrics_query_response = 24;
   }
 }
 
@@ -130,6 +134,8 @@ message StreamDataResponse {
     CertificateRenewalRequest certificate_renewal_request = 7;
     // Operator restart request from server to operator
     OperatorRestartRequest operator_restart_request = 8;
+    // Server queries operator for metrics
+    MetricsQueryRequest metrics_query_request = 9;
   }
 }
 
@@ -1129,6 +1135,148 @@ message LogErrorInfo {
   string error_message = 3; // Detailed error message
   int32 exit_code = 4; // Exit code if this log indicates termination
 }
+
+// ============================================================================
+// OTEL Metrics Storage Messages
+// ============================================================================
+
+// Metrics query request from server to operator
+message MetricsQueryRequest {
+  // Unique identifier for tracking this request
+  string request_id = 1;
+
+  // Filters (all optional - empty means "all")
+  string namespace = 2;
+  string workload_name = 3;
+  string workload_kind = 4;       // Deployment, StatefulSet, DaemonSet
+  string pod_name = 5;            // Direct pod name filter
+  string pod_name_prefix = 6;     // Pod name prefix for pattern matching
+  repeated string metric_names = 7;
+  map<string, string> label_matchers = 8;  // Additional label filters
+
+  // Time range (required)
+  google.protobuf.Timestamp start_time = 9;
+  google.protobuf.Timestamp end_time = 10;
+
+  // Pagination/limits
+  int32 max_series = 11;          // Max number of series to return (0 = unlimited)
+  int32 max_data_points = 12;     // Max data points per series (0 = unlimited)
+}
+
+// Metrics query response from operator to server
+message MetricsQueryResponse {
+  // Request identifier that matches the request
+  string request_id = 1;
+
+  // Query results
+  repeated OTelMetric metrics = 2;
+
+  // Response metadata
+  int32 total_series_matched = 3;
+  int32 total_series_returned = 4;
+  bool truncated = 5;             // True if results were limited by max_series
+
+  // Error information
+  string error_message = 6;
+}
+
+// Individual metric with its data points
+message OTelMetric {
+  // Metric identity
+  string name = 1;
+  string description = 2;
+  string unit = 3;
+  OTelMetricType type = 4;
+
+  // Kubernetes context
+  string namespace = 5;
+  string workload_name = 6;
+  string workload_kind = 7;
+  string pod_name = 8;
+  string container_name = 9;
+  string node_name = 10;
+
+  // Labels/attributes (excluding K8s context)
+  map<string, string> labels = 11;
+
+  // Time-series data points
+  repeated OTelMetricDataPoint data_points = 12;
+
+  // Instrumentation scope
+  string scope_name = 13;
+  string scope_version = 14;
+}
+
+// Buckets for exponential histogram (positive or negative)
+message ExponentialHistogramBuckets {
+  int32 offset = 1;                     // Starting bucket index
+  repeated uint64 bucket_counts = 2;    // Count per bucket
+}
+
+// Data specific to exponential histograms
+message ExponentialHistogramData {
+  int32 scale = 1;                              // Scale factor for bucket boundaries
+  uint64 zero_count = 2;                        // Count of values exactly at zero
+  double zero_threshold = 3;                    // Threshold for zero bucket
+  ExponentialHistogramBuckets positive = 4;    // Positive value buckets
+  ExponentialHistogramBuckets negative = 5;    // Negative value buckets
+}
+
+// Single quantile value for summary metrics
+message QuantileValue {
+  double quantile = 1;    // Quantile (0.0 to 1.0, e.g., 0.5 for median, 0.99 for p99)
+  double value = 2;       // Value at this quantile
+}
+
+// Data specific to summary metrics
+message SummaryData {
+  repeated QuantileValue quantile_values = 1;  // Pre-computed quantiles
+}
+
+// Individual data point in a time series
+message OTelMetricDataPoint {
+  // Timestamps
+  google.protobuf.Timestamp timestamp = 1;
+  google.protobuf.Timestamp start_timestamp = 2;
+
+  // Value (for Gauge and Sum types)
+  double value = 3;
+
+  // Histogram fields (for Histogram and ExponentialHistogram types)
+  repeated double bucket_bounds = 4;    // Explicit bucket boundaries
+  repeated uint64 bucket_counts = 5;    // Count per bucket
+  uint64 count = 6;                     // Total count
+  double sum = 7;                       // Sum of all values
+  double min = 8;                       // Minimum value
+  double max = 9;                       // Maximum value
+
+  // Point-level attributes (if different from series labels)
+  map<string, string> attributes = 10;
+
+  // Exponential histogram specific data (for EXPONENTIAL_HISTOGRAM type)
+  ExponentialHistogramData exponential_histogram = 11;
+
+  // Summary specific data (for SUMMARY type)
+  SummaryData summary = 12;
+}
+
+// Metric type enumeration
+enum OTelMetricType {
+  OTEL_METRIC_TYPE_UNSPECIFIED = 0;
+  OTEL_METRIC_TYPE_GAUGE = 1;
+  OTEL_METRIC_TYPE_SUM = 2;
+  OTEL_METRIC_TYPE_HISTOGRAM = 3;
+  OTEL_METRIC_TYPE_EXPONENTIAL_HISTOGRAM = 4;
+  OTEL_METRIC_TYPE_SUMMARY = 5;
+}
+
+// Batch of metrics (used internally for OTEL receiver → store)
+message OTelMetricBatch {
+  repeated OTelMetric metrics = 1;
+  google.protobuf.Timestamp received_at = 2;
+  int32 metric_count = 3;
+}
+
 
 // Service definition with bi-directional streaming RPC
 service StreamService {
