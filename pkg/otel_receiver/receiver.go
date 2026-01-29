@@ -397,8 +397,6 @@ func (s *OTelReceiverServer) convertExponentialHistogram(
 			seriesMap[seriesKey] = metric
 		}
 
-		// For exponential histograms, we store count/sum/min/max
-		// The bucket structure is more complex and not directly compatible
 		dataPoint := &v1.OTelMetricDataPoint{
 			Timestamp:      timestamppb.New(time.Unix(0, int64(dp.TimeUnixNano))),
 			StartTimestamp: timestamppb.New(time.Unix(0, int64(dp.StartTimeUnixNano))),
@@ -413,6 +411,30 @@ func (s *OTelReceiverServer) convertExponentialHistogram(
 			dataPoint.Max = *dp.Max
 		}
 
+		// Populate exponential histogram specific data
+		expHistData := &v1.ExponentialHistogramData{
+			Scale:         dp.Scale,
+			ZeroCount:     dp.ZeroCount,
+			ZeroThreshold: dp.ZeroThreshold,
+		}
+
+		// Convert positive buckets
+		if dp.Positive != nil {
+			expHistData.Positive = &v1.ExponentialHistogramBuckets{
+				Offset:       dp.Positive.Offset,
+				BucketCounts: dp.Positive.BucketCounts,
+			}
+		}
+
+		// Convert negative buckets
+		if dp.Negative != nil {
+			expHistData.Negative = &v1.ExponentialHistogramBuckets{
+				Offset:       dp.Negative.Offset,
+				BucketCounts: dp.Negative.BucketCounts,
+			}
+		}
+
+		dataPoint.ExponentialHistogram = expHistData
 		metric.DataPoints = append(metric.DataPoints, dataPoint)
 	}
 
@@ -449,6 +471,20 @@ func (s *OTelReceiverServer) convertSummary(
 			StartTimestamp: timestamppb.New(time.Unix(0, int64(dp.StartTimeUnixNano))),
 			Count:          dp.Count,
 			Sum:            dp.Sum,
+		}
+
+		// Populate summary specific data with quantile values
+		if len(dp.QuantileValues) > 0 {
+			summaryData := &v1.SummaryData{
+				QuantileValues: make([]*v1.QuantileValue, 0, len(dp.QuantileValues)),
+			}
+			for _, qv := range dp.QuantileValues {
+				summaryData.QuantileValues = append(summaryData.QuantileValues, &v1.QuantileValue{
+					Quantile: qv.Quantile,
+					Value:    qv.Value,
+				})
+			}
+			dataPoint.Summary = summaryData
 		}
 
 		metric.DataPoints = append(metric.DataPoints, dataPoint)

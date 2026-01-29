@@ -91,11 +91,43 @@ func (s *MetricsStore) findCandidates(req *v1.MetricsQueryRequest) map[SeriesKey
 
 	// Start with most specific filter available
 	if req.PodName != "" {
-		podKey := s.podIndexKey(req.Namespace, req.PodName)
-		candidates = s.copyKeySet(s.byPod[podKey])
+		if req.Namespace != "" {
+			// Use index lookup when namespace is provided
+			podKey := s.podIndexKey(req.Namespace, req.PodName)
+			candidates = s.copyKeySet(s.byPod[podKey])
+		} else {
+			// Namespace is empty but PodName is set - perform full scan to find matching pods
+			// across all namespaces since index keys are namespace-qualified
+			candidates = make(map[SeriesKey]struct{})
+			for key, series := range s.seriesMap {
+				if series.PodName == req.PodName {
+					candidates[key] = struct{}{}
+				}
+			}
+		}
 	} else if req.WorkloadName != "" {
-		workloadKey := s.workloadIndexKey(req.Namespace, req.WorkloadKind, req.WorkloadName)
-		candidates = s.copyKeySet(s.byWorkload[workloadKey])
+		if req.Namespace != "" {
+			// Use index lookup when namespace is provided
+			workloadKey := s.workloadIndexKey(req.Namespace, req.WorkloadKind, req.WorkloadName)
+			candidates = s.copyKeySet(s.byWorkload[workloadKey])
+		} else {
+			// Namespace is empty but WorkloadName is set - perform full scan to find matching
+			// workloads across all namespaces since index keys are namespace-qualified
+			candidates = make(map[SeriesKey]struct{})
+			reqKind := req.WorkloadKind
+			if reqKind == "" {
+				reqKind = "Deployment" // Default assumption, matching workloadIndexKey behavior
+			}
+			for key, series := range s.seriesMap {
+				seriesKind := series.WorkloadKind
+				if seriesKind == "" {
+					seriesKind = "Deployment"
+				}
+				if series.WorkloadName == req.WorkloadName && seriesKind == reqKind {
+					candidates[key] = struct{}{}
+				}
+			}
+		}
 	} else if req.Namespace != "" {
 		candidates = s.copyKeySet(s.byNamespace[req.Namespace])
 	} else {

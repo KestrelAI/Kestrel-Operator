@@ -1207,6 +1207,32 @@ message OTelMetric {
   string scope_version = 14;
 }
 
+// Buckets for exponential histogram (positive or negative)
+message ExponentialHistogramBuckets {
+  int32 offset = 1;                     // Starting bucket index
+  repeated uint64 bucket_counts = 2;    // Count per bucket
+}
+
+// Data specific to exponential histograms
+message ExponentialHistogramData {
+  int32 scale = 1;                              // Scale factor for bucket boundaries
+  uint64 zero_count = 2;                        // Count of values exactly at zero
+  double zero_threshold = 3;                    // Threshold for zero bucket
+  ExponentialHistogramBuckets positive = 4;    // Positive value buckets
+  ExponentialHistogramBuckets negative = 5;    // Negative value buckets
+}
+
+// Single quantile value for summary metrics
+message QuantileValue {
+  double quantile = 1;    // Quantile (0.0 to 1.0, e.g., 0.5 for median, 0.99 for p99)
+  double value = 2;       // Value at this quantile
+}
+
+// Data specific to summary metrics
+message SummaryData {
+  repeated QuantileValue quantile_values = 1;  // Pre-computed quantiles
+}
+
 // Individual data point in a time series
 message OTelMetricDataPoint {
   // Timestamps
@@ -1226,6 +1252,12 @@ message OTelMetricDataPoint {
 
   // Point-level attributes (if different from series labels)
   map<string, string> attributes = 10;
+
+  // Exponential histogram specific data (for EXPONENTIAL_HISTOGRAM type)
+  ExponentialHistogramData exponential_histogram = 11;
+
+  // Summary specific data (for SUMMARY type)
+  SummaryData summary = 12;
 }
 
 // Metric type enumeration

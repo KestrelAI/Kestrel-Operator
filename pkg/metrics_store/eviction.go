@@ -9,6 +9,13 @@ import (
 
 // StartEviction starts the background eviction goroutine.
 func (s *MetricsStore) StartEviction(ctx context.Context) {
+	// Guard against zero or negative eviction interval which would cause NewTicker to panic
+	if s.evictionInterval <= 0 {
+		s.logger.Warn("Invalid eviction interval, skipping eviction goroutine",
+			zap.Duration("interval", s.evictionInterval))
+		return
+	}
+
 	go func() {
 		ticker := time.NewTicker(s.evictionInterval)
 		defer ticker.Stop()
