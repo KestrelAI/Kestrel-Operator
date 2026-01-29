@@ -13,6 +13,7 @@ import (
 	"operator/pkg/k8s_api"
 	"operator/pkg/k8s_helper"
 	"operator/pkg/metrics_store"
+	"operator/pkg/otel_receiver"
 	"operator/pkg/shell_executor"
 	smartcache "operator/pkg/smart_cache"
 	"os"
@@ -72,6 +73,7 @@ type StreamClient struct {
 	// OTEL Metrics Store for local metrics storage and querying
 	metricsStore *metrics_store.MetricsStore
 	podResolver  *metrics_store.PodWorkloadResolver
+	otelReceiver *otel_receiver.OTelReceiverServer
 
 	// Health tracking fields for liveness probe
 	streamHealthy   int64 // atomic boolean (1 = healthy, 0 = unhealthy)
@@ -415,13 +417,15 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	// Initialize pod resolver (always needed for workload resolution)
 	podResolver := metrics_store.NewPodWorkloadResolver(logger)
 
-	// Initialize metrics store if OTEL receiver is enabled
+	// Initialize metrics store and OTEL receiver if enabled
 	var metricsStoreInstance *metrics_store.MetricsStore
+	var otelReceiverInstance *otel_receiver.OTelReceiverServer
 	if getEnvOrDefault("ENABLE_OTEL_METRICS_STORE", "false") == "true" {
 		// Parse configuration from environment
 		retention := parseMetricsRetention()
 		maxSeries := parseMetricsMaxSeries()
 		ringSize := parseMetricsRingSize()
+		otelPort := parseOTelReceiverPort()
 
 		metricsStoreInstance = metrics_store.New(
 			logger,
@@ -434,6 +438,15 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 			zap.Duration("retention", retention),
 			zap.Int("max_series", maxSeries),
 			zap.Int("ring_size", ringSize))
+
+		// Create OTEL receiver (will be started later via StartOTelReceiver)
+		otelReceiverInstance = otel_receiver.NewOTelReceiverServer(
+			logger,
+			metricsStoreInstance,
+			otelPort,
+		)
+		logger.Info("OTEL receiver created",
+			zap.Int("port", otelPort))
 	} else {
 		logger.Info("OTEL metrics store disabled")
 	}
@@ -446,6 +459,7 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		shellExecutor: shellExecutor,
 		metricsStore:  metricsStoreInstance,
 		podResolver:   podResolver,
+		otelReceiver:  otelReceiverInstance,
 		// Initialize health tracking - start as unhealthy until first successful operation
 		streamHealthy:    0,
 		lastHealthyTime:  0,
@@ -588,6 +602,16 @@ func parseMetricsRingSize() int {
 	return ringSize
 }
 
+// parseOTelReceiverPort parses the OTEL_RECEIVER_PORT environment variable.
+func parseOTelReceiverPort() int {
+	portStr := getEnvOrDefault("OTEL_RECEIVER_PORT", "4317")
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 {
+		return 4317 // Default OTLP gRPC port
+	}
+	return port
+}
+
 // startOperator starts the operator and begins to stream data to the server and listens to cilium flows.
 func (s *StreamClient) StartOperator(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -604,6 +628,11 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 	// Start metrics store eviction goroutine if enabled
 	s.StartMetricsEviction(ctx)
+
+	// Start OTEL receiver for metrics ingestion if enabled
+	if err := s.StartOTelReceiver(ctx); err != nil {
+		s.Logger.Error("Failed to start OTEL receiver, continuing without metrics ingestion", zap.Error(err))
+	}
 
 	// Set up workload, namespace, network policy, service, and authorization policy ingestion channels
 	workloadChan := make(chan *v1.Workload, 1000)
@@ -2980,4 +3009,26 @@ func (s *StreamClient) StartMetricsEviction(ctx context.Context) {
 		s.metricsStore.StartEviction(ctx)
 		s.Logger.Info("Started metrics store eviction goroutine")
 	}
+}
+
+// StartOTelReceiver starts the OTEL gRPC receiver for accepting metrics from
+// customer OpenTelemetry Collectors. This should be called once when the operator starts.
+func (s *StreamClient) StartOTelReceiver(ctx context.Context) error {
+	if s.otelReceiver == nil {
+		s.Logger.Debug("OTEL receiver not configured, skipping start")
+		return nil
+	}
+
+	if err := s.otelReceiver.Start(ctx); err != nil {
+		s.Logger.Error("Failed to start OTEL receiver", zap.Error(err))
+		return err
+	}
+
+	s.Logger.Info("Started OTEL metrics receiver")
+	return nil
+}
+
+// GetOTelReceiver returns the OTEL receiver instance (for testing or monitoring).
+func (s *StreamClient) GetOTelReceiver() *otel_receiver.OTelReceiverServer {
+	return s.otelReceiver
 }
