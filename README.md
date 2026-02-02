@@ -1,12 +1,11 @@
 # Kestrel Operator
 
-An operator for streaming Kubernetes resource metadata, events, logs, and network traffic telemetry over mTLS to Kestrel Cloud.
+An operator for streaming Kubernetes resource metadata and network traffic telemetry over mTLS to Kestrel Cloud.
 
 ## Overview
 
 The Kestrel Operator connects to Kestrel Cloud using gRPC bidirectional streaming. It authenticates using OAuth2 credentials, establishes an mTLS HTTP/2 connection, and performs the following functions:
 
-- **Event and Log Ingestion**: Collects Kubernetes events, pod logs and statuses, node conditions, etc. for 24/7, real-time incident detection
 - **Resource Ingestion**: Monitors and streams Kubernetes workloads, services, namespaces, and network policies
 - **Network Flow Collection**: Collects L3/L4 network flow data from Cilium Hubble Relay (optional)
 - **L7 Access Log Collection**: Collects L7 access logs from Istio Envoy proxies via a gRPC Access Log Service (optional)
@@ -121,12 +120,84 @@ kubectl patch configmap istio -n istio-system --type merge -p '{"data":{"mesh":"
 
 The operator's Helm chart will automatically create the necessary `Telemetry` resources that reference these extension providers.
 
+## OpenTelemetry Metrics Integration
+
+The Kestrel Operator can receive and store OTEL metrics locally for incident root cause analysis (RCA). When enabled, the operator exposes an OTLP gRPC receiver (default port 4317) that accepts metrics from customer OpenTelemetry Collectors.
+
+### Configuration
+
+**Via Helm values:**
+```yaml
+operator:
+  otel:
+    enabled: true
+    receiverPort: 4317
+  metricsStore:
+    retention: "30m"      # Rolling retention window
+    maxSeries: 100000     # Max unique metric series
+    ringSize: 60          # Data points per series
+```
+
+### Customer OTEL Collector Requirements
+
+**IMPORTANT**: For metrics to include Kubernetes context (namespace, workload, pod names), the customer's OpenTelemetry Collector **MUST** have the `k8sattributes` processor configured.
+
+**Required k8sattributes processor configuration:**
+
+```yaml
+processors:
+  k8sattributes:
+    auth_type: "serviceAccount"
+    passthrough: false
+    extract:
+      metadata:
+        - k8s.namespace.name
+        - k8s.pod.name
+        - k8s.pod.uid
+        - k8s.deployment.name
+        - k8s.statefulset.name
+        - k8s.daemonset.name
+        - k8s.replicaset.name
+        - k8s.container.name
+        - k8s.node.name
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.ip
+          - from: resource_attribute
+            name: ip
+          - from: connection
+```
+
+**Exporter configuration to send metrics to Kestrel Operator:**
+
+```yaml
+exporters:
+  otlp/kestrel:
+    endpoint: kestrel-operator.kestrel-ai.svc.cluster.local:4317
+    tls:
+      insecure: true  # In-cluster communication
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [k8sattributes, batch]
+      exporters: [otlp/kestrel]
+```
+
+### Why k8sattributes is Required
+
+Without the `k8sattributes` processor:
+- Metrics will only have basic labels (no Kubernetes context)
+- The operator cannot map metrics to workloads
+- Queries by namespace/workload/pod will return no results
+- RCA agents cannot correlate metrics with Kubernetes resources
+
 ### Installation
 
 To install the Kestrel Operator on your cluster, simply copy the command from the Onboard Cluster page on the Kestrel Platform:
 
 ```bash
 helm install kestrel-operator oci://ghcr.io/kestrelai/charts/kestrel-operator --version 0.1.0 --namespace kestrel-ai --create-namespace -f kestrel-ai-operator-values-<cluster-name>.yaml
-
 ```
-
