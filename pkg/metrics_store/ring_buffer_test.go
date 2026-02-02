@@ -164,7 +164,7 @@ func TestRingBuffer_Empty(t *testing.T) {
 	}
 
 	results = rb.Range(time.Now(), time.Now().Add(time.Hour))
-	if results != nil {
-		t.Error("Expected nil results for empty buffer range query")
+	if len(results) != 0 {
+		t.Errorf("Expected empty results for empty buffer range query, got %d", len(results))
 	}
 }

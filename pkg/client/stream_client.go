@@ -414,18 +414,19 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	// Initialize shell executor
 	shellExecutor := shell_executor.NewShellExecutor(logger)
 
-	// Initialize pod resolver (always needed for workload resolution)
-	podResolver := metrics_store.NewPodWorkloadResolver(logger)
-
-	// Initialize metrics store and OTEL receiver if enabled
+	// Initialize metrics store, pod resolver, and OTEL receiver if enabled
 	var metricsStoreInstance *metrics_store.MetricsStore
 	var otelReceiverInstance *otel_receiver.OTelReceiverServer
+	var podResolver *metrics_store.PodWorkloadResolver
 	if getEnvOrDefault("ENABLE_OTEL_METRICS_STORE", "false") == "true" {
 		// Parse configuration from environment
 		retention := parseMetricsRetention()
 		maxSeries := parseMetricsMaxSeries()
 		ringSize := parseMetricsRingSize()
 		otelPort := parseOTelReceiverPort()
+
+		// Initialize pod resolver only when metrics are enabled
+		podResolver = metrics_store.NewPodWorkloadResolver(logger)
 
 		metricsStoreInstance = metrics_store.New(
 			logger,

@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	v1 "operator/api/gen/cloud/v1"
+
+	"go.uber.org/zap"
 )
 
 // addToIndexes adds a series to all secondary indexes.
@@ -97,7 +99,11 @@ func (s *MetricsStore) findCandidates(req *v1.MetricsQueryRequest) map[SeriesKey
 			candidates = s.copyKeySet(s.byPod[podKey])
 		} else {
 			// Namespace is empty but PodName is set - perform full scan to find matching pods
-			// across all namespaces since index keys are namespace-qualified
+			// across all namespaces since index keys are namespace-qualified.
+			// NOTE: This may be slow with large series counts; consider requiring namespace.
+			s.logger.Debug("Query performing full scan: namespace empty with pod filter",
+				zap.String("pod_name", req.PodName),
+				zap.Int("series_count", len(s.seriesMap)))
 			candidates = make(map[SeriesKey]struct{})
 			for key, series := range s.seriesMap {
 				if series.PodName == req.PodName {
@@ -112,7 +118,12 @@ func (s *MetricsStore) findCandidates(req *v1.MetricsQueryRequest) map[SeriesKey
 			candidates = s.copyKeySet(s.byWorkload[workloadKey])
 		} else {
 			// Namespace is empty but WorkloadName is set - perform full scan to find matching
-			// workloads across all namespaces since index keys are namespace-qualified
+			// workloads across all namespaces since index keys are namespace-qualified.
+			// NOTE: This may be slow with large series counts; consider requiring namespace.
+			s.logger.Debug("Query performing full scan: namespace empty with workload filter",
+				zap.String("workload_name", req.WorkloadName),
+				zap.String("workload_kind", req.WorkloadKind),
+				zap.Int("series_count", len(s.seriesMap)))
 			candidates = make(map[SeriesKey]struct{})
 			reqKind := req.WorkloadKind
 			if reqKind == "" {

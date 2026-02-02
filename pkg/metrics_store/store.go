@@ -107,6 +107,11 @@ func (s *MetricsStore) InsertMetric(metric *v1.OTelMetric) error {
 
 // insertMetricLocked adds a metric to the store (must be called with lock held).
 func (s *MetricsStore) insertMetricLocked(metric *v1.OTelMetric) {
+	// Skip metrics with no data points to avoid creating empty series
+	if len(metric.DataPoints) == 0 {
+		return
+	}
+
 	// Resolve workload if missing
 	if metric.WorkloadName == "" && metric.PodName != "" && s.podResolver != nil {
 		if info, ok := s.podResolver.ResolveWorkload(metric.Namespace, metric.PodName); ok {

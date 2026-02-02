@@ -38,6 +38,13 @@ func (s *MetricsStore) StartEviction(ctx context.Context) {
 
 // evictStaleData removes series that have no data within the retention window.
 func (s *MetricsStore) evictStaleData() {
+	// Guard against zero or negative retention which would evict everything
+	if s.retentionDuration <= 0 {
+		s.logger.Warn("Skipping eviction: invalid retention duration",
+			zap.Duration("retention", s.retentionDuration))
+		return
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

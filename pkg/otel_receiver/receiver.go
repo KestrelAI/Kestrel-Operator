@@ -39,6 +39,7 @@ type OTelReceiverServer struct {
 
 	mu      sync.Mutex
 	running bool
+	doneCh  chan struct{} // Signals shutdown to the monitoring goroutine
 
 	// Stats
 	totalReceived   int64
@@ -77,6 +78,7 @@ func (s *OTelReceiverServer) Start(ctx context.Context) error {
 	s.listener = listener
 	s.server = grpc.NewServer()
 	colmetricspb.RegisterMetricsServiceServer(s.server, s)
+	s.doneCh = make(chan struct{})
 	s.running = true
 	s.mu.Unlock()
 
@@ -96,7 +98,7 @@ func (s *OTelReceiverServer) Start(ctx context.Context) error {
 		}
 	}()
 
-	// Wait for context cancellation or server error
+	// Wait for context cancellation, server error, or explicit shutdown
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -107,6 +109,8 @@ func (s *OTelReceiverServer) Start(ctx context.Context) error {
 			if err != nil && err != grpc.ErrServerStopped {
 				s.logger.Error("OTEL receiver server error", zap.Error(err))
 			}
+		case <-s.doneCh:
+			// Explicit shutdown via Stop() - goroutine exits cleanly
 		}
 	}()
 
@@ -127,6 +131,10 @@ func (s *OTelReceiverServer) Stop() {
 	}
 	if s.listener != nil {
 		s.listener.Close()
+	}
+	// Signal the monitoring goroutine to exit
+	if s.doneCh != nil {
+		close(s.doneCh)
 	}
 	s.running = false
 	s.logger.Info("OTEL receiver stopped")
