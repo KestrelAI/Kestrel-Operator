@@ -16,4 +16,24 @@ spec:
       name: grpc-als
   selector:
     {{- include "kestrel-operator.selectorLabels" . | nindent 4 }}
+{{- end }}
+---
+{{- if .Values.operator.otel.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kestrel-operator.fullname" . }}-otel
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kestrel-operator.labels" . | nindent 4 }}
+    component: otel-receiver
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.operator.otel.receiverPort }}
+      targetPort: {{ .Values.operator.otel.receiverPort }}
+      protocol: TCP
+      name: otlp-grpc
+  selector:
+    {{- include "kestrel-operator.selectorLabels" . | nindent 4 }}
 {{- end }} 

@@ -12,6 +12,8 @@ import (
 	"operator/pkg/ingestion"
 	"operator/pkg/k8s_api"
 	"operator/pkg/k8s_helper"
+	"operator/pkg/metrics_store"
+	"operator/pkg/otel_receiver"
 	"operator/pkg/shell_executor"
 	smartcache "operator/pkg/smart_cache"
 	"os"
@@ -70,6 +72,11 @@ type StreamClient struct {
 	sendMu        sync.Mutex // Protects concurrent stream.Send calls
 	apiExecutor   *k8s_api.APIExecutor
 	shellExecutor *shell_executor.ShellExecutor
+
+	// OTEL Metrics Store for local metrics storage and querying
+	metricsStore *metrics_store.MetricsStore
+	podResolver  *metrics_store.PodWorkloadResolver
+	otelReceiver *otel_receiver.OTelReceiverServer
 
 	// Health tracking fields for liveness probe
 	streamHealthy   int64 // atomic boolean (1 = healthy, 0 = unhealthy)
@@ -417,12 +424,53 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	// Initialize shell executor
 	shellExecutor := shell_executor.NewShellExecutor(logger)
 
+	// Initialize metrics store, pod resolver, and OTEL receiver if enabled
+	var metricsStoreInstance *metrics_store.MetricsStore
+	var otelReceiverInstance *otel_receiver.OTelReceiverServer
+	var podResolver *metrics_store.PodWorkloadResolver
+	if getEnvOrDefault("ENABLE_OTEL_METRICS_STORE", "false") == "true" {
+		// Parse configuration from environment
+		retention := parseMetricsRetention()
+		maxSeries := parseMetricsMaxSeries()
+		ringSize := parseMetricsRingSize()
+		otelPort := parseOTelReceiverPort()
+
+		// Initialize pod resolver only when metrics are enabled
+		podResolver = metrics_store.NewPodWorkloadResolver(logger)
+
+		metricsStoreInstance = metrics_store.New(
+			logger,
+			podResolver,
+			metrics_store.WithRetention(retention),
+			metrics_store.WithMaxSeries(maxSeries),
+			metrics_store.WithRingBufferSize(ringSize),
+		)
+		logger.Info("OTEL metrics store initialized",
+			zap.Duration("retention", retention),
+			zap.Int("max_series", maxSeries),
+			zap.Int("ring_size", ringSize))
+
+		// Create OTEL receiver (will be started later via StartOTelReceiver)
+		otelReceiverInstance = otel_receiver.NewOTelReceiverServer(
+			logger,
+			metricsStoreInstance,
+			otelPort,
+		)
+		logger.Info("OTEL receiver created",
+			zap.Int("port", otelPort))
+	} else {
+		logger.Info("OTEL metrics store disabled")
+	}
+
 	return &StreamClient{
 		Logger:        logger,
 		Client:        conn,
 		Config:        config,
 		apiExecutor:   apiExecutor,
 		shellExecutor: shellExecutor,
+		metricsStore:  metricsStoreInstance,
+		podResolver:   podResolver,
+		otelReceiver:  otelReceiverInstance,
 		// Initialize health tracking - start as unhealthy until first successful operation
 		streamHealthy:    0,
 		lastHealthyTime:  0,
@@ -539,6 +587,46 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return value
 }
 
+// parseMetricsRetention parses the METRICS_STORE_RETENTION environment variable.
+func parseMetricsRetention() time.Duration {
+	retentionStr := getEnvOrDefault("METRICS_STORE_RETENTION", "30m")
+	retention, err := time.ParseDuration(retentionStr)
+	if err != nil {
+		return metrics_store.DefaultRetentionDuration
+	}
+	return retention
+}
+
+// parseMetricsMaxSeries parses the METRICS_STORE_MAX_SERIES environment variable.
+func parseMetricsMaxSeries() int {
+	maxSeriesStr := getEnvOrDefault("METRICS_STORE_MAX_SERIES", "100000")
+	maxSeries, err := strconv.Atoi(maxSeriesStr)
+	if err != nil || maxSeries <= 0 {
+		return metrics_store.DefaultMaxSeries
+	}
+	return maxSeries
+}
+
+// parseMetricsRingSize parses the METRICS_STORE_RING_SIZE environment variable.
+func parseMetricsRingSize() int {
+	ringSizeStr := getEnvOrDefault("METRICS_STORE_RING_SIZE", "60")
+	ringSize, err := strconv.Atoi(ringSizeStr)
+	if err != nil || ringSize <= 0 {
+		return metrics_store.DefaultRingBufferSize
+	}
+	return ringSize
+}
+
+// parseOTelReceiverPort parses the OTEL_RECEIVER_PORT environment variable.
+func parseOTelReceiverPort() int {
+	portStr := getEnvOrDefault("OTEL_RECEIVER_PORT", "4317")
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 {
+		return 4317 // Default OTLP gRPC port
+	}
+	return port
+}
+
 // startOperator starts the operator and begins to stream data to the server and listens to cilium flows.
 func (s *StreamClient) StartOperator(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -552,6 +640,14 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 	// Ensure cleanup of L7 cache on shutdown
 	defer l7Cache.Stop()
+
+	// Start metrics store eviction goroutine if enabled
+	s.StartMetricsEviction(ctx)
+
+	// Start OTEL receiver for metrics ingestion if enabled
+	if err := s.StartOTelReceiver(ctx); err != nil {
+		s.Logger.Error("Failed to start OTEL receiver, continuing without metrics ingestion", zap.Error(err))
+	}
 
 	// Set up workload, namespace, network policy, service, and authorization policy ingestion channels
 	workloadChan := make(chan *v1.Workload, 1000)
@@ -1305,6 +1401,8 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 				s.handleCertificateRenewalRequest(ctx, stream, resp.CertificateRenewalRequest)
 			case *v1.StreamDataResponse_OperatorRestartRequest:
 				s.handleOperatorRestartRequest(ctx, stream, resp.OperatorRestartRequest)
+			case *v1.StreamDataResponse_MetricsQueryRequest:
+				s.handleMetricsQueryRequest(ctx, stream, resp.MetricsQueryRequest)
 			default:
 				s.Logger.Warn("Received unhandled message type from server",
 					zap.String("message_type", fmt.Sprintf("%T", response.Response)))
@@ -1869,6 +1967,16 @@ func (s *StreamClient) sendInventoryData(ctx context.Context, stream v1.StreamSe
 				default:
 				}
 				return
+			}
+
+			// Register/unregister pod with the pod resolver for metrics workload lookup
+			if s.podResolver != nil {
+				switch pod.Action {
+				case v1.Action_ACTION_CREATE, v1.Action_ACTION_UPDATE:
+					s.podResolver.RegisterPod(pod)
+				case v1.Action_ACTION_DELETE:
+					s.podResolver.UnregisterPod(pod.Namespace, pod.Name, pod.Uid)
+				}
 			}
 
 			// Check context again before sending
@@ -2818,4 +2926,190 @@ func (s *StreamClient) performImmediateRestart(ctx context.Context, clientset *k
 		zap.String("namespace", namespace))
 
 	return true, ""
+}
+
+// handleMetricsQueryRequest processes metrics query requests from the server.
+// This allows the server (and agents service) to query recent metrics data
+// stored locally on the operator for incident verification and RCA.
+func (s *StreamClient) handleMetricsQueryRequest(
+	ctx context.Context,
+	stream v1.StreamService_StreamDataClient,
+	queryRequest *v1.MetricsQueryRequest,
+) {
+	// Validate that queryRequest is not nil
+	if queryRequest == nil {
+		s.Logger.Warn("Received nil metrics query request from server")
+		response := &v1.MetricsQueryResponse{
+			RequestId:    "",
+			ErrorMessage: "invalid request: query request is nil",
+		}
+		responseMsg := &v1.StreamDataRequest{
+			Request: &v1.StreamDataRequest_MetricsQueryResponse{
+				MetricsQueryResponse: response,
+			},
+		}
+		if err := s.protectedSend(stream, responseMsg); err != nil {
+			s.Logger.Error("Failed to send error response for nil metrics query request", zap.Error(err))
+		}
+		return
+	}
+
+	reqID := queryRequest.RequestId
+
+	// Validate time range fields
+	if queryRequest.StartTime == nil || queryRequest.EndTime == nil {
+		s.Logger.Warn("Metrics query request missing required time range fields",
+			zap.String("request_id", reqID))
+		response := &v1.MetricsQueryResponse{
+			RequestId:    reqID,
+			ErrorMessage: "invalid request: start_time and end_time are required",
+		}
+		responseMsg := &v1.StreamDataRequest{
+			Request: &v1.StreamDataRequest_MetricsQueryResponse{
+				MetricsQueryResponse: response,
+			},
+		}
+		if err := s.protectedSend(stream, responseMsg); err != nil {
+			s.Logger.Error("Failed to send error response for invalid metrics query request",
+				zap.String("request_id", reqID),
+				zap.Error(err))
+		}
+		return
+	}
+
+	startTime := queryRequest.StartTime.AsTime()
+	endTime := queryRequest.EndTime.AsTime()
+	if startTime.After(endTime) {
+		s.Logger.Warn("Metrics query request has invalid time range: start_time > end_time",
+			zap.String("request_id", reqID),
+			zap.Time("start_time", startTime),
+			zap.Time("end_time", endTime))
+		response := &v1.MetricsQueryResponse{
+			RequestId:    reqID,
+			ErrorMessage: "invalid request: start_time must be <= end_time",
+		}
+		responseMsg := &v1.StreamDataRequest{
+			Request: &v1.StreamDataRequest_MetricsQueryResponse{
+				MetricsQueryResponse: response,
+			},
+		}
+		if err := s.protectedSend(stream, responseMsg); err != nil {
+			s.Logger.Error("Failed to send error response for invalid time range",
+				zap.String("request_id", reqID),
+				zap.Error(err))
+		}
+		return
+	}
+
+	// Log after successful validation
+	s.Logger.Info("Received metrics query request from server",
+		zap.String("request_id", reqID),
+		zap.String("namespace", queryRequest.Namespace),
+		zap.String("workload_name", queryRequest.WorkloadName),
+		zap.String("workload_kind", queryRequest.WorkloadKind),
+		zap.String("pod_name", queryRequest.PodName),
+		zap.Int("metric_names_count", len(queryRequest.MetricNames)))
+
+	var response *v1.MetricsQueryResponse
+
+	if s.metricsStore == nil {
+		s.Logger.Warn("Metrics query received but metrics store is not enabled",
+			zap.String("request_id", queryRequest.RequestId))
+		response = &v1.MetricsQueryResponse{
+			RequestId:    queryRequest.RequestId,
+			ErrorMessage: "metrics store not enabled on this operator",
+		}
+	} else {
+		var err error
+		response, err = s.metricsStore.Query(queryRequest)
+		if err != nil {
+			s.Logger.Error("Failed to execute metrics query",
+				zap.String("request_id", queryRequest.RequestId),
+				zap.Error(err))
+			response = &v1.MetricsQueryResponse{
+				RequestId:    queryRequest.RequestId,
+				ErrorMessage: err.Error(),
+			}
+		}
+	}
+
+	s.Logger.Info("Sending metrics query response to server",
+		zap.String("request_id", queryRequest.RequestId),
+		zap.Int32("series_matched", response.TotalSeriesMatched),
+		zap.Int32("series_returned", response.TotalSeriesReturned),
+		zap.Bool("truncated", response.Truncated))
+
+	// Send the response back to the server
+	responseMsg := &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_MetricsQueryResponse{
+			MetricsQueryResponse: response,
+		},
+	}
+
+	if err := s.protectedSend(stream, responseMsg); err != nil {
+		s.Logger.Error("Failed to send metrics query response to server",
+			zap.String("request_id", queryRequest.RequestId),
+			zap.Error(err))
+	} else {
+		s.Logger.Info("Successfully sent metrics query response to server",
+			zap.String("request_id", queryRequest.RequestId),
+			zap.Int("metrics_count", len(response.Metrics)))
+	}
+}
+
+// RegisterPodForMetrics registers a pod with the pod resolver for workload resolution.
+// This should be called when pods are ingested to enable metrics workload lookup.
+func (s *StreamClient) RegisterPodForMetrics(pod *v1.Pod) {
+	if s.podResolver != nil {
+		s.podResolver.RegisterPod(pod)
+	}
+}
+
+// UnregisterPodForMetrics removes a pod from the pod resolver.
+// This should be called when pods are deleted.
+func (s *StreamClient) UnregisterPodForMetrics(namespace, name, uid string) {
+	if s.podResolver != nil {
+		s.podResolver.UnregisterPod(namespace, name, uid)
+	}
+}
+
+// GetMetricsStore returns the metrics store instance (for testing or external use).
+func (s *StreamClient) GetMetricsStore() *metrics_store.MetricsStore {
+	return s.metricsStore
+}
+
+// GetPodResolver returns the pod resolver instance (for testing or external use).
+func (s *StreamClient) GetPodResolver() *metrics_store.PodWorkloadResolver {
+	return s.podResolver
+}
+
+// StartMetricsEviction starts the background eviction goroutine for the metrics store.
+// This should be called once when the operator starts.
+func (s *StreamClient) StartMetricsEviction(ctx context.Context) {
+	if s.metricsStore != nil {
+		s.metricsStore.StartEviction(ctx)
+		s.Logger.Info("Started metrics store eviction goroutine")
+	}
+}
+
+// StartOTelReceiver starts the OTEL gRPC receiver for accepting metrics from
+// customer OpenTelemetry Collectors. This should be called once when the operator starts.
+func (s *StreamClient) StartOTelReceiver(ctx context.Context) error {
+	if s.otelReceiver == nil {
+		s.Logger.Debug("OTEL receiver not configured, skipping start")
+		return nil
+	}
+
+	if err := s.otelReceiver.Start(ctx); err != nil {
+		s.Logger.Error("Failed to start OTEL receiver", zap.Error(err))
+		return err
+	}
+
+	s.Logger.Info("Started OTEL metrics receiver")
+	return nil
+}
+
+// GetOTelReceiver returns the OTEL receiver instance (for testing or monitoring).
+func (s *StreamClient) GetOTelReceiver() *otel_receiver.OTelReceiverServer {
+	return s.otelReceiver
 }
