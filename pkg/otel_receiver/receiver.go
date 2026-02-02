@@ -181,7 +181,13 @@ func (s *OTelReceiverServer) convertToInternalBatch(
 
 	for _, rm := range req.ResourceMetrics {
 		// Extract resource attributes (K8s context often comes from here)
-		resourceAttrs := extractAttributes(rm.Resource.GetAttributes())
+		// Handle nil Resource safely
+		var resourceAttrs map[string]string
+		if rm.Resource != nil {
+			resourceAttrs = extractAttributes(rm.Resource.GetAttributes())
+		} else {
+			resourceAttrs = make(map[string]string)
+		}
 
 		for _, sm := range rm.ScopeMetrics {
 			scopeName := ""

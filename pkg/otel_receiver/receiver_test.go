@@ -238,9 +238,12 @@ func TestHistogramConversion(t *testing.T) {
 	assert.NotNil(t, resp)
 
 	// Verify histogram was stored
+	now := time.Now()
 	queryResp, err := store.Query(&v1.MetricsQueryRequest{
 		RequestId:   "test-histogram",
 		MetricNames: []string{"http_request_duration_seconds"},
+		StartTime:   timestamppb.New(now.Add(-time.Hour)),
+		EndTime:     timestamppb.New(now.Add(time.Hour)),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, int32(1), queryResp.TotalSeriesMatched)

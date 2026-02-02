@@ -16,7 +16,11 @@ type RingBuffer struct {
 }
 
 // NewRingBuffer creates a new ring buffer with the given capacity.
+// Panics if size <= 0.
 func NewRingBuffer(size int) *RingBuffer {
+	if size <= 0 {
+		panic("invalid RingBuffer size: must be > 0")
+	}
 	return &RingBuffer{
 		data: make([]*v1.OTelMetricDataPoint, size),
 		size: size,

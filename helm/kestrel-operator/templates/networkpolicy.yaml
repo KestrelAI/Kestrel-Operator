@@ -10,6 +10,19 @@ spec:
       app: {{ .Release.Name }}
   policyTypes:
     - Egress
+    {{- if .Values.operator.otel.enabled }}
+    - Ingress
+    {{- end }}
+
+  {{- if .Values.operator.otel.enabled }}
+  ingress:
+    # Allow ingress for OTLP receiver from pods in the same namespace
+    - from:
+        - podSelector: {}
+      ports:
+        - port: {{ .Values.operator.otel.receiverPort }}
+          protocol: TCP
+  {{- end }}
 
   egress:
     # Allow egress to the Server on gRPC port (bidi gRPC stream)
