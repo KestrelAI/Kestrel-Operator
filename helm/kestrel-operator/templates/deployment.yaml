@@ -76,29 +76,10 @@ spec:
               value: "{{ .Release.Name }}-client-tls"
             - name: DEPLOYMENT_NAME
               value: "{{ .Release.Name }}"
-
-            # OTEL Metrics Store configuration
-            {{- if .Values.operator.otel.enabled }}
-            - name: ENABLE_OTEL_METRICS_STORE
-              value: "true"
-            - name: OTEL_RECEIVER_PORT
-              value: "{{ .Values.operator.otel.receiverPort }}"
-            - name: METRICS_STORE_RETENTION
-              value: "{{ .Values.operator.metricsStore.retention }}"
-            - name: METRICS_STORE_MAX_SERIES
-              value: "{{ .Values.operator.metricsStore.maxSeries }}"
-            - name: METRICS_STORE_RING_SIZE
-              value: "{{ .Values.operator.metricsStore.ringSize }}"
-            {{- end }}
           ports:
             - name: health
               containerPort: {{ .Values.healthcheck.port | default 8081 }}
               protocol: TCP
-            {{- if .Values.operator.otel.enabled }}
-            - name: otlp-grpc
-              containerPort: {{ .Values.operator.otel.receiverPort }}
-              protocol: TCP
-            {{- end }}
           livenessProbe:
             httpGet:
               path: /health/live

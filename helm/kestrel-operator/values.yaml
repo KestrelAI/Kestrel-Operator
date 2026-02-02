@@ -63,24 +63,6 @@ operator:
     # When enabled, the operator will have RBAC permissions to apply approved YAML changes
     enabled: false
 
-  # OTEL Metrics Store configuration
-  # When enabled, the operator stores metrics locally for on-demand querying by agents
-  otel:
-    # Enable OpenTelemetry metrics receiver and local storage
-    enabled: false
-    # Port for the OTLP gRPC receiver (receives metrics from customer OTEL Collectors)
-    receiverPort: 4317
-
-  # Metrics store configuration (used when otel.enabled is true)
-  metricsStore:
-    # How long to keep metrics data (e.g., "30m", "1h")
-    retention: "30m"
-    # Maximum number of unique metric series to store
-    maxSeries: 100000
-    # Number of data points per series (should match retention / scrape interval)
-    # e.g., 60 points for 30 min retention at 30s intervals
-    ringSize: 60
-
 # Health check configuration for liveness probe
 healthcheck:
   # Port for the health check HTTP server (8081 to avoid conflict with Istio ALS port 8080)
