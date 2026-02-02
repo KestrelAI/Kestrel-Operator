@@ -168,12 +168,12 @@ func TestExtractAttributes(t *testing.T) {
 
 func TestFilterK8sAttributes(t *testing.T) {
 	input := map[string]string{
-		"k8s.namespace.name":    "prod",
-		"k8s.pod.name":          "my-pod",
-		"k8s.deployment.name":   "my-deployment",
-		"http.method":           "GET",
-		"http.status_code":      "200",
-		"custom.label":          "value",
+		"k8s.namespace.name":  "prod",
+		"k8s.pod.name":        "my-pod",
+		"k8s.deployment.name": "my-deployment",
+		"http.method":         "GET",
+		"http.status_code":    "200",
+		"custom.label":        "value",
 	}
 
 	result := filterK8sAttributes(input)
@@ -238,9 +238,12 @@ func TestHistogramConversion(t *testing.T) {
 	assert.NotNil(t, resp)
 
 	// Verify histogram was stored
+	now := time.Now()
 	queryResp, err := store.Query(&v1.MetricsQueryRequest{
 		RequestId:   "test-histogram",
 		MetricNames: []string{"http_request_duration_seconds"},
+		StartTime:   timestamppb.New(now.Add(-time.Hour)),
+		EndTime:     timestamppb.New(now.Add(time.Hour)),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, int32(1), queryResp.TotalSeriesMatched)

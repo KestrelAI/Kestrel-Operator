@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,6 +40,7 @@ type OTelReceiverServer struct {
 
 	mu      sync.Mutex
 	running bool
+	doneCh  chan struct{} // Signals shutdown to the monitoring goroutine
 
 	// Stats
 	totalReceived   int64
@@ -77,6 +79,7 @@ func (s *OTelReceiverServer) Start(ctx context.Context) error {
 	s.listener = listener
 	s.server = grpc.NewServer()
 	colmetricspb.RegisterMetricsServiceServer(s.server, s)
+	s.doneCh = make(chan struct{})
 	s.running = true
 	s.mu.Unlock()
 
@@ -96,7 +99,7 @@ func (s *OTelReceiverServer) Start(ctx context.Context) error {
 		}
 	}()
 
-	// Wait for context cancellation or server error
+	// Wait for context cancellation, server error, or explicit shutdown
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -107,6 +110,8 @@ func (s *OTelReceiverServer) Start(ctx context.Context) error {
 			if err != nil && err != grpc.ErrServerStopped {
 				s.logger.Error("OTEL receiver server error", zap.Error(err))
 			}
+		case <-s.doneCh:
+			// Explicit shutdown via Stop() - goroutine exits cleanly
 		}
 	}()
 
@@ -114,21 +119,34 @@ func (s *OTelReceiverServer) Start(ctx context.Context) error {
 }
 
 // Stop gracefully stops the OTLP gRPC server.
+// It copies server and listener references under the lock, then releases the lock
+// before calling blocking operations to avoid deadlock with in-flight Export() RPCs.
 func (s *OTelReceiverServer) Stop() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if !s.running {
+		s.mu.Unlock()
 		return
 	}
 
-	if s.server != nil {
-		s.server.GracefulStop()
-	}
-	if s.listener != nil {
-		s.listener.Close()
-	}
+	// Copy references and update state under lock
+	server := s.server
+	listener := s.listener
+	doneCh := s.doneCh
 	s.running = false
+	s.mu.Unlock()
+
+	// Perform blocking operations without holding the lock
+	// This prevents deadlock with Export() RPCs that need the lock to update stats
+	if server != nil {
+		server.GracefulStop()
+	}
+	if listener != nil {
+		listener.Close()
+	}
+	// Signal the monitoring goroutine to exit
+	if doneCh != nil {
+		close(doneCh)
+	}
 	s.logger.Info("OTEL receiver stopped")
 }
 
@@ -648,6 +666,8 @@ func filterK8sAttributes(attrs map[string]string) map[string]string {
 
 // computeSeriesKeyFromAttrs creates a unique key for a series based on metric name and attributes.
 // Keys are sorted to ensure deterministic output regardless of map iteration order.
+// Uses length-prefixed encoding to avoid collisions when metric names or attribute keys/values
+// contain delimiter characters.
 func computeSeriesKeyFromAttrs(metricName string, attrs map[string]string) string {
 	if len(attrs) == 0 {
 		return metricName
@@ -660,12 +680,23 @@ func computeSeriesKeyFromAttrs(metricName string, attrs map[string]string) strin
 	}
 	sort.Strings(keys)
 
-	// Build the series key with sorted key=value pairs
-	key := metricName
+	// Build the series key using length-prefixed encoding to prevent collisions.
+	// Format: <metricNameLen>:<metricName><keyLen>:<key><valueLen>:<value>...
+	// This ensures distinct series cannot produce identical keys even if they
+	// contain special characters like '|', '=', or ':'.
+	var builder strings.Builder
+	builder.Grow(len(metricName) + len(attrs)*20) // Pre-allocate reasonable capacity
+
+	// Write metric name with length prefix
+	fmt.Fprintf(&builder, "%d:%s", len(metricName), metricName)
+
+	// Write each key-value pair with length prefixes
 	for _, k := range keys {
-		key += "|" + k + "=" + attrs[k]
+		v := attrs[k]
+		fmt.Fprintf(&builder, "%d:%s%d:%s", len(k), k, len(v), v)
 	}
-	return key
+
+	return builder.String()
 }
 
 // mapValues extracts values from a map into a slice.

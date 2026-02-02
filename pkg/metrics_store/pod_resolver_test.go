@@ -238,12 +238,19 @@ func TestParseDeploymentFromReplicaSet(t *testing.T) {
 		rsName       string
 		expectedName string
 	}{
-		{"web-server-7f9b4c8d5", "web-server"},
-		{"checkout-service-abc123xyz", "checkout-service"},
-		{"simple-name-12345", "simple-name"},
-		{"name-with-dashes-in-it-abcd1234", "name-with-dashes-in-it"},
-		{"no-hash", "no-hash"}, // No valid hash suffix
-		{"short", "short"},     // Too short to have a hash
+		// Valid pod-template-hash suffixes (8-10 chars)
+		{"web-server-7f9b4c8d5", "web-server"},                      // 9 chars - valid hash
+		{"checkout-service-abc123xyz", "checkout-service"},          // 9 chars - valid hash
+		{"name-with-dashes-in-it-abcd1234", "name-with-dashes-in-it"}, // 8 chars - valid hash
+		{"app-1234567890", "app"},                                   // 10 chars - valid hash
+
+		// Invalid suffixes - should NOT be stripped (stricter hash detection)
+		{"simple-name-12345", "simple-name-12345"},   // 5 chars - too short, not a real hash
+		{"my-app-v2beta", "my-app-v2beta"},           // 6 chars - legitimate deployment name suffix
+		{"service-abc", "service-abc"},               // 3 chars - too short
+		{"no-hash", "no-hash"},                       // 4 chars - too short
+		{"short", "short"},                           // No hyphen at all
+		{"app-with-12charshash", "app-with-12charshash"}, // 12 chars - too long
 	}
 
 	for _, tc := range testCases {
