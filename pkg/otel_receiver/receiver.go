@@ -18,6 +18,9 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	// Register gzip compressor to handle compressed OTLP requests.
+	// OTEL exporters use gzip compression by default for OTLP/gRPC.
+	_ "google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
