@@ -177,7 +177,7 @@ exporters:
     endpoint: kestrel-operator.kestrel-ai.svc.cluster.local:4317
     tls:
       insecure: true  # In-cluster communication
-    # compression: gzip  # Default, no configuration needed
+    # compression: gzip  # Optional, enable for reduced bandwidth
 
 service:
   pipelines:
@@ -187,7 +187,7 @@ service:
       exporters: [otlp/kestrel]
 ```
 
-**Note**: The operator supports gzip compression, which is the default for OTLP/gRPC exporters. No compression configuration is required.
+**Note**: The operator supports gzip compression. The OpenTelemetry Collector enables gzip by default, but if using the Go SDK directly, enable it via `OTEL_EXPORTER_OTLP_COMPRESSION=gzip` or the `compression: gzip` exporter option.
 
 ### Why k8sattributes is Required
 
