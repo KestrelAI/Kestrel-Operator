@@ -18,6 +18,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	// Register gzip compressor to enable decoding of gzip-compressed OTLP requests.
+	// The Go OTLP/gRPC exporter does not use compression by default, but it can be
+	// enabled via OTEL_EXPORTER_OTLP_COMPRESSION=gzip or WithCompressor("gzip").
+	// Note: The OpenTelemetry Collector defaults to gzip compression.
+	_ "google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
