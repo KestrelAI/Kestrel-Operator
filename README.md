@@ -177,6 +177,7 @@ exporters:
     endpoint: kestrel-operator.kestrel-ai.svc.cluster.local:4317
     tls:
       insecure: true  # In-cluster communication
+    # compression: gzip  # Default, no configuration needed
 
 service:
   pipelines:
@@ -185,6 +186,8 @@ service:
       processors: [k8sattributes, batch]
       exporters: [otlp/kestrel]
 ```
+
+**Note**: The operator supports gzip compression, which is the default for OTLP/gRPC exporters. No compression configuration is required.
 
 ### Why k8sattributes is Required
 
