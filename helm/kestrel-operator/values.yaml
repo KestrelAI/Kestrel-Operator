@@ -28,6 +28,8 @@ securityContext:
 server:
   host: grpc.platform.usekestrel.ai
   port: 443
+  tls:
+    insecureSkipVerify: false
 
 # JWT Authentication configuration
 auth:

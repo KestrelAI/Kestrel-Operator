@@ -32,6 +32,10 @@ spec:
             - name: SERVER_NAME
               value: "{{ .Values.server.host }}"
             
+            # TLS configuration
+            - name: TLS_INSECURE_SKIP_VERIFY
+              value: "{{ .Values.server.tls.insecureSkipVerify | default false }}"
+            
             # Pod namespace for self-identification
             - name: POD_NAMESPACE
               valueFrom:
