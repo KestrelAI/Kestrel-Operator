@@ -17,7 +17,7 @@ Before you begin, ensure you have:
 First, you need to generate credentials for your operator to authenticate with the Kestrel AI platform.
 
 1. Log in to the [Kestrel AI Dashboard](https://platform.usekestrel.ai)
-2. Navigate to **Integrations** → **Kubernetes**
+2. Navigate to **Integrations → Kubernetes**
 3. Click **Generate New Credential**
 4. Configure the following settings:
 
@@ -151,14 +151,14 @@ kubectl logs -n kestrel-ai -l app=kestrel-operator --tail=50
 
 3. **Verify connection in dashboard**:
    - Return to the Kestrel AI Dashboard
-   - Navigate to **Integrations** → **Kubernetes**
+   - Navigate to **Integrations → Kubernetes**
    - Your cluster status should show as **Connected** (green badge)
 
 ## Step 5: Configure Safe-Apply (Optional)
 
 If you didn't enable Safe-Apply during initial setup but want to enable it later:
 
-1. In the Dashboard, go to **Integrations** → **Kubernetes**
+1. In the Dashboard, go to **Integrations → Kubernetes**
 2. Find your cluster in the list
 3. Toggle the **Safe-Apply** switch
 4. Confirm the action in the dialog
@@ -212,7 +212,7 @@ helm uninstall kestrel-operator -n kestrel-ai
 ```
 
 2. **Revoke credentials**:
-   - In the Dashboard, go to **Integrations** → **Kubernetes**
+   - In the Dashboard, go to **Integrations → Kubernetes**
    - Click the delete icon next to your cluster
    - Confirm the deletion
 
