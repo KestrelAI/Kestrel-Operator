@@ -18,7 +18,7 @@ Your Kubernetes cluster has internet access. Pull images directly from our conta
 
 ### Air-Gapped Deployment
 
-No internet access required. All external services are accessed via VPC/Private endpoints — no public internet needed. Integrate with GitHub Enterprise Server for IaC workflows. Used by customers in defense, financial services, and other highly regulated industries.
+No internet access required. All external services are accessed via VPC/Private endpoints  - no public internet needed. Integrate with GitHub Enterprise Server for IaC workflows. Used by customers in defense, financial services, and other highly regulated industries.
 
 - **No internet access required**
 - LLM services accessed via private endpoints (AWS VPC Endpoints for Bedrock, GCP Private Service Connect for Vertex AI, Azure Private Endpoints for Azure OpenAI, OCI Service Gateway for OCI Generative AI)
@@ -39,13 +39,13 @@ No internet access required. All external services are accessed via VPC/Private 
 
 The on-premise deployment includes the following components:
 
-- **Kestrel Server** — Core API server and incident engine
-- **Kestrel Frontend** — Web dashboard
-- **Kestrel Router** — WebSocket and gRPC routing layer
-- **Kestrel Agents** — AI agent workers for incident analysis
-- **PostgreSQL** — Primary database (can use managed RDS/Cloud SQL/Azure Database/OCI PostgreSQL DB)
-- **Redis** — Caching and message queue (can use managed ElastiCache/Memorystore/Azure Cache/OCI Cache with Redis)
-- **Elasticsearch/OpenSearch** (Optional) — Enhanced search and log analysis
+- **Kestrel Server**  - Core API server and incident engine
+- **Kestrel Frontend**  - Web dashboard
+- **Kestrel Router**  - WebSocket and gRPC routing layer
+- **Kestrel Agents**  - AI agent workers for incident analysis
+- **PostgreSQL**  - Primary database (can use managed RDS/Cloud SQL/Azure Database/OCI PostgreSQL DB)
+- **Redis**  - Caching and message queue (can use managed ElastiCache/Memorystore/Azure Cache/OCI Cache with Redis)
+- **Elasticsearch/OpenSearch** (Optional)  - Enhanced search and log analysis
 
 All components are deployed via a single unified Helm chart in your Kubernetes cluster.
 
