@@ -1,0 +1,65 @@
+---
+title: "On-Premise Deployment Overview"
+description: "Deploy Kestrel in your own cloud environment with complete control and data sovereignty"
+---
+
+# On-Premise & Air-Gapped Deployment
+
+For organizations with strict data residency requirements, regulatory compliance needs, or air-gapped environments, Kestrel supports full self-hosted deployment in your own cloud infrastructure.
+
+## Deployment Models
+
+### Standard On-Premise
+
+Deploy Kestrel in your own AWS, GCP, or Azure environment with outbound internet access for LLM API calls and container image pulls.
+
+- All data stays within your environment
+- Uses cloud-native LLM services (Amazon Bedrock, Vertex AI, Azure OpenAI)
+- Container images pulled from Kestrel's private registry
+- Integrates with your existing CI/CD via GitHub.com or GitLab.com
+
+### Air-Gapped
+
+Deploy Kestrel in fully isolated environments with no internet access. All external services are accessed via VPC endpoints.
+
+- **No internet access required**
+- Amazon Bedrock accessed via VPC endpoint
+- Secrets stored in AWS Secrets Manager, GCP Secret Manager, Azure Key Vault, or OCI Secret Management
+- Container images pulled from your private ECR/Artifact Registry/ACR
+- Integrates with GitHub Enterprise Server for IaC workflows
+
+## Supported Cloud Providers
+
+| Provider | Standard | Air-Gapped |
+|----------|----------|------------|
+| **AWS** | ✅ | ✅ |
+| **GCP** | ✅ | ✅ |
+| **Azure** | ✅ | ✅ |
+
+## Architecture
+
+The on-premise deployment includes the following components:
+
+- **Kestrel Server** — Core API server and incident engine
+- **Kestrel Frontend** — Web dashboard
+- **Kestrel Router** — WebSocket and gRPC routing layer
+- **Kestrel Agents** — AI agent workers for incident analysis
+- **PostgreSQL** — Primary database (can use managed RDS/Cloud SQL/Azure Database)
+- **Redis** — Caching and message queue (can use managed ElastiCache/Memorystore)
+- **Elasticsearch/OpenSearch** (Optional) — Enhanced search capabilities
+
+All components are deployed via Helm charts in your Kubernetes cluster.
+
+## Prerequisites
+
+- Kubernetes cluster (v1.24+) in your cloud environment
+- `helm` (v3.0+) installed
+- Container registry access (ECR, Artifact Registry, or ACR)
+- LLM provider configured (Bedrock, Vertex AI, Azure OpenAI, or OpenAI)
+- Secrets management service (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault)
+- IAM role or service account with required permissions
+- On-Premise license enabled for your Kestrel organization
+
+## Next Steps
+
+- [Follow the setup guide](/on-premise/setup) to deploy Kestrel in your environment

@@ -1,0 +1,148 @@
+---
+title: "Configuration Reference"
+description: "Complete reference for all Kestrel Operator configuration options"
+---
+
+## Helm Values Reference
+
+The Kestrel Operator is configured through Helm values. Below is a complete reference of all available configuration options.
+
+## Quick Configuration Examples
+
+### Basic Cilium Setup
+```yaml
+auth:
+  token: "your-token-here"
+
+operator:
+  cluster:
+    id: "cluster-uuid"
+    name: "production-cluster"
+```
+
+### Istio Service Mesh Setup
+```yaml
+auth:
+  token: "your-token-here"
+
+operator:
+  cluster:
+    id: "cluster-uuid"
+    name: "production-cluster"
+  cilium:
+    disableFlows: true
+  istio:
+    enabled: true
+    alsPort: 8080
+```
+
+### Safe-Apply Enabled
+```yaml
+auth:
+  token: "your-token-here"
+
+operator:
+  cluster:
+    id: "cluster-uuid"
+    name: "production-cluster"
+  safeApply:
+    enabled: true
+```
+
+## Complete Values Reference
+
+### Image Configuration
+
+#### `image.repository`
+- **Type**: string
+- **Default**: `ghcr.io/kestrelai/kestrel-operator`
+- **Description**: Container image repository
+
+#### `image.tag`
+- **Type**: string
+- **Default**: `latest`
+- **Description**: Container image tag
+
+#### `image.pullPolicy`
+- **Type**: string
+- **Default**: `IfNotPresent`
+- **Description**: Image pull policy
+
+### Authentication
+
+#### `auth.token` (Required)
+- **Type**: string
+- **Default**: `""`
+- **Description**: JWT token for operator authentication
+- **Example**: `"eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."`
+
+<Note>
+  Generate this token through the Kestrel AI Dashboard. The token automatically renews every 24 hours.
+</Note>
+
+### Server Connection
+
+#### `server.host`
+- **Type**: string
+- **Default**: `grpc.platform.usekestrel.ai`
+- **Description**: Kestrel AI platform gRPC endpoint
+
+#### `server.port`
+- **Type**: integer
+- **Default**: `443`
+- **Description**: gRPC server port
+
+### Cilium Integration
+
+#### `operator.cilium.disableFlows`
+- **Type**: boolean
+- **Default**: `false`
+- **Description**: Disable Cilium flow collection entirely
+
+Set to `true` when:
+- Using Istio for flow collection instead
+- Cluster doesn't have Cilium installed
+- Only want resource inventory management
+
+#### `operator.cilium.hubble.tls.forceDisable`
+- **Type**: boolean
+- **Default**: `false`
+- **Description**: Force disable TLS for Hubble connections
+
+<Info>
+  By default, the operator attempts to use TLS when connecting to Hubble Relay. Only disable if your Hubble setup doesn't support TLS.
+</Info>
+
+### Istio Integration
+
+#### `operator.istio.enabled`
+- **Type**: boolean
+- **Default**: `false`
+- **Description**: Enable Istio Access Log Service (ALS) for L7 flow collection
+
+#### `operator.istio.alsPort`
+- **Type**: integer
+- **Default**: `8080`
+- **Description**: Port for the ALS gRPC server
+
+<Note>
+  When enabling Istio, ensure your Envoy proxies are configured to send access logs to the operator's ALS endpoint.
+</Note>
+
+### Safe-Apply Configuration
+
+#### `operator.safeApply.enabled`
+- **Type**: boolean
+- **Default**: `false`
+- **Description**: Grant RBAC permissions for applying approved YAML changes
+
+When enabled, the operator can:
+- Create network policies
+- Update existing resources
+- Delete resources (with approval)
+
+## Next Steps
+
+- [Troubleshoot configuration issues](/operator/troubleshooting)
+- [Monitor operator performance](/operator/monitoring)
+- [Configure namespace permissions](/permissions/namespaces)

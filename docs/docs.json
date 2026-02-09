@@ -1,0 +1,126 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Kestrel AI",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://usekestrel.ai"
+  },
+  "favicon": "/logo/light.svg",
+  "theme": "quill",
+  "colors": {
+    "primary": "#3B82F6",
+    "light": "#93C5FD",
+    "dark": "#1E3A8A",
+    "background": {
+      "dark": "#020617",
+      "light": "#F8FAFC"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "mailto:hello@usekestrel.ai"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Dashboard",
+    "url": "https://platform.usekestrel.ai",
+    "style": "roundedRectangle"
+  },
+  "anchors": [
+    {
+      "name": "Blog",
+      "icon": "newspaper",
+      "url": "https://usekestrel.ai/blog"
+    },
+    {
+      "name": "Changelog",
+      "icon": "megaphone",
+      "url": "https://usekestrel.ai/changelog"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "introduction",
+        "quickstart"
+      ]
+    },
+    {
+      "group": "Kubernetes",
+      "pages": [
+        "kubernetes/overview",
+        "kubernetes/onboarding",
+        "kubernetes/configuration",
+        "kubernetes/troubleshooting"
+      ]
+    },
+    {
+      "group": "Cloud",
+      "pages": [
+        "cloud/overview",
+        "cloud/aws",
+        "cloud/oci"
+      ]
+    },
+    {
+      "group": "Integrations",
+      "pages": [
+        "integrations/slack",
+        "integrations/cicd",
+        "integrations/pagerduty",
+        "integrations/tribal-knowledge"
+      ]
+    },
+    {
+      "group": "On-Premise Deployment",
+      "pages": [
+        "on-premise/overview",
+        "on-premise/setup"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/kestrelai",
+    "linkedin": "https://www.linkedin.com/company/kestrel-ai-security/about/",
+    "x": "https://x.com/kestrel__ai"
+  },
+  "feedback": {
+    "suggestEdit": true,
+    "raiseIssue": true,
+    "thumbsRating": true
+  },
+  "modeToggle": {
+    "default": "dark",
+    "isHidden": false
+  },
+  "search": {
+    "prompt": "Search documentation..."
+  },
+  "metadata": {
+    "og:title": "Kestrel AI Documentation",
+    "og:description": "Complete documentation for the Kestrel AI platform - Kubernetes security, cloud incident response, and AI-powered infrastructure management.",
+    "og:image": "https://usekestrel.ai/og-image.png",
+    "twitter:card": "summary_large_image"
+  },
+  "redirects": [
+    {
+      "source": "/operator/overview",
+      "destination": "/kubernetes/overview"
+    },
+    {
+      "source": "/operator/onboarding",
+      "destination": "/kubernetes/onboarding"
+    },
+    {
+      "source": "/operator/configuration",
+      "destination": "/kubernetes/configuration"
+    },
+    {
+      "source": "/operator/troubleshooting",
+      "destination": "/kubernetes/troubleshooting"
+    }
+  ]
+}

@@ -1,0 +1,193 @@
+---
+title: "On-Premise Setup Guide"
+description: "Step-by-step guide to deploying Kestrel in your own cloud environment"
+---
+
+# On-Premise Setup Guide
+
+This guide walks you through the Kestrel on-premise deployment wizard, which generates a complete Helm values file for your environment.
+
+## Accessing the Setup Wizard
+
+1. Log in to your Kestrel dashboard at [platform.usekestrel.ai](https://platform.usekestrel.ai)
+2. Navigate to **Settings → On-Premise Deployment**
+3. The guided setup wizard walks you through each configuration step
+
+<Note>
+On-premise deployment requires a license. If you don't see the On-Premise option, contact your Kestrel account manager.
+</Note>
+
+## Step 1: Choose Your Cloud Provider
+
+Select your target cloud provider:
+
+- **Amazon Web Services (AWS)**
+- **Google Cloud Platform (GCP)**
+- **Microsoft Azure**
+
+This selection determines the available LLM services, secrets providers, and registry options.
+
+## Step 2: Select Deployment Type
+
+Choose your deployment model:
+
+| Type | Description |
+|------|-------------|
+| **Standard** | Outbound internet access available. Uses cloud LLM APIs directly. |
+| **Air-Gapped** | No internet access. All services accessed via VPC endpoints. Requires private container registry. |
+
+## Step 3: Configure LLM
+
+Select and configure your LLM provider:
+
+### Amazon Bedrock (AWS)
+- Select a model (e.g., Claude Sonnet 4.5)
+- Set the Bedrock region
+- Optionally provide a custom endpoint URL (for VPC endpoints in air-gapped mode)
+
+### OpenAI
+- Enter your OpenAI API key
+- Select the model (e.g., GPT-5.2)
+
+### Vertex AI (GCP) / Azure OpenAI
+- Configure provider-specific settings as prompted
+
+## Step 4: Configure Infrastructure
+
+### Container Registry
+Enter your private container registry URL where Kestrel images will be stored:
+- **AWS**: `123456789012.dkr.ecr.us-east-1.amazonaws.com`
+- **GCP**: `us-docker.pkg.dev/project-id/repo`
+- **Azure**: `kestrel.azurecr.io`
+
+### IAM / Service Account
+Provide the IAM Role ARN (AWS), Service Account (GCP), or Managed Identity (Azure) that Kestrel will use for cloud service access.
+
+### Database
+Choose between:
+- **Embedded PostgreSQL** — Included in the Helm deployment (suitable for dev/test)
+- **External PostgreSQL** — Use a managed database (RDS, Cloud SQL, Azure Database)
+  - Host, port, database name, and username
+
+### Redis
+If using external Redis:
+- Host and port for your managed Redis instance (ElastiCache, Memorystore, Azure Cache)
+
+### Elasticsearch/OpenSearch (Optional)
+Enable for enhanced search capabilities:
+- Endpoint URL
+- Username and password
+
+### Ingress
+- **Ingress Class Name**: Your ingress controller class (default: `nginx`)
+- **Ingress Host**: The domain name for your Kestrel installation
+
+### Secrets Provider
+Select where credentials will be stored:
+- AWS Secrets Manager
+- GCP Secret Manager
+- Azure Key Vault
+- OCI Secret Management
+
+## Step 5: GitHub Integration (Air-Gapped Only)
+
+For air-gapped deployments, configure GitHub Enterprise Server for IaC workflows:
+
+1. Enter your **GitHub Enterprise Server URL** (e.g., `https://github.internal.company.com`)
+2. Create a GitHub App on your GHE instance:
+   - Go to **Settings → Developer Settings → GitHub Apps → New GitHub App**
+   - Set the webhook URL to your Kestrel ingress host
+   - Grant required permissions (repository contents: read/write, pull requests: read/write)
+3. Enter the **GitHub App ID** and **App Slug**
+
+<Note>
+Kestrel generates a TLS CA certificate for secure communication with GitHub Enterprise Server. Download it from the setup wizard and configure it in your GHE instance.
+</Note>
+
+## Step 6: Generate Configuration
+
+Click **Generate Helm Values** to produce a complete `values.yaml` file customized for your environment.
+
+The generated configuration includes:
+- All service configurations
+- Database connection strings
+- LLM provider settings
+- Registry and image references
+- Ingress configuration
+- Secrets provider settings
+
+## Step 7: Download and Deploy
+
+### Pull Container Images
+
+Click **Get Registry Credentials** to obtain credentials for pulling Kestrel images from the private registry.
+
+```bash
+# Log in to the Kestrel registry
+docker login ghcr.io -u <username> -p <token>
+
+# Pull and retag images for your private registry
+docker pull ghcr.io/kestrelai/kestrel-server:latest
+docker tag ghcr.io/kestrelai/kestrel-server:latest <your-registry>/kestrel-server:latest
+docker push <your-registry>/kestrel-server:latest
+
+# Repeat for all Kestrel images
+```
+
+### Create Secrets
+
+Create the necessary Kubernetes secrets:
+
+```bash
+# Create the namespace
+kubectl create namespace kestrel-ai
+
+# Create registry credentials (if using private registry)
+kubectl create secret docker-registry kestrel-registry \
+  --namespace kestrel-ai \
+  --docker-server=<your-registry> \
+  --docker-username=<username> \
+  --docker-password=<token>
+```
+
+### Install with Helm
+
+```bash
+helm install kestrel \
+  oci://ghcr.io/kestrelai/charts/kestrel \
+  --namespace kestrel-ai \
+  --create-namespace \
+  -f generated-values.yaml
+```
+
+### Verify the Deployment
+
+```bash
+# Check all pods are running
+kubectl get pods -n kestrel-ai
+
+# Check the ingress
+kubectl get ingress -n kestrel-ai
+```
+
+Navigate to your configured domain to access the Kestrel dashboard.
+
+## Updating
+
+To update your on-premise deployment:
+
+1. Return to the setup wizard and click **Generate Helm Values** to get the latest configuration
+2. Pull the newest container images
+3. Run Helm upgrade:
+
+```bash
+helm upgrade kestrel \
+  oci://ghcr.io/kestrelai/charts/kestrel \
+  --namespace kestrel-ai \
+  -f generated-values.yaml
+```
+
+## Next Steps
+
+- [Connect your Kubernetes clusters](/kubernetes/onboarding) to the on-premise Kestrel instance
+- [Set up cloud integrations](/cloud/overview) for cloud resource monitoring

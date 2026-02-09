@@ -1,0 +1,101 @@
+---
+title: "AWS Integration"
+description: "Connect your AWS accounts to Kestrel for resource inventory, security monitoring, and VPC Flow Logs analysis"
+---
+
+# AWS Integration
+
+Connect your AWS accounts to Kestrel using cross-account IAM roles for secure, credential-free access to your cloud resources.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- AWS account with permissions to create IAM roles and policies
+- AWS CLI or access to the AWS Console
+
+## Connection Types
+
+When connecting an AWS account, you select a connection purpose:
+
+| Purpose | Description |
+|---------|-------------|
+| **EKS** | Connect for Kubernetes cluster discovery and monitoring |
+| **VPC Flow Logs** | Enable VPC Flow Log collection and analysis |
+| **Cloud Ingestion** | Full cloud resource inventory and security monitoring |
+
+<Note>
+You can create multiple connections to the same AWS account with different purposes, or use a single **Cloud Ingestion** connection for comprehensive coverage.
+</Note>
+
+## Setup Steps
+
+### Step 1: Start the Connection
+
+1. Navigate to **Integrations → Cloud** in your Kestrel dashboard
+2. Click **Connect AWS Account**
+3. Select your AWS region
+4. Select the connection purpose
+5. Click **Generate CloudFormation Template**
+
+### Step 2: Deploy the CloudFormation Stack
+
+Kestrel generates a CloudFormation template that creates a cross-account IAM role with the minimum permissions required. You can deploy it using either method:
+
+**Option A: AWS Console (One-Click)**
+
+Click the **Launch Stack** link provided in the setup dialog. This opens the AWS Console with the template pre-loaded. Review the parameters and click **Create Stack**.
+
+**Option B: AWS CLI**
+
+Copy the provided AWS CLI command and run it in your terminal:
+
+```bash
+aws cloudformation create-stack \
+  --stack-name kestrel-ai-integration \
+  --template-url <provided-url> \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameters ParameterKey=ExternalId,ParameterValue=<your-external-id>
+```
+
+### Step 3: Verify the Connection
+
+1. Once the CloudFormation stack reaches `CREATE_COMPLETE`, copy the **Role ARN** from the stack outputs
+2. Paste the Role ARN into the Kestrel verification dialog
+3. Click **Verify Connection**
+
+Kestrel will assume the role and validate that all required permissions are in place. On success, your AWS account will appear as **Connected**.
+
+## VPC Flow Logs
+
+After connecting an AWS account with VPC Flow Logs capability:
+
+1. Navigate to the connected account in the Cloud Integrations page
+2. Expand the **VPC Flow Logs** section
+3. Click **Enable** to start collecting flow logs across your VPCs
+4. Kestrel creates the necessary log groups and flow log configurations automatically
+
+You can view per-VPC status and enable/disable flow logs on individual VPCs.
+
+## Managing Connections
+
+- **Refresh**: Re-sync the connection status and resource inventory
+- **Delete**: Remove the connection. This does not delete the IAM role in AWS — you should clean up the CloudFormation stack separately.
+
+## Permissions
+
+The IAM role created by the CloudFormation template includes read-only access to:
+
+- EC2 (instances, security groups, VPCs, subnets, flow logs)
+- S3 (bucket policies, public access settings)
+- RDS (instances, clusters, security)
+- IAM (roles, policies, users — metadata only)
+- CloudTrail (event history)
+- EKS (clusters, node groups)
+- Lambda, ECS, and other compute services
+
+Write permissions are limited to VPC Flow Log management (creating/deleting flow log configurations).
+
+## Next Steps
+
+- [Connect an OCI Tenancy](/cloud/oci)
+- [Set up CI/CD for IaC remediation](/integrations/cicd)

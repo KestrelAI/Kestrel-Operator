@@ -1,0 +1,141 @@
+---
+title: "Tribal Knowledge"
+description: "Connect your organization's knowledge sources to enhance incident response with historical context"
+---
+
+# Tribal Knowledge Integration
+
+Tribal Knowledge connects Kestrel to the tools where your team's operational knowledge already lives. When an incident is detected, Kestrel automatically searches your connected sources for similar past incidents, runbooks, post-mortems, and relevant discussions — providing historical context alongside real-time diagnostics.
+
+## How It Works
+
+When an incident is detected, Kestrel automatically:
+
+1. Searches your connected knowledge sources for relevant context
+2. Finds similar past incidents and their resolutions
+3. Locates runbooks and documentation for affected services
+4. Surfaces team discussions about the affected systems
+5. Retrieves post-mortems and lessons learned from related incidents
+
+This context is presented alongside Kestrel's automated investigation, giving you both real-time diagnostics and historical insight.
+
+## Supported Sources
+
+| Source | Auth Method | Description |
+|--------|------------|-------------|
+| **Slack** | Kestrel App (no extra setup) | Search messages and threads for relevant discussions |
+| **Notion** | Internal Integration Token | Query Notion pages and documentation |
+| **Confluence** | Email + API Token | Search Confluence wiki pages and spaces |
+| **Jira** | Email + API Token | Find related issues and post-mortems |
+| **Linear** | Personal API Key | Search Linear issues and projects |
+| **Glean** | API Key | Enterprise search across all connected sources |
+
+## Setup Instructions
+
+### Adding a Source
+
+1. Navigate to **Integrations → Tribal Knowledge** in your Kestrel dashboard
+2. Click **Add Source**
+3. Select the source type from the dropdown
+4. Follow the source-specific setup instructions below
+5. Click **Add Source** to save
+
+### Slack
+
+Slack tribal knowledge uses the same Kestrel Slack app as incident notifications. No additional credentials are required.
+
+**Prerequisites**: Your Slack workspace must be connected via the [Slack Integration](/integrations/slack).
+
+1. Select **Slack** as the source type
+2. If your workspace is connected, you'll see a green confirmation
+3. Click **Enable Slack Search**
+
+<Tip>
+Invite @Kestrel to the channels you want to be searchable for tribal knowledge.
+</Tip>
+
+### Notion
+
+1. Go to [notion.so/my-integrations](https://notion.so/my-integrations)
+2. Click **+ New integration**
+3. Name your integration (e.g., "Kestrel Tribal Knowledge")
+4. Select the workspace to associate with the integration
+5. Copy the **Internal Integration Secret** token
+6. **Important**: Share the pages/databases you want searchable with your integration
+7. In Kestrel, paste the token in the **API Key** field
+8. Optionally enter a **Workspace ID**
+
+<Note>
+You must explicitly share each page or database with the integration for it to be searchable by Kestrel.
+</Note>
+
+### Confluence
+
+1. Go to [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+2. Click **Create API token**
+3. Give it a label (e.g., "Kestrel Integration")
+4. Copy the generated API token
+5. In Kestrel, enter:
+   - **Email Address**: Your Atlassian account email
+   - **API Token**: The token you just created
+   - **Base URL**: Your Confluence instance URL (e.g., `https://yourcompany.atlassian.net`)
+
+### Jira
+
+Jira uses the same Atlassian API tokens as Confluence:
+
+1. Go to [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+2. Create an API token (or reuse the one from Confluence)
+3. In Kestrel, enter:
+   - **Email Address**: Your Atlassian account email
+   - **API Token**: The Atlassian API token
+   - **Base URL**: Your Jira instance URL (e.g., `https://yourcompany.atlassian.net`)
+
+### Linear
+
+1. Go to [linear.app/settings/account/security](https://linear.app/settings/account/security)
+2. Click **New API Key** under Personal API keys
+3. Give your key a label (e.g., "Kestrel Integration")
+4. Copy the generated API key
+5. In Kestrel, paste the key in the **API Key** field
+
+<Note>
+Personal API keys have the same permissions as your user account. Consider using a service account for production.
+</Note>
+
+### Glean
+
+1. Contact your Glean administrator to enable API access
+2. Go to your **Glean Admin Console → API → API Keys**
+3. Click **Create API Key**
+4. Select appropriate scopes (`search:read` is required)
+5. Copy the generated API key
+6. In Kestrel, paste the key in the **API Key** field
+7. Optionally enter a **Workspace ID**
+
+<Note>
+Glean API access requires an Enterprise plan. Contact your Glean account manager if you don't see the API option.
+</Note>
+
+## Managing Sources
+
+### Testing a Connection
+
+Click the **Test** button on any source to verify the credentials and connectivity. The source status will update to **Connected** or **Error** with a detailed message.
+
+### Enabling/Disabling Sources
+
+Use the toggle switch on each source to temporarily enable or disable it without removing the configuration.
+
+### Editing a Source
+
+Click the edit icon to update the display name, credentials, or base URL. Leave credential fields blank to keep the existing values.
+
+### Deleting a Source
+
+Click the delete icon and confirm to permanently remove a source. Incident analysis will no longer include context from that source.
+
+## Next Steps
+
+- [Set up Slack](/integrations/slack) to enable Slack tribal knowledge
+- [Configure PagerDuty](/integrations/pagerduty) for on-call alerting
