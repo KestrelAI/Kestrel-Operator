@@ -12,11 +12,11 @@ The PagerDuty integration connects Kestrel's automated incident detection to you
 
 ## Features
 
-- **Kubernetes Incident Alerts**  - Trigger PagerDuty alerts when K8s incidents are detected
-- **Cloud Incident Alerts**  - Trigger PagerDuty alerts for AWS/OCI security incidents
-- **Auto-Resolution**  - When incidents are resolved in Kestrel, PagerDuty incidents are automatically resolved
+- **Kubernetes Incident Alerts** - Trigger PagerDuty alerts when K8s incidents are detected
+- **Cloud Incident Alerts** - Trigger PagerDuty alerts for AWS/OCI security incidents
+- **Auto-Resolution** - When incidents are resolved in Kestrel, PagerDuty incidents are automatically resolved
 - **Service Routing**  - Route alerts to specific PagerDuty services based on namespace or cloud resource
-- **Severity Mapping**  - Map Kestrel severity levels to PagerDuty severity levels
+- **Severity Mapping** - Map Kestrel severity levels to PagerDuty severity levels
 - **Bidirectional Sync**  - PagerDuty incidents are updated as Kestrel's investigation progresses
 
 ## Setup Instructions
@@ -64,7 +64,7 @@ After connecting with an API token:
 1. Go to the **Services** tab
 2. Click **Sync Services** to import your PagerDuty services
 3. Click **Configure** on each service you want to receive alerts
-4. Set one service as the **Default**  - unmatched incidents are routed here
+4. Set one service as the **Default** - unmatched incidents are routed here
 
 ## Namespace Routing
 
@@ -96,9 +96,9 @@ Configure which incidents trigger PagerDuty alerts:
 2. Click **Configure** on the Severity Filtering card
 3. Set your preferences:
    - **Notify on Kubernetes incidents**  - Enable/disable K8s alerts
-   - **Notify on Cloud incidents**  - Enable/disable AWS/OCI alerts
+   - **Notify on Cloud incidents** - Enable/disable AWS/OCI alerts
    - **Skip transient incidents**  - Filter out auto-resolving incidents
-   - **Minimum severity**  - Set the threshold (Low, Medium, High, Critical)
+   - **Minimum severity** - Set the threshold (Low, Medium, High, Critical)
 4. Click **Save Changes**
 
 ## Testing the Connection
