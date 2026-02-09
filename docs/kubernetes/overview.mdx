@@ -1,0 +1,67 @@
+---
+title: "Operator Overview"
+description: "Understanding the Kestrel Operator and its role in your Kubernetes security architecture"
+---
+
+## What is the Kestrel Operator?
+
+The Kestrel Operator is a lightweight Kubernetes agent that bridges your clusters with the Kestrel AI platform. It enables real-time network traffic analysis and AI-powered security policy generation without requiring any changes to your existing applications.
+
+## Key Features
+
+### Kubernetes Risk Assessments
+- **Intelligent AI agent based risk discovery** inside your Kubernetes Cluster
+- **Actionable fixes** for all issues found
+- **Highlight attack chains** that other tools wihtout Kubernetes context will miss
+
+### Cluster Inventory and Traffic Visibility
+- **Real-time flow collection** from Cilium Hubble or Istio service mesh
+- **Zero application changes** required
+- **Automatic workload discovery** and inventory management
+- **Topology map** wiith highlighted suspicious flows
+
+### Intelligent Network Policy Generation
+- **AI generated least-privilege policies** with safe defaults and recommendations that block risky flows
+- **AI agents that learn your network patterns** and adapt to detect anomalies
+
+
+## Architecture
+
+The Kestrel Operator consists of several key components:
+
+### Stream Client
+Maintains a secure gRPC connection to Kestrel Cloud using mTLS authentication. Handles bidirectional streaming for:
+- Sending resource metadata and network flows
+- Receiving policy configurations and commands
+
+### Network Integrations
+- **Cilium Integration**: Collects L3/L4 network flows from Hubble Relay
+- **Istio Integration**: Receives L7 access logs via Envoy Access Log Service
+
+## Security Model
+
+### Authentication
+- **mTLS certificates** for secure communication with Kestrel Cloud
+- **JWT tokens** with automatic renewal for service authentication
+- **RBAC permissions** scoped to minimum required access
+
+### Data Protection
+- **No sensitive data storage** on the operator
+- **Encrypted transmission** for all communications
+- **Certificate rotation** for ongoing security
+
+## Prerequisites
+
+- Kubernetes cluster (v1.24+)
+- Cluster admin permissions for installation
+- Network connectivity to `grpc.platform.usekestrel.ai:443`
+
+### Optional Components
+- **Cilium** (for L3/L4 network flow collection)
+- **Istio** (for L7 access log collection and authorization policies)
+
+## Next Steps
+
+- [Install the operator](/operator/onboarding)
+- [Configure integrations](/operator/configuration)
+- [Troubleshoot issues](/operator/troubleshooting)

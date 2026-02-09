@@ -1,0 +1,118 @@
+---
+title: "PagerDuty Integration"
+description: "Route Kestrel incidents to PagerDuty with full root cause analysis, severity mapping, and service routing"
+---
+
+The PagerDuty integration connects Kestrel's automated incident detection to your existing on-call workflows. When Kestrel detects a Kubernetes or cloud incident, it creates a PagerDuty incident with full root cause analysis, affected resources, and AI-generated remediation steps.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- PagerDuty account with admin access
+
+## Features
+
+- **Kubernetes Incident Alerts** - Trigger PagerDuty alerts when K8s incidents are detected
+- **Cloud Incident Alerts** - Trigger PagerDuty alerts for AWS/OCI security incidents
+- **Auto-Resolution** - When incidents are resolved in Kestrel, PagerDuty incidents are automatically resolved
+- **Service Routing**  - Route alerts to specific PagerDuty services based on namespace or cloud resource
+- **Severity Mapping** - Map Kestrel severity levels to PagerDuty severity levels
+- **Bidirectional Sync**  - PagerDuty incidents are updated as Kestrel's investigation progresses
+
+## Setup Instructions
+
+Kestrel supports two connection methods:
+
+### Method 1: API Token (Recommended)
+
+The API Token method enables full service management, namespace routing, and cloud resource routing.
+
+1. Navigate to **Integrations → PagerDuty** in your Kestrel dashboard
+2. Ensure **Use API Token** is checked (default)
+3. Create an API token in PagerDuty:
+   - Click your user icon → **My Profile**
+   - Go to the **User Settings** tab
+   - Click **Create API User Token**
+   - Copy the token
+4. Paste the token in the **PagerDuty API Token** field
+5. Set up the webhook for bidirectional sync:
+   - Copy the **Webhook URL** shown in the setup dialog
+   - In PagerDuty, go to **Integrations → Generic Webhooks (V3)**
+   - Create a new webhook subscription using the copied URL
+   - Copy the **Signing Secret** from the webhook configuration
+6. Paste the signing secret in the **Webhook Signing Secret** field
+7. Click **Connect PagerDuty**
+
+After connecting, click **Sync Services** to import your PagerDuty services.
+
+### Method 2: Routing Key (Legacy)
+
+For simple setups that only need to send alerts to a single service:
+
+1. Uncheck **Use API Token**
+2. In PagerDuty, go to **Services → Select a Service → Integrations**
+3. Add a new **Events API v2** integration
+4. Copy the **Integration Key** (routing key)
+5. Paste it in the **Integration/Routing Key** field
+6. Enter a **Service Name** (e.g., "Kestrel Security Alerts")
+7. Click **Connect PagerDuty**
+
+## Configuring Services
+
+After connecting with an API token:
+
+1. Go to the **Services** tab
+2. Click **Sync Services** to import your PagerDuty services
+3. Click **Configure** on each service you want to receive alerts
+4. Set one service as the **Default** - unmatched incidents are routed here
+
+## Namespace Routing
+
+Route Kubernetes incidents to specific PagerDuty services based on the affected namespace:
+
+1. Go to the **Namespaces** tab
+2. Click **Add Assignment**
+3. Select a **Cluster** and **Namespace**
+4. Select the target **PagerDuty Service**
+5. Click **Create Assignment**
+
+For example, route all incidents in the `payments` namespace to the Payments team's PagerDuty service.
+
+## Cloud Resource Routing
+
+Route cloud incidents to specific PagerDuty services based on the affected resource:
+
+1. Go to the **Cloud Resources** tab
+2. Click **Add Assignment**
+3. Search and select a **Cloud Resource** (e.g., an S3 bucket, EC2 instance)
+4. Select the target **PagerDuty Service**
+5. Click **Create Assignment**
+
+## Notification Settings
+
+Configure which incidents trigger PagerDuty alerts:
+
+1. Go to the **Overview** tab
+2. Click **Configure** on the Severity Filtering card
+3. Set your preferences:
+   - **Notify on Kubernetes incidents**  - Enable/disable K8s alerts
+   - **Notify on Cloud incidents** - Enable/disable AWS/OCI alerts
+   - **Skip transient incidents**  - Filter out auto-resolving incidents
+   - **Minimum severity** - Set the threshold (Low, Medium, High, Critical)
+4. Click **Save Changes**
+
+## Testing the Connection
+
+Click **Test Connection** to send a test event to PagerDuty and verify your setup is working correctly.
+
+## Disconnecting
+
+1. Click **Disconnect** on the Overview tab
+2. Confirm the disconnection
+
+This immediately stops all alerts to PagerDuty. You can reconnect at any time.
+
+## Next Steps
+
+- [Set up Slack for additional notifications](/integrations/slack)
+- [Configure namespace routing for targeted alerting](#namespace-routing)

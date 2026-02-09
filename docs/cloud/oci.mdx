@@ -1,0 +1,67 @@
+---
+title: "OCI Integration"
+description: "Connect your Oracle Cloud Infrastructure tenancies to Kestrel for resource inventory and security monitoring"
+---
+
+Connect your Oracle Cloud Infrastructure (OCI) tenancies to Kestrel for cloud resource inventory, security monitoring, and VCN Flow Log analysis.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- OCI tenancy with permissions to create API keys and policies
+- Access to the OCI Console or OCI CLI
+
+## Setup Steps
+
+### Step 1: Create an API Key
+
+1. In the OCI Console, navigate to **Identity → Users → Your User → API Keys**
+2. Click **Add API Key**
+3. Download the private key file
+4. Note the **fingerprint** displayed after adding the key
+
+### Step 2: Create a Policy (Optional but Recommended)
+
+Create an OCI policy to grant Kestrel read access to your tenancy resources:
+
+```
+Allow group KestrelGroup to read all-resources in tenancy
+Allow group KestrelGroup to manage vcn in tenancy
+Allow group KestrelGroup to manage flow-log-configs in tenancy
+```
+
+### Step 3: Connect in Kestrel
+
+1. Navigate to **Integrations → Cloud** in your Kestrel dashboard
+2. Click **Connect OCI Tenancy**
+3. Fill in the connection form:
+   - **Connection Name**: A friendly name for this tenancy (e.g., "Production")
+   - **Tenancy OCID**: Your tenancy OCID (found in OCI Console → Tenancy Details)
+   - **User OCID**: Your user OCID (found in OCI Console → User Settings)
+   - **Fingerprint**: The API key fingerprint from Step 1
+   - **Private Key**: Paste the contents of the private key PEM file
+   - **Region**: Select your OCI home region
+4. Click **Verify & Connect**
+
+Kestrel will validate the credentials and begin discovering your cloud resources.
+
+## VCN Flow Logs
+
+After connecting an OCI tenancy:
+
+1. Navigate to the connected tenancy in the Cloud Integrations page
+2. Expand the **VCN Flow Logs** section
+3. Click **Enable** to start collecting flow logs across your VCNs
+4. Kestrel creates the necessary log groups and flow log configurations
+
+You can view per-VCN status and manage flow logs individually.
+
+## Managing Connections
+
+- **Refresh**: Re-sync connection status and resource inventory
+- **Delete**: Remove the connection from Kestrel. You should also clean up the API key and policy in OCI separately.
+
+## Next Steps
+
+- [Connect an AWS Account](/cloud/aws)
+- [Set up CI/CD for IaC remediation](/integrations/cicd)
