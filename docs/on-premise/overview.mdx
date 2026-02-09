@@ -7,32 +7,33 @@ For organizations with strict data residency requirements, regulatory compliance
 
 ## Deployment Models
 
-### Standard On-Premise
+### Standard Deployment
 
-Deploy Kestrel in your own AWS, GCP, or Azure environment with outbound internet access for LLM API calls and container image pulls.
+Your Kubernetes cluster has internet access. Pull images directly from our container registry, access LLM services via regional endpoints, and integrate with GitHub, Slack, and PagerDuty via public APIs. This is the simplest deployment model for organizations without strict network isolation requirements.
 
 - All data stays within your environment
-- Uses cloud-native LLM services (Amazon Bedrock, Vertex AI, Azure OpenAI)
+- Uses cloud-native LLM services (Amazon Bedrock, Vertex AI, Azure OpenAI, OCI Generative AI)
 - Container images pulled from Kestrel's private registry
 - Integrates with your existing CI/CD via GitHub.com or GitLab.com
 
-### Air-Gapped
+### Air-Gapped Deployment
 
-Deploy Kestrel in fully isolated environments with no internet access. All external services are accessed via VPC endpoints.
+No internet access required. All external services are accessed via VPC/Private endpoints — no public internet needed. Integrate with GitHub Enterprise Server for IaC workflows. Used by customers in defense, financial services, and other highly regulated industries.
 
 - **No internet access required**
-- Amazon Bedrock accessed via VPC endpoint
+- LLM services accessed via private endpoints (AWS VPC Endpoints for Bedrock, GCP Private Service Connect for Vertex AI, Azure Private Endpoints for Azure OpenAI, OCI Service Gateway for OCI Generative AI)
+- Container images pulled from your private registry (ECR, Artifact Registry, ACR, OCI Container Registry)
 - Secrets stored in AWS Secrets Manager, GCP Secret Manager, Azure Key Vault, or OCI Secret Management
-- Container images pulled from your private ECR/Artifact Registry/ACR
 - Integrates with GitHub Enterprise Server for IaC workflows
 
 ## Supported Cloud Providers
 
-| Provider | Standard | Air-Gapped |
-|----------|----------|------------|
-| **AWS** | ✅ | ✅ |
-| **GCP** | ✅ | ✅ |
-| **Azure** | ✅ | ✅ |
+| Provider | Standard | Air-Gapped | Native Services |
+|----------|----------|------------|-----------------|
+| **AWS** | ✅ | ✅ | EKS, ECR, Amazon Bedrock, Secrets Manager, RDS, ElastiCache |
+| **GCP** | ✅ | ✅ | GKE, Artifact Registry, Vertex AI, Secret Manager, Cloud SQL, Memorystore |
+| **Azure** | ✅ | ✅ | AKS, ACR, Azure OpenAI, Key Vault, Azure Database, Azure Cache |
+| **OCI** | ✅ | ✅ | OKE, OCI Container Registry, OCI Generative AI, OCI Secret Management, OCI Managed Relational Databases, OCI Cache with Redis |
 
 ## Architecture
 
@@ -42,20 +43,31 @@ The on-premise deployment includes the following components:
 - **Kestrel Frontend** — Web dashboard
 - **Kestrel Router** — WebSocket and gRPC routing layer
 - **Kestrel Agents** — AI agent workers for incident analysis
-- **PostgreSQL** — Primary database (can use managed RDS/Cloud SQL/Azure Database)
-- **Redis** — Caching and message queue (can use managed ElastiCache/Memorystore)
-- **Elasticsearch/OpenSearch** (Optional) — Enhanced search capabilities
+- **PostgreSQL** — Primary database (can use managed RDS/Cloud SQL/Azure Database/OCI PostgreSQL DB)
+- **Redis** — Caching and message queue (can use managed ElastiCache/Memorystore/Azure Cache/OCI Cache with Redis)
+- **Elasticsearch/OpenSearch** (Optional) — Enhanced search and log analysis
 
-All components are deployed via Helm charts in your Kubernetes cluster.
+All components are deployed via a single unified Helm chart in your Kubernetes cluster.
+
+## Native Workload Identity
+
+Kestrel integrates with each cloud provider's native workload identity system for secure, keyless authentication:
+
+| Provider | Workload Identity |
+|----------|-------------------|
+| **AWS** | IRSA (IAM Roles for Service Accounts), EKS Pod Identity, or Node IAM Role |
+| **GCP** | Workload Identity Federation for GKE service accounts |
+| **Azure** | Azure AD Workload Identity or Managed Identity for AKS pods |
+| **OCI** | OKE Workload Identity or Instance Principal authentication |
 
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+) in your cloud environment
 - `helm` (v3.0+) installed
-- Container registry access (ECR, Artifact Registry, or ACR)
-- LLM provider configured (Bedrock, Vertex AI, Azure OpenAI, or OpenAI)
-- Secrets management service (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault)
-- IAM role or service account with required permissions
+- Container registry access (ECR, Artifact Registry, ACR, or OCI Container Registry)
+- LLM provider configured (Bedrock, Vertex AI, Azure OpenAI, OCI Generative AI, or OpenAI)
+- Secrets management service (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault, or OCI Secret Management)
+- IAM role, service account, managed identity, or workload identity with required permissions
 - On-Premise license enabled for your Kestrel organization
 
 ## Next Steps

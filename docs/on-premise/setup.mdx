@@ -22,8 +22,9 @@ Select your target cloud provider:
 - **Amazon Web Services (AWS)**
 - **Google Cloud Platform (GCP)**
 - **Microsoft Azure**
+- **Oracle Cloud Infrastructure (OCI)**
 
-This selection determines the available LLM services, secrets providers, and registry options.
+This selection determines the available LLM services, secrets providers, container registry, and managed database options.
 
 ## Step 2: Select Deployment Type
 
@@ -32,7 +33,7 @@ Choose your deployment model:
 | Type | Description |
 |------|-------------|
 | **Standard** | Outbound internet access available. Uses cloud LLM APIs directly. |
-| **Air-Gapped** | No internet access. All services accessed via VPC endpoints. Requires private container registry. |
+| **Air-Gapped** | No internet access. All services accessed via VPC/Private endpoints. Requires private container registry. |
 
 ## Step 3: Configure LLM
 
@@ -43,12 +44,21 @@ Select and configure your LLM provider:
 - Set the Bedrock region
 - Optionally provide a custom endpoint URL (for VPC endpoints in air-gapped mode)
 
+### Vertex AI (GCP)
+- Configure Vertex AI region and model settings
+- For air-gapped mode, use Private Service Connect
+
+### Azure OpenAI
+- Configure Azure OpenAI resource and deployment settings
+- For air-gapped mode, use Azure Private Endpoints
+
+### OCI Generative AI
+- Configure OCI Generative AI service settings
+- For air-gapped mode, use OCI Service Gateway
+
 ### OpenAI
 - Enter your OpenAI API key
 - Select the model (e.g., GPT-5.2)
-
-### Vertex AI (GCP) / Azure OpenAI
-- Configure provider-specific settings as prompted
 
 ## Step 4: Configure Infrastructure
 
@@ -57,22 +67,33 @@ Enter your private container registry URL where Kestrel images will be stored:
 - **AWS**: `123456789012.dkr.ecr.us-east-1.amazonaws.com`
 - **GCP**: `us-docker.pkg.dev/project-id/repo`
 - **Azure**: `kestrel.azurecr.io`
+- **OCI**: `<region>.ocir.io/<tenancy-namespace>/kestrel`
 
-### IAM / Service Account
-Provide the IAM Role ARN (AWS), Service Account (GCP), or Managed Identity (Azure) that Kestrel will use for cloud service access.
+### IAM / Workload Identity
+Provide the identity that Kestrel will use for cloud service access:
+- **AWS**: IAM Role ARN (IRSA, EKS Pod Identity, or Node IAM Role)
+- **GCP**: Service Account (Workload Identity Federation)
+- **Azure**: Managed Identity (Azure AD Workload Identity)
+- **OCI**: OKE Workload Identity or Instance Principal
 
 ### Database
 Choose between:
-- **Embedded PostgreSQL** — Included in the Helm deployment (suitable for dev/test)
-- **External PostgreSQL** — Use a managed database (RDS, Cloud SQL, Azure Database)
-  - Host, port, database name, and username
+- **Bundled PostgreSQL** — Included in the Helm deployment (suitable for dev/test)
+- **External PostgreSQL** — Use a managed database:
+  - AWS: RDS
+  - GCP: Cloud SQL
+  - Azure: Azure Database
+  - OCI: OCI Managed Relational Databases
 
 ### Redis
-If using external Redis:
-- Host and port for your managed Redis instance (ElastiCache, Memorystore, Azure Cache)
+Choose between bundled or external managed Redis:
+- AWS: ElastiCache
+- GCP: Memorystore
+- Azure: Azure Cache
+- OCI: OCI Cache with Redis
 
 ### Elasticsearch/OpenSearch (Optional)
-Enable for enhanced search capabilities:
+Enable for enhanced search and log analysis:
 - Endpoint URL
 - Username and password
 
@@ -97,6 +118,7 @@ For air-gapped deployments, configure GitHub Enterprise Server for IaC workflows
    - Set the webhook URL to your Kestrel ingress host
    - Grant required permissions (repository contents: read/write, pull requests: read/write)
 3. Enter the **GitHub App ID** and **App Slug**
+4. Store credentials securely in AWS Secrets Manager, GCP Secret Manager, Azure Key Vault, or OCI Secret Management
 
 <Note>
 Kestrel generates a TLS CA certificate for secure communication with GitHub Enterprise Server. Download it from the setup wizard and configure it in your GHE instance.
@@ -113,6 +135,7 @@ The generated configuration includes:
 - Registry and image references
 - Ingress configuration
 - Secrets provider settings
+- Workload identity bindings
 
 ## Step 7: Download and Deploy
 
@@ -131,6 +154,8 @@ docker push <your-registry>/kestrel-server:latest
 
 # Repeat for all Kestrel images
 ```
+
+For air-gapped environments, download both the Helm chart and values file, then install from local files.
 
 ### Create Secrets
 
@@ -153,9 +178,10 @@ kubectl create secret docker-registry kestrel-registry \
 ```bash
 helm install kestrel \
   oci://ghcr.io/kestrelai/charts/kestrel \
+  --version 1.0.0 \
   --namespace kestrel-ai \
   --create-namespace \
-  -f generated-values.yaml
+  -f kestrel-values.yaml
 ```
 
 ### Verify the Deployment
@@ -170,6 +196,21 @@ kubectl get ingress -n kestrel-ai
 
 Navigate to your configured domain to access the Kestrel dashboard.
 
+## Air-Gapped Private Endpoints
+
+For air-gapped deployments, Kestrel guides you through creating the required private endpoints for your cloud provider:
+
+### LLM Service Access
+AWS VPC Endpoints for Bedrock, GCP Private Service Connect for Vertex AI, Azure Private Endpoints for Azure OpenAI, or OCI Service Gateway for OCI Generative AI.
+
+### Container Registry
+Private access to ECR (AWS), Artifact Registry (GCP), Azure Container Registry, or OCI Container Registry without traversing the public internet.
+
+### Secrets Management
+Private endpoints for AWS Secrets Manager, GCP Secret Manager, Azure Key Vault, or OCI Secret Management to retrieve credentials at runtime.
+
+The wizard provides cloud-specific, step-by-step instructions for creating each endpoint, including security group configuration and private DNS settings.
+
 ## Updating
 
 To update your on-premise deployment:
@@ -182,7 +223,7 @@ To update your on-premise deployment:
 helm upgrade kestrel \
   oci://ghcr.io/kestrelai/charts/kestrel \
   --namespace kestrel-ai \
-  -f generated-values.yaml
+  -f kestrel-values.yaml
 ```
 
 ## Next Steps
