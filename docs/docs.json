@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "maple",
+  "theme": "mint",
   "name": "Kestrel AI",
   "logo": {
     "light": "/logo/light.svg",
@@ -14,45 +14,51 @@
     "dark": "#1E3A8A"
   },
   "navigation": {
-    "groups": [
+    "tabs": [
       {
-        "group": "Get Started",
-        "pages": [
-          "introduction",
-          "quickstart"
-        ]
-      },
-      {
-        "group": "Kubernetes",
-        "pages": [
-          "kubernetes/overview",
-          "kubernetes/onboarding",
-          "kubernetes/configuration",
-          "kubernetes/troubleshooting"
-        ]
-      },
-      {
-        "group": "Cloud",
-        "pages": [
-          "cloud/overview",
-          "cloud/aws",
-          "cloud/oci"
-        ]
-      },
-      {
-        "group": "Integrations",
-        "pages": [
-          "integrations/slack",
-          "integrations/cicd",
-          "integrations/pagerduty",
-          "integrations/tribal-knowledge"
-        ]
-      },
-      {
-        "group": "On-Premise Deployment",
-        "pages": [
-          "on-premise/overview",
-          "on-premise/setup"
+        "tab": "Documentation",
+        "href": "/introduction",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Kubernetes",
+            "pages": [
+              "kubernetes/overview",
+              "kubernetes/onboarding",
+              "kubernetes/configuration",
+              "kubernetes/troubleshooting"
+            ]
+          },
+          {
+            "group": "Cloud",
+            "pages": [
+              "cloud/overview",
+              "cloud/aws",
+              "cloud/oci"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/slack",
+              "integrations/cicd",
+              "integrations/pagerduty",
+              "integrations/tribal-knowledge"
+            ]
+          },
+          {
+            "group": "On-Premise Deployment",
+            "pages": [
+              "on-premise/overview",
+              "on-premise/setup"
+            ]
+          }
         ]
       }
     ],
@@ -73,6 +79,10 @@
     {
       "name": "Support",
       "url": "mailto:hello@usekestrel.ai"
+    },
+    {
+      "name": "GitHub",
+      "url": "https://github.com/kestrelai"
     }
   ],
   "topbarCtaButton": {
