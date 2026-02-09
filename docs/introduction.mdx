@@ -1,37 +1,54 @@
 ---
 title: "Introduction"
-description: "Welcome to Kestrel AI - AI-Powered Infrastructure Security Platform"
+description: "Welcome to Kestrel AI - The AI-Native Cloud Incident Response Platform"
 ---
 
 # Welcome to Kestrel AI
 
-Kestrel AI is an AI-powered platform for Kubernetes security, cloud incident response, and infrastructure management. It provides real-time monitoring, automated root cause analysis, and AI-generated remediation across your entire infrastructure stack.
+Kestrel AI is the AI-native cloud incident response platform. AI agents identify, explain, and resolve cloud incidents in seconds — delivering exact, production-ready fixes for the most complex infrastructure incidents that take hours to debug.
 
 ## What is Kestrel AI?
 
-Kestrel AI helps your team:
+One platform for every cloud incident. Detect, investigate, and fix Cloud and Kubernetes incidents in seconds.
 
-- **Monitor** - Real-time visibility into Kubernetes clusters and cloud infrastructure (AWS, OCI)
-- **Detect** - Automated incident detection for Kubernetes misconfigurations, cloud security issues, and infrastructure drift
-- **Analyze** - AI-powered root cause analysis with full event chain reconstruction
-- **Remediate** - AI-generated fixes deployed through GitOps workflows via GitHub or GitLab
-- **Respond** - Incident notifications via Slack and PagerDuty with interactive Q&A
+- **Incident Response** — Monitor your Cloud 24/7 to detect incidents, trace root causes, and generate config fixes with auto-remediation or single-click approval
+- **AI Chat Copilot** — Ask any Cloud question and investigate complex, multi-dependency incidents in plain English. Get instant answers with ready-to-apply config changes
+- **Risk Assessment** — Launch a swarm of specialized AI agents that discover cross-domain security risks and provide exact remediation steps — before they become incidents
+- **Cloud Infrastructure Map** — Visualize your entire Cloud infrastructure in a single, unified view with classified traffic overlaid in real time
+- **GitOps + IaC Integration** — Integrate with your existing CI/CD pipelines so that every AI-generated fix becomes a pull request. Keep your team in full control
+- **Fast Setup** — Single Helm install command for Kubernetes. Agentless cloud integration for the rest of your Cloud
 
-## Platform Components
+## From Detection to Fix in Seconds
 
-### Kestrel Operator (Kubernetes)
-A lightweight agent deployed in your Kubernetes clusters that streams resource metadata and network telemetry to Kestrel. Integrates with Cilium and Istio for deep traffic analysis.
+Kestrel delivers exact, production-ready fixes for the most complex infrastructure incidents — from eBPF misconfigurations and CoreDNS resolution failures in Kubernetes to VPC routing conflicts and Kafka broker issues in your cloud.
 
-### Cloud Integrations
-Connect your AWS accounts and OCI tenancies for cloud resource inventory, security posture monitoring, and automated incident detection.
+| | |
+|---|---|
+| **Production-Ready Fixes** | Not just root cause — exact remediation |
+| **Learns Your Environment** | Gets better with every incident |
+| **Deep Infrastructure Context** | Understands your entire infra stack |
+| **Fine-Tuned Per Customer** | Models optimized to your infrastructure |
 
-### AI Copilot
-An AI-powered chat interface that answers questions about your infrastructure, generates configuration changes, and creates pull/merge requests directly from the conversation.
+## Platform Capabilities
 
-### Incident Response
-Automated detection and root cause analysis for both Kubernetes and cloud incidents, with notifications via Slack and PagerDuty and AI-generated remediation steps.
+### Agentic Incident Response
+Kestrel monitors your cloud infrastructure 24/7 to detect incidents, trace root causes, and generate ready-to-apply config fixes. On-call monitoring, root cause analysis, and ready-to-apply fixes — all automated.
+
+### AI Chat Copilot
+Ask any Cloud question in plain English and get instant answers with config changes. No query syntax required — skip the command-line tools and dashboards. Resolve incidents 10x faster and eliminate hours of debugging.
+
+### Autonomous Risk Assessment
+Launch a swarm of AI agents that discover vulnerabilities and provide exact remediation steps across network security, IAM, RBAC, privilege escalation, container image security, and more. Multi-agent coordination with exact config fixes and read-only assessments.
+
+### Cloud Infrastructure Map
+Get a complete view of your Cloud infrastructure with intelligent application classification and network traffic visualization. Real-time traffic overlay with network security posture recommendations.
+
+### GitOps & IaC Integration
+Every AI-generated configuration change comes with a comprehensive review interface. Deploy directly to your clusters, create pull requests to your GitOps repositories, or sync with Terraform, Pulumi, and other IaC tools.
 
 ## Integrations
+
+Kestrel connects to your clouds, Kubernetes clusters, observability tools, and code — then fixes cloud infrastructure incidents automatically through cloud APIs, IaC, and GitOps.
 
 | Integration | Purpose |
 |-------------|---------|
@@ -44,6 +61,27 @@ Automated detection and root cause analysis for both Kubernetes and cloud incide
 | [Tribal Knowledge](/integrations/tribal-knowledge) | Search Slack, Notion, Confluence, Jira, Linear, and Glean during incidents |
 | [On-Premise](/on-premise/overview) | Self-hosted deployment for air-gapped and regulated environments |
 
+## Enterprise-Grade Security
+
+Built for enterprises that demand the highest standards of data privacy, security, and compliance.
+
+- **SOC 2 Compliant** — Enterprise-grade security controls audited by independent third parties
+- **Complete Data Isolation** — Your data is never combined with other customers
+- **No Cross-Customer Training** — Reinforcement learning and fine-tuning happens exclusively on your infrastructure
+- **Full Control Over Fixes** — Every AI-generated fix requires your explicit approval
+- **Read-Only by Default** — No write access unless you explicitly enable auto-remediation
+- **No Sensitive Data Storage** — Raw data is never stored or persisted; secrets are never sent to Kestrel servers
+
 ## Getting Started
+
+Get started in seconds. Single Helm install command for Kubernetes. Agentless for all of Cloud.
+
+```bash
+helm install kestrel-operator \
+  oci://ghcr.io/KestrelAI/charts/kestrel-operator \
+  --version 1.0.0 \
+  --namespace kestrel-ai --create-namespace \
+  -f kestrel-ai-operator-values.yaml
+```
 
 Ready to get started? Head to our [Quickstart Guide](/quickstart) to connect your first cluster in under 5 minutes.
