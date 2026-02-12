@@ -197,11 +197,13 @@ kubectl label namespace <your-namespace> istio-injection=enabled --overwrite
 kubectl rollout restart deployment -n <your-namespace> <deployment-name>
 ```
 
-Verify sidecars are injected — pods should show `2/2` (or `N+1/N+1`) in the READY column:
+Verify sidecars are injected by checking that pods have an `istio-proxy` container:
 
 ```bash
-kubectl get pods -n <your-namespace>
+kubectl get pods -n <your-namespace> -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}' | grep istio-proxy
 ```
+
+If sidecars are injected, each pod will show `istio-proxy` in the container list.
 
 
 ### Safe-Apply Configuration
