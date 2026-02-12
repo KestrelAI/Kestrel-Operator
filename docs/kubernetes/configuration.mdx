@@ -126,8 +126,85 @@ Set to `true` when:
 - **Description**: Port for the ALS gRPC server
 
 <Note>
-  When enabling Istio, ensure your Envoy proxies are configured to send access logs to the operator's ALS endpoint.
+  When enabling Istio, you must also configure Istio's mesh configuration to define the Kestrel Operator as an extension provider. See the Istio mesh configuration section below.
 </Note>
+
+### Istio Mesh Configuration
+
+The operator's Helm chart automatically creates the `Telemetry` resources, but you must register the extension providers in Istio's mesh configuration.
+
+**Required extension providers:**
+
+```yaml
+meshConfig:
+  extensionProviders:
+    - name: kestrel-operator-als
+      envoyHttpAls:
+        service: kestrel-operator-als.kestrel-ai.svc.cluster.local
+        port: 8080
+    - name: kestrel-operator-als-tcp
+      envoyTcpAls:
+        service: kestrel-operator-als.kestrel-ai.svc.cluster.local
+        port: 8080
+```
+
+**For new Istio installations** (or Helm-managed Istio), pass these as Helm `--set` flags:
+
+```bash
+helm upgrade --install istiod istio/istiod -n istio-system \
+  --set 'meshConfig.extensionProviders[0].name=kestrel-operator-als' \
+  --set 'meshConfig.extensionProviders[0].envoyHttpAls.service=kestrel-operator-als.kestrel-ai.svc.cluster.local' \
+  --set 'meshConfig.extensionProviders[0].envoyHttpAls.port=8080' \
+  --set 'meshConfig.extensionProviders[1].name=kestrel-operator-als-tcp' \
+  --set 'meshConfig.extensionProviders[1].envoyTcpAls.service=kestrel-operator-als.kestrel-ai.svc.cluster.local' \
+  --set 'meshConfig.extensionProviders[1].envoyTcpAls.port=8080'
+```
+
+**For existing installations without custom mesh config**, use `kubectl patch`:
+
+```bash
+kubectl patch configmap istio -n istio-system --type merge -p '{"data":{"mesh":"extensionProviders:\n- name: kestrel-operator-als\n  envoyHttpAls:\n    service: kestrel-operator-als.kestrel-ai.svc.cluster.local\n    port: 8080\n- name: kestrel-operator-als-tcp\n  envoyTcpAls:\n    service: kestrel-operator-als.kestrel-ai.svc.cluster.local\n    port: 8080"}}'
+```
+
+<Warning>
+  The `kubectl patch --type merge` command replaces the entire `mesh` key. Only use this if you don't have existing custom mesh configuration. If you do, use the edit-in-place approach below.
+</Warning>
+
+**For existing installations with custom mesh config**, edit the ConfigMap directly to preserve your settings:
+
+```bash
+kubectl edit configmap istio -n istio-system
+```
+
+Add the `extensionProviders` block into the existing `mesh:` YAML, keeping all other settings intact. Then restart Istiod:
+
+```bash
+kubectl rollout restart deployment istiod -n istio-system
+```
+
+### Namespace Sidecar Injection
+
+Application namespaces must have Istio sidecar injection enabled for L7 flow collection to work. Label each namespace before deploying workloads:
+
+```bash
+kubectl label namespace <your-namespace> istio-injection=enabled
+```
+
+If workloads are already running, add the label and restart deployments:
+
+```bash
+kubectl label namespace <your-namespace> istio-injection=enabled --overwrite
+kubectl rollout restart deployment -n <your-namespace> <deployment-name>
+```
+
+Verify sidecars are injected by checking that pods have an `istio-proxy` container:
+
+```bash
+kubectl get pods -n <your-namespace> -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}' | grep istio-proxy
+```
+
+If sidecars are injected, each pod will show `istio-proxy` in the container list.
+
 
 ### Safe-Apply Configuration
 

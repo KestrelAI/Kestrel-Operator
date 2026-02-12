@@ -70,8 +70,8 @@ When Istio is available and properly configured, the Kestrel Operator additional
 For Istio integration to work, the following must be configured:
 
 1. **Istio Service Mesh** must be installed and running
-2. **Envoy Access Log Service** must be configured to send logs to the operator
-3. **Workloads must be part of the service mesh** (have Envoy sidecars injected)
+2. **Istio mesh configuration** must define the Kestrel Operator as an extension provider for access logging
+3. **Application namespaces** must be labeled with `istio-injection=enabled` so workloads get Envoy sidecars
 
 ### Configuration
 
@@ -86,11 +86,11 @@ operator:
     disableFlows: true  # Typically disable Cilium when using Istio for flow collection
 ```
 
-### Istio Configuration
+### Istio Mesh Configuration
 
 The operator automatically creates the necessary Telemetry resources via its Helm chart, but you **must** configure Istio's mesh configuration to define the Kestrel Operator as an extension provider for access logging.
 
-**Add the following to your Istio mesh configuration:**
+**Required extension providers:**
 
 ```yaml
 meshConfig:
@@ -105,18 +105,87 @@ meshConfig:
         port: 8080
 ```
 
-This can be applied:
+There are several ways to apply this depending on your Istio setup:
 
-**Via Helm values when installing/upgrading Istio:**
+#### Option 1: Via Helm `--set` flags (new Istio installations or Helm-managed Istio)
+
 ```bash
-helm upgrade istio-base istio/base -n istio-system
-helm upgrade istiod istio/istiod -n istio-system --values istio-values.yaml
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm upgrade --install istiod istio/istiod -n istio-system \
+  --set 'meshConfig.extensionProviders[0].name=kestrel-operator-als' \
+  --set 'meshConfig.extensionProviders[0].envoyHttpAls.service=kestrel-operator-als.kestrel-ai.svc.cluster.local' \
+  --set 'meshConfig.extensionProviders[0].envoyHttpAls.port=8080' \
+  --set 'meshConfig.extensionProviders[1].name=kestrel-operator-als-tcp' \
+  --set 'meshConfig.extensionProviders[1].envoyTcpAls.service=kestrel-operator-als.kestrel-ai.svc.cluster.local' \
+  --set 'meshConfig.extensionProviders[1].envoyTcpAls.port=8080'
 ```
 
-**Via kubectl patch (for existing installations):**
+#### Option 2: Via `kubectl patch` (existing installations without custom mesh config)
+
+If your Istio installation doesn't have custom mesh configuration, you can apply the extension providers with a single command:
+
 ```bash
 kubectl patch configmap istio -n istio-system --type merge -p '{"data":{"mesh":"extensionProviders:\n- name: kestrel-operator-als\n  envoyHttpAls:\n    service: kestrel-operator-als.kestrel-ai.svc.cluster.local\n    port: 8080\n- name: kestrel-operator-als-tcp\n  envoyTcpAls:\n    service: kestrel-operator-als.kestrel-ai.svc.cluster.local\n    port: 8080"}}'
 ```
+
+After patching, restart Istiod:
+```bash
+kubectl rollout restart deployment istiod -n istio-system
+```
+
+> **⚠️ Warning:** This `--type merge` patch replaces the entire `mesh` key. Only use this if you don't have existing custom mesh configuration. If you do, use Option 3 instead.
+
+#### Option 3: Edit the ConfigMap in place (existing installations with custom mesh config)
+
+If you already have custom mesh configuration (e.g., custom `discoveryAddress`, `trustDomain`, `defaultProviders`), edit the ConfigMap directly to avoid overwriting your existing settings:
+
+```bash
+kubectl edit configmap istio -n istio-system
+```
+
+Find the `mesh:` key in the `data` section and add the `extensionProviders` block while keeping all existing settings:
+
+```yaml
+data:
+  mesh: |-
+    # ... your existing mesh config (keep all existing settings) ...
+    extensionProviders:
+    - name: kestrel-operator-als
+      envoyHttpAls:
+        service: kestrel-operator-als.kestrel-ai.svc.cluster.local
+        port: 8080
+    - name: kestrel-operator-als-tcp
+      envoyTcpAls:
+        service: kestrel-operator-als.kestrel-ai.svc.cluster.local
+        port: 8080
+```
+
+After saving, restart Istiod to pick up the changes:
+```bash
+kubectl rollout restart deployment istiod -n istio-system
+```
+
+### Namespace Configuration
+
+Application namespaces must have Istio sidecar injection enabled. Label each namespace **before** deploying workloads:
+
+```bash
+kubectl label namespace <your-namespace> istio-injection=enabled
+```
+
+If workloads are already running, label the namespace and restart the deployments to inject sidecars:
+
+```bash
+kubectl label namespace <your-namespace> istio-injection=enabled --overwrite
+kubectl rollout restart deployment -n <your-namespace> <deployment-name>
+```
+
+Verify sidecars are injected by checking that pods have an `istio-proxy` container:
+```bash
+kubectl get pods -n <your-namespace> -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{" "}{end}{"\n"}{end}' | grep istio-proxy
+```
+
+If sidecars are injected, each pod will show `istio-proxy` in the container list.
 
 The operator's Helm chart will automatically create the necessary `Telemetry` resources that reference these extension providers.
 
