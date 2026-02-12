@@ -1,0 +1,79 @@
+---
+title: "Slack Integration"
+description: "Connect Slack for real-time incident notifications, interactive Q&A, and AI copilot commands"
+---
+
+The Kestrel Slack integration brings incident response directly into your team's chat. Receive real-time notifications when incidents are detected, ask follow-up questions in threads, and use the `/kestrel` command to interact with the AI copilot.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- Slack workspace admin permissions (to authorize the app)
+
+## Features
+
+Once connected, the Slack integration provides:
+
+### Incident Notifications
+When Kestrel detects an incident in your Kubernetes clusters or cloud infrastructure, it posts a notification to your configured Slack channel with:
+- Incident summary and severity
+- Affected resources
+- Root cause analysis
+- AI-generated remediation steps
+- Direct link to the Kestrel dashboard
+
+### Smart @Mentions
+Namespace owners configured in Kestrel are automatically @mentioned when incidents affect their namespaces, ensuring the right people are notified immediately.
+
+### Interactive Q&A
+Reply in the incident notification thread to ask follow-up questions. Kestrel's AI responds with context-aware answers about the incident, affected resources, and recommended actions.
+
+### AI Copilot (`/kestrel` Command)
+Use the `/kestrel` slash command anywhere in Slack to ask questions about your infrastructure:
+- `/kestrel what pods are crashing in production?`
+- `/kestrel show me the network policies for the payments namespace`
+- `/kestrel what Terraform code manages my S3 buckets?`
+
+### User Mapping
+Kestrel automatically syncs your Slack workspace users to Kestrel accounts for accurate @mention routing. You can trigger a manual sync at any time.
+
+## Setup Instructions
+
+### Step 1: Connect Your Workspace
+
+1. Navigate to **Integrations → Slack** in your Kestrel dashboard
+2. Click **Connect Slack Workspace**
+3. A popup opens with the Slack OAuth authorization page
+4. Review the requested permissions and click **Allow**
+5. The popup closes and Kestrel shows your workspace as connected
+
+### Step 2: Invite the Bot
+
+Invite the Kestrel bot to the channel where you want to receive incident notifications:
+
+```
+/invite @Kestrel
+```
+
+<Tip>
+We recommend creating a dedicated `#incidents` channel for Kestrel notifications to keep them organized.
+</Tip>
+
+### Step 3: Sync Users
+
+Click **Sync Now** on the User Mapping card to sync your Slack users with Kestrel. This enables smart @mentions for namespace owners.
+
+## Disconnecting
+
+To disconnect the Slack integration:
+
+1. Navigate to **Integrations → Slack**
+2. Click **Disconnect Slack**
+3. Confirm the disconnection
+
+This immediately stops all notifications and removes the bot from your workspace. You can reconnect at any time.
+
+## Next Steps
+
+- [Set up PagerDuty for on-call alerting](/integrations/pagerduty)
+- [Enable Slack as a Tribal Knowledge source](/integrations/tribal-knowledge)

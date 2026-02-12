@@ -1,0 +1,39 @@
+---
+title: "Cloud Integrations Overview"
+description: "Connect your cloud accounts to Kestrel for resource inventory, security monitoring, and automated incident response"
+---
+
+Kestrel connects directly to your cloud accounts to provide real-time resource inventory, security posture monitoring, and automated incident detection and response.
+
+## Supported Cloud Providers
+
+| Provider | Status | Features |
+|----------|--------|----------|
+| **AWS** | Generally Available | Resource inventory, security monitoring, VPC Flow Logs, CloudTrail analysis |
+| **OCI** | Generally Available | Resource inventory, security monitoring, VCN Flow Logs |
+| **GCP** | Coming Soon |  - |
+| **Azure** | Coming Soon |  - |
+
+## What Cloud Integrations Provide
+
+### Resource Inventory
+Kestrel automatically discovers and catalogs your cloud resources - EC2 instances, S3 buckets, RDS databases, VPCs, security groups, IAM roles, and more. This inventory is continuously updated and used by the AI copilot to answer questions about your infrastructure.
+
+### Security Monitoring
+Kestrel monitors your cloud resources for security misconfigurations and compliance violations. When an issue is detected, it creates an incident with full root cause analysis and AI-generated remediation.
+
+### VPC/VCN Flow Logs
+For network-level visibility, Kestrel can enable and analyze VPC Flow Logs (AWS) or VCN Flow Logs (OCI) to detect suspicious traffic patterns, unauthorized access attempts, and network misconfigurations.
+
+### IaC Remediation
+When Kestrel detects a cloud misconfiguration and you have IaC repositories connected via the [CI/CD integration](/integrations/cicd), it can generate a Terraform fix targeting the exact file and resource in your repository, and open a pull request or merge request with the change.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel is required to configure cloud integrations
+- Access credentials for the cloud account you want to connect
+
+## Next Steps
+
+- [Connect an AWS Account](/cloud/aws)
+- [Connect an OCI Tenancy](/cloud/oci)

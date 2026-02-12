@@ -1,0 +1,87 @@
+---
+title: "Quickstart Guide"
+description: "Get started with Kestrel AI in under 5 minutes"
+---
+
+Get Kestrel AI up and running in your Kubernetes cluster in just a few steps.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- Kubernetes cluster (v1.24+)
+- `kubectl` configured to access your cluster
+- `helm` (v3.0+) installed
+- Admin access to create namespaces and deploy operators
+
+### Optional Integrations
+
+For enhanced functionality:
+- **Cilium**: For L3/L4 network flow collection
+- **Istio**: For L7 traffic analysis and authorization policies
+
+## Step 1: Sign Up for Kestrel AI
+
+1. Visit [platform.usekestrel.ai](https://platform.usekestrel.ai)
+2. Create your account
+3. Create your tenant
+
+## Step 2: Onboard Your Cluster
+
+1. Navigate to **Clusters** in the dashboard
+2. Click **Add Cluster**
+3. Provide a name for your cluster
+4. Choose your traffic data source:
+   - **Cilium** for L3/L4 flows
+   - **Istio** for L7 access logs
+   - **None** for basic resource monitoring only
+
+## Step 3: Install the Kestrel Operator
+
+Copy the generated Helm command from the onboarding page and run it:
+
+```bash
+helm install kestrel-operator \
+  oci://ghcr.io/kestrelai/charts/kestrel-operator \
+  --version 0.1.0 \
+  --namespace kestrel-ai \
+  --create-namespace \
+  -f kestrel-ai-operator-values-<your-cluster>.yaml
+```
+
+The values file contains your unique cluster credentials and configuration.
+
+## Step 4: Verify Installation
+
+Check that the operator is running:
+
+```bash
+kubectl get pods -n kestrel-ai
+```
+
+You should see:
+```
+NAME                                READY   STATUS    RESTARTS   AGE
+kestrel-operator-xxxxx-xxxxx       1/1     Running   0          1m
+```
+
+## Step 5: View Your Cluster
+
+Return to the Kestrel dashboard. Within a few minutes, you should see:
+- Your cluster appearing as "Connected"
+- Resources being discovered and displayed
+- Network traffic flows (if Cilium/Istio is configured)
+
+## What's Next?
+
+Now that your cluster is connected:
+
+- **[Connect Cloud Accounts](/cloud/overview)** - Add AWS or OCI for cloud monitoring
+- **[Set up Slack](/integrations/slack)** - Get incident notifications in Slack
+- **[Connect CI/CD](/integrations/cicd)** - Enable GitOps deployments via GitHub or GitLab
+- **[Configure PagerDuty](/integrations/pagerduty)** - Route incidents to your on-call team
+- **[Add Tribal Knowledge](/integrations/tribal-knowledge)** - Enhance incidents with historical context
+
+## Troubleshooting
+
+Having issues? Check our [Troubleshooting Guide](/kubernetes/troubleshooting) or contact support at hello@usekestrel.ai.
