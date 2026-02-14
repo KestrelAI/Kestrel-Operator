@@ -22,10 +22,10 @@ RUN apk --no-cache add \
     gzip \
     jq
 
-# Install kubectl (multi-arch)
+# Install kubectl (multi-arch) - pinned to v1.31.0 for reliability
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; elif [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi && \
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl" && \
+    curl -LO "https://dl.k8s.io/release/v1.31.0/bin/linux/${ARCH}/kubectl" && \
     chmod +x kubectl && \
     mv kubectl /usr/local/bin/
 
