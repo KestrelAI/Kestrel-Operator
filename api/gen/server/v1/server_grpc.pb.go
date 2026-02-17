@@ -35,11 +35,17 @@ const (
 	AutonpServerService_Logout_FullMethodName                                     = "/server.v1.AutonpServerService/Logout"
 	AutonpServerService_ValidateSession_FullMethodName                            = "/server.v1.AutonpServerService/ValidateSession"
 	AutonpServerService_RefreshSession_FullMethodName                             = "/server.v1.AutonpServerService/RefreshSession"
+	AutonpServerService_Setup2FAInitiate_FullMethodName                           = "/server.v1.AutonpServerService/Setup2FAInitiate"
+	AutonpServerService_Setup2FAVerify_FullMethodName                             = "/server.v1.AutonpServerService/Setup2FAVerify"
+	AutonpServerService_Disable2FA_FullMethodName                                 = "/server.v1.AutonpServerService/Disable2FA"
+	AutonpServerService_Verify2FA_FullMethodName                                  = "/server.v1.AutonpServerService/Verify2FA"
+	AutonpServerService_Get2FAStatus_FullMethodName                               = "/server.v1.AutonpServerService/Get2FAStatus"
 	AutonpServerService_CreateTenant_FullMethodName                               = "/server.v1.AutonpServerService/CreateTenant"
 	AutonpServerService_GetTenant_FullMethodName                                  = "/server.v1.AutonpServerService/GetTenant"
 	AutonpServerService_UpdateTenant_FullMethodName                               = "/server.v1.AutonpServerService/UpdateTenant"
 	AutonpServerService_LinkUserToTenant_FullMethodName                           = "/server.v1.AutonpServerService/LinkUserToTenant"
 	AutonpServerService_GetPolicyCountForTenant_FullMethodName                    = "/server.v1.AutonpServerService/GetPolicyCountForTenant"
+	AutonpServerService_GetAuthorizationPolicyCountForTenant_FullMethodName       = "/server.v1.AutonpServerService/GetAuthorizationPolicyCountForTenant"
 	AutonpServerService_GetUserCountForTenant_FullMethodName                      = "/server.v1.AutonpServerService/GetUserCountForTenant"
 	AutonpServerService_GetClusterStats_FullMethodName                            = "/server.v1.AutonpServerService/GetClusterStats"
 	AutonpServerService_GetRecentPoliciesForTenant_FullMethodName                 = "/server.v1.AutonpServerService/GetRecentPoliciesForTenant"
@@ -66,15 +72,35 @@ const (
 	AutonpServerService_RejectOwnershipRequest_FullMethodName                     = "/server.v1.AutonpServerService/RejectOwnershipRequest"
 	AutonpServerService_GetAllNamespaceOwnershipMappings_FullMethodName           = "/server.v1.AutonpServerService/GetAllNamespaceOwnershipMappings"
 	AutonpServerService_GetPoliciesAwaitingMyReview_FullMethodName                = "/server.v1.AutonpServerService/GetPoliciesAwaitingMyReview"
-	AutonpServerService_GetMyPendingReviewCount_FullMethodName                    = "/server.v1.AutonpServerService/GetMyPendingReviewCount"
+	AutonpServerService_GetMyPendingNetworkPolicyReviewCount_FullMethodName       = "/server.v1.AutonpServerService/GetMyPendingNetworkPolicyReviewCount"
+	AutonpServerService_GetMyPendingAuthorizationPolicyReviewCount_FullMethodName = "/server.v1.AutonpServerService/GetMyPendingAuthorizationPolicyReviewCount"
 	AutonpServerService_SubmitPolicyReview_FullMethodName                         = "/server.v1.AutonpServerService/SubmitPolicyReview"
 	AutonpServerService_GetPolicyReviewStatus_FullMethodName                      = "/server.v1.AutonpServerService/GetPolicyReviewStatus"
 	AutonpServerService_TriggerRiskAssessment_FullMethodName                      = "/server.v1.AutonpServerService/TriggerRiskAssessment"
 	AutonpServerService_GetRiskAssessmentStatus_FullMethodName                    = "/server.v1.AutonpServerService/GetRiskAssessmentStatus"
 	AutonpServerService_ListRiskAssessments_FullMethodName                        = "/server.v1.AutonpServerService/ListRiskAssessments"
+	AutonpServerService_GetRiskAssessmentFinding_FullMethodName                   = "/server.v1.AutonpServerService/GetRiskAssessmentFinding"
 	AutonpServerService_GetInventoryL7AccessLogs_FullMethodName                   = "/server.v1.AutonpServerService/GetInventoryL7AccessLogs"
 	AutonpServerService_GetInventoryClusterL7AccessLogs_FullMethodName            = "/server.v1.AutonpServerService/GetInventoryClusterL7AccessLogs"
 	AutonpServerService_GetIndividualL7AccessLogsBetweenNamespaces_FullMethodName = "/server.v1.AutonpServerService/GetIndividualL7AccessLogsBetweenNamespaces"
+	AutonpServerService_GetVulnerabilityDashboard_FullMethodName                  = "/server.v1.AutonpServerService/GetVulnerabilityDashboard"
+	AutonpServerService_ValidateRiskAssessmentFixes_FullMethodName                = "/server.v1.AutonpServerService/ValidateRiskAssessmentFixes"
+	AutonpServerService_CreateNetworkPolicySimulation_FullMethodName              = "/server.v1.AutonpServerService/CreateNetworkPolicySimulation"
+	AutonpServerService_ListNetworkPolicySimulations_FullMethodName               = "/server.v1.AutonpServerService/ListNetworkPolicySimulations"
+	AutonpServerService_GetNetworkPolicySimulation_FullMethodName                 = "/server.v1.AutonpServerService/GetNetworkPolicySimulation"
+	AutonpServerService_DeleteNetworkPolicySimulation_FullMethodName              = "/server.v1.AutonpServerService/DeleteNetworkPolicySimulation"
+	AutonpServerService_CreateAuthorizationPolicySimulation_FullMethodName        = "/server.v1.AutonpServerService/CreateAuthorizationPolicySimulation"
+	AutonpServerService_ListAuthorizationPolicySimulations_FullMethodName         = "/server.v1.AutonpServerService/ListAuthorizationPolicySimulations"
+	AutonpServerService_GetAuthorizationPolicySimulation_FullMethodName           = "/server.v1.AutonpServerService/GetAuthorizationPolicySimulation"
+	AutonpServerService_DeleteAuthorizationPolicySimulation_FullMethodName        = "/server.v1.AutonpServerService/DeleteAuthorizationPolicySimulation"
+	AutonpServerService_ListTenants_FullMethodName                                = "/server.v1.AutonpServerService/ListTenants"
+	AutonpServerService_GetTenantClusters_FullMethodName                          = "/server.v1.AutonpServerService/GetTenantClusters"
+	AutonpServerService_TriggerTenantRiskAssessment_FullMethodName                = "/server.v1.AutonpServerService/TriggerTenantRiskAssessment"
+	AutonpServerService_RestartOperator_FullMethodName                            = "/server.v1.AutonpServerService/RestartOperator"
+	AutonpServerService_GetOperatorHealth_FullMethodName                          = "/server.v1.AutonpServerService/GetOperatorHealth"
+	AutonpServerService_ListIncidents_FullMethodName                              = "/server.v1.AutonpServerService/ListIncidents"
+	AutonpServerService_GetIncidentDetails_FullMethodName                         = "/server.v1.AutonpServerService/GetIncidentDetails"
+	AutonpServerService_ApplyIncidentYAMLFix_FullMethodName                       = "/server.v1.AutonpServerService/ApplyIncidentYAMLFix"
 )
 
 // AutonpServerServiceClient is the client API for AutonpServerService service.
@@ -98,6 +124,12 @@ type AutonpServerServiceClient interface {
 	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*LogoutResponse, error)
 	ValidateSession(ctx context.Context, in *ValidateSessionRequest, opts ...grpc.CallOption) (*ValidateSessionResponse, error)
 	RefreshSession(ctx context.Context, in *RefreshSessionRequest, opts ...grpc.CallOption) (*RefreshSessionResponse, error)
+	// 2FA management
+	Setup2FAInitiate(ctx context.Context, in *Setup2FAInitiateRequest, opts ...grpc.CallOption) (*Setup2FAInitiateResponse, error)
+	Setup2FAVerify(ctx context.Context, in *Setup2FAVerifyRequest, opts ...grpc.CallOption) (*Setup2FAVerifyResponse, error)
+	Disable2FA(ctx context.Context, in *Disable2FARequest, opts ...grpc.CallOption) (*Disable2FAResponse, error)
+	Verify2FA(ctx context.Context, in *Verify2FARequest, opts ...grpc.CallOption) (*Verify2FAResponse, error)
+	Get2FAStatus(ctx context.Context, in *Get2FAStatusRequest, opts ...grpc.CallOption) (*Get2FAStatusResponse, error)
 	// Tenant management
 	CreateTenant(ctx context.Context, in *CreateTenantRequest, opts ...grpc.CallOption) (*CreateTenantResponse, error)
 	GetTenant(ctx context.Context, in *GetTenantRequest, opts ...grpc.CallOption) (*GetTenantResponse, error)
@@ -105,6 +137,7 @@ type AutonpServerServiceClient interface {
 	LinkUserToTenant(ctx context.Context, in *LinkUserToTenantRequest, opts ...grpc.CallOption) (*LinkUserToTenantResponse, error)
 	// Stats for dashboard
 	GetPolicyCountForTenant(ctx context.Context, in *GetPolicyCountForTenantRequest, opts ...grpc.CallOption) (*GetPolicyCountForTenantResponse, error)
+	GetAuthorizationPolicyCountForTenant(ctx context.Context, in *GetAuthorizationPolicyCountForTenantRequest, opts ...grpc.CallOption) (*GetAuthorizationPolicyCountForTenantResponse, error)
 	GetUserCountForTenant(ctx context.Context, in *GetUserCountForTenantRequest, opts ...grpc.CallOption) (*GetUserCountForTenantResponse, error)
 	GetClusterStats(ctx context.Context, in *GetClusterStatsRequest, opts ...grpc.CallOption) (*GetClusterStatsResponse, error)
 	// Recent activity for dashboard
@@ -137,17 +170,43 @@ type AutonpServerServiceClient interface {
 	GetAllNamespaceOwnershipMappings(ctx context.Context, in *GetAllNamespaceOwnershipMappingsRequest, opts ...grpc.CallOption) (*GetAllNamespaceOwnershipMappingsResponse, error)
 	// Policy Review Management
 	GetPoliciesAwaitingMyReview(ctx context.Context, in *GetPoliciesAwaitingMyReviewRequest, opts ...grpc.CallOption) (*GetPoliciesAwaitingMyReviewResponse, error)
-	GetMyPendingReviewCount(ctx context.Context, in *GetMyPendingReviewCountRequest, opts ...grpc.CallOption) (*GetMyPendingReviewCountResponse, error)
+	GetMyPendingNetworkPolicyReviewCount(ctx context.Context, in *GetMyPendingNetworkPolicyReviewCountRequest, opts ...grpc.CallOption) (*GetMyPendingNetworkPolicyReviewCountResponse, error)
+	GetMyPendingAuthorizationPolicyReviewCount(ctx context.Context, in *GetMyPendingAuthorizationPolicyReviewCountRequest, opts ...grpc.CallOption) (*GetMyPendingAuthorizationPolicyReviewCountResponse, error)
 	SubmitPolicyReview(ctx context.Context, in *SubmitPolicyReviewRequest, opts ...grpc.CallOption) (*SubmitPolicyReviewResponse, error)
 	GetPolicyReviewStatus(ctx context.Context, in *GetPolicyReviewStatusRequest, opts ...grpc.CallOption) (*GetPolicyReviewStatusResponse, error)
 	// Risk Assessment Management
 	TriggerRiskAssessment(ctx context.Context, in *TriggerRiskAssessmentRequest, opts ...grpc.CallOption) (*TriggerRiskAssessmentResponse, error)
 	GetRiskAssessmentStatus(ctx context.Context, in *GetRiskAssessmentStatusRequest, opts ...grpc.CallOption) (*GetRiskAssessmentStatusResponse, error)
 	ListRiskAssessments(ctx context.Context, in *ListRiskAssessmentsRequest, opts ...grpc.CallOption) (*ListRiskAssessmentsResponse, error)
+	GetRiskAssessmentFinding(ctx context.Context, in *GetRiskAssessmentFindingRequest, opts ...grpc.CallOption) (*GetRiskAssessmentFindingResponse, error)
 	// L7 Access Log APIs
 	GetInventoryL7AccessLogs(ctx context.Context, in *GetInventoryL7AccessLogsRequest, opts ...grpc.CallOption) (*GetInventoryL7AccessLogsResponse, error)
 	GetInventoryClusterL7AccessLogs(ctx context.Context, in *GetInventoryClusterL7AccessLogsRequest, opts ...grpc.CallOption) (*GetInventoryClusterL7AccessLogsResponse, error)
 	GetIndividualL7AccessLogsBetweenNamespaces(ctx context.Context, in *GetIndividualL7AccessLogsBetweenNamespacesRequest, opts ...grpc.CallOption) (*GetIndividualL7AccessLogsBetweenNamespacesResponse, error)
+	// Vulnerability dashboard messages
+	GetVulnerabilityDashboard(ctx context.Context, in *GetVulnerabilityDashboardRequest, opts ...grpc.CallOption) (*GetVulnerabilityDashboardResponse, error)
+	// Finding fix validation
+	ValidateRiskAssessmentFixes(ctx context.Context, in *ValidateRiskAssessmentFixesRequest, opts ...grpc.CallOption) (*ValidateRiskAssessmentFixesResponse, error)
+	// Network Policy Simulations
+	CreateNetworkPolicySimulation(ctx context.Context, in *CreateNetworkPolicySimulationRequest, opts ...grpc.CallOption) (*CreateNetworkPolicySimulationResponse, error)
+	ListNetworkPolicySimulations(ctx context.Context, in *ListNetworkPolicySimulationsRequest, opts ...grpc.CallOption) (*ListNetworkPolicySimulationsResponse, error)
+	GetNetworkPolicySimulation(ctx context.Context, in *GetNetworkPolicySimulationRequest, opts ...grpc.CallOption) (*GetNetworkPolicySimulationResponse, error)
+	DeleteNetworkPolicySimulation(ctx context.Context, in *DeleteNetworkPolicySimulationRequest, opts ...grpc.CallOption) (*DeleteNetworkPolicySimulationResponse, error)
+	// Authorization Policy Simulations
+	CreateAuthorizationPolicySimulation(ctx context.Context, in *CreateAuthorizationPolicySimulationRequest, opts ...grpc.CallOption) (*CreateAuthorizationPolicySimulationResponse, error)
+	ListAuthorizationPolicySimulations(ctx context.Context, in *ListAuthorizationPolicySimulationsRequest, opts ...grpc.CallOption) (*ListAuthorizationPolicySimulationsResponse, error)
+	GetAuthorizationPolicySimulation(ctx context.Context, in *GetAuthorizationPolicySimulationRequest, opts ...grpc.CallOption) (*GetAuthorizationPolicySimulationResponse, error)
+	DeleteAuthorizationPolicySimulation(ctx context.Context, in *DeleteAuthorizationPolicySimulationRequest, opts ...grpc.CallOption) (*DeleteAuthorizationPolicySimulationResponse, error)
+	// Admin Dashboard APIs
+	ListTenants(ctx context.Context, in *ListTenantsRequest, opts ...grpc.CallOption) (*ListTenantsResponse, error)
+	GetTenantClusters(ctx context.Context, in *GetTenantClustersRequest, opts ...grpc.CallOption) (*GetTenantClustersResponse, error)
+	TriggerTenantRiskAssessment(ctx context.Context, in *TriggerTenantRiskAssessmentRequest, opts ...grpc.CallOption) (*TriggerTenantRiskAssessmentResponse, error)
+	RestartOperator(ctx context.Context, in *RestartOperatorRequest, opts ...grpc.CallOption) (*RestartOperatorResponse, error)
+	GetOperatorHealth(ctx context.Context, in *GetOperatorHealthRequest, opts ...grpc.CallOption) (*GetOperatorHealthResponse, error)
+	// Incident Response APIs (K8s SRE)
+	ListIncidents(ctx context.Context, in *ListIncidentsRequest, opts ...grpc.CallOption) (*ListIncidentsResponse, error)
+	GetIncidentDetails(ctx context.Context, in *GetIncidentDetailsRequest, opts ...grpc.CallOption) (*GetIncidentDetailsResponse, error)
+	ApplyIncidentYAMLFix(ctx context.Context, in *ApplyIncidentYAMLFixRequest, opts ...grpc.CallOption) (*ApplyIncidentYAMLFixResponse, error)
 }
 
 type autonpServerServiceClient struct {
@@ -318,6 +377,56 @@ func (c *autonpServerServiceClient) RefreshSession(ctx context.Context, in *Refr
 	return out, nil
 }
 
+func (c *autonpServerServiceClient) Setup2FAInitiate(ctx context.Context, in *Setup2FAInitiateRequest, opts ...grpc.CallOption) (*Setup2FAInitiateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Setup2FAInitiateResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_Setup2FAInitiate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) Setup2FAVerify(ctx context.Context, in *Setup2FAVerifyRequest, opts ...grpc.CallOption) (*Setup2FAVerifyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Setup2FAVerifyResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_Setup2FAVerify_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) Disable2FA(ctx context.Context, in *Disable2FARequest, opts ...grpc.CallOption) (*Disable2FAResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Disable2FAResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_Disable2FA_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) Verify2FA(ctx context.Context, in *Verify2FARequest, opts ...grpc.CallOption) (*Verify2FAResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Verify2FAResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_Verify2FA_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) Get2FAStatus(ctx context.Context, in *Get2FAStatusRequest, opts ...grpc.CallOption) (*Get2FAStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Get2FAStatusResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_Get2FAStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *autonpServerServiceClient) CreateTenant(ctx context.Context, in *CreateTenantRequest, opts ...grpc.CallOption) (*CreateTenantResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateTenantResponse)
@@ -362,6 +471,16 @@ func (c *autonpServerServiceClient) GetPolicyCountForTenant(ctx context.Context,
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetPolicyCountForTenantResponse)
 	err := c.cc.Invoke(ctx, AutonpServerService_GetPolicyCountForTenant_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) GetAuthorizationPolicyCountForTenant(ctx context.Context, in *GetAuthorizationPolicyCountForTenantRequest, opts ...grpc.CallOption) (*GetAuthorizationPolicyCountForTenantResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAuthorizationPolicyCountForTenantResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_GetAuthorizationPolicyCountForTenant_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -628,10 +747,20 @@ func (c *autonpServerServiceClient) GetPoliciesAwaitingMyReview(ctx context.Cont
 	return out, nil
 }
 
-func (c *autonpServerServiceClient) GetMyPendingReviewCount(ctx context.Context, in *GetMyPendingReviewCountRequest, opts ...grpc.CallOption) (*GetMyPendingReviewCountResponse, error) {
+func (c *autonpServerServiceClient) GetMyPendingNetworkPolicyReviewCount(ctx context.Context, in *GetMyPendingNetworkPolicyReviewCountRequest, opts ...grpc.CallOption) (*GetMyPendingNetworkPolicyReviewCountResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetMyPendingReviewCountResponse)
-	err := c.cc.Invoke(ctx, AutonpServerService_GetMyPendingReviewCount_FullMethodName, in, out, cOpts...)
+	out := new(GetMyPendingNetworkPolicyReviewCountResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_GetMyPendingNetworkPolicyReviewCount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) GetMyPendingAuthorizationPolicyReviewCount(ctx context.Context, in *GetMyPendingAuthorizationPolicyReviewCountRequest, opts ...grpc.CallOption) (*GetMyPendingAuthorizationPolicyReviewCountResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMyPendingAuthorizationPolicyReviewCountResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_GetMyPendingAuthorizationPolicyReviewCount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -688,6 +817,16 @@ func (c *autonpServerServiceClient) ListRiskAssessments(ctx context.Context, in 
 	return out, nil
 }
 
+func (c *autonpServerServiceClient) GetRiskAssessmentFinding(ctx context.Context, in *GetRiskAssessmentFindingRequest, opts ...grpc.CallOption) (*GetRiskAssessmentFindingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetRiskAssessmentFindingResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_GetRiskAssessmentFinding_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *autonpServerServiceClient) GetInventoryL7AccessLogs(ctx context.Context, in *GetInventoryL7AccessLogsRequest, opts ...grpc.CallOption) (*GetInventoryL7AccessLogsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetInventoryL7AccessLogsResponse)
@@ -718,6 +857,186 @@ func (c *autonpServerServiceClient) GetIndividualL7AccessLogsBetweenNamespaces(c
 	return out, nil
 }
 
+func (c *autonpServerServiceClient) GetVulnerabilityDashboard(ctx context.Context, in *GetVulnerabilityDashboardRequest, opts ...grpc.CallOption) (*GetVulnerabilityDashboardResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetVulnerabilityDashboardResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_GetVulnerabilityDashboard_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) ValidateRiskAssessmentFixes(ctx context.Context, in *ValidateRiskAssessmentFixesRequest, opts ...grpc.CallOption) (*ValidateRiskAssessmentFixesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ValidateRiskAssessmentFixesResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_ValidateRiskAssessmentFixes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) CreateNetworkPolicySimulation(ctx context.Context, in *CreateNetworkPolicySimulationRequest, opts ...grpc.CallOption) (*CreateNetworkPolicySimulationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateNetworkPolicySimulationResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_CreateNetworkPolicySimulation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) ListNetworkPolicySimulations(ctx context.Context, in *ListNetworkPolicySimulationsRequest, opts ...grpc.CallOption) (*ListNetworkPolicySimulationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNetworkPolicySimulationsResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_ListNetworkPolicySimulations_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) GetNetworkPolicySimulation(ctx context.Context, in *GetNetworkPolicySimulationRequest, opts ...grpc.CallOption) (*GetNetworkPolicySimulationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetNetworkPolicySimulationResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_GetNetworkPolicySimulation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) DeleteNetworkPolicySimulation(ctx context.Context, in *DeleteNetworkPolicySimulationRequest, opts ...grpc.CallOption) (*DeleteNetworkPolicySimulationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteNetworkPolicySimulationResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_DeleteNetworkPolicySimulation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) CreateAuthorizationPolicySimulation(ctx context.Context, in *CreateAuthorizationPolicySimulationRequest, opts ...grpc.CallOption) (*CreateAuthorizationPolicySimulationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateAuthorizationPolicySimulationResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_CreateAuthorizationPolicySimulation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) ListAuthorizationPolicySimulations(ctx context.Context, in *ListAuthorizationPolicySimulationsRequest, opts ...grpc.CallOption) (*ListAuthorizationPolicySimulationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAuthorizationPolicySimulationsResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_ListAuthorizationPolicySimulations_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) GetAuthorizationPolicySimulation(ctx context.Context, in *GetAuthorizationPolicySimulationRequest, opts ...grpc.CallOption) (*GetAuthorizationPolicySimulationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAuthorizationPolicySimulationResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_GetAuthorizationPolicySimulation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) DeleteAuthorizationPolicySimulation(ctx context.Context, in *DeleteAuthorizationPolicySimulationRequest, opts ...grpc.CallOption) (*DeleteAuthorizationPolicySimulationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteAuthorizationPolicySimulationResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_DeleteAuthorizationPolicySimulation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) ListTenants(ctx context.Context, in *ListTenantsRequest, opts ...grpc.CallOption) (*ListTenantsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListTenantsResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_ListTenants_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) GetTenantClusters(ctx context.Context, in *GetTenantClustersRequest, opts ...grpc.CallOption) (*GetTenantClustersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTenantClustersResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_GetTenantClusters_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) TriggerTenantRiskAssessment(ctx context.Context, in *TriggerTenantRiskAssessmentRequest, opts ...grpc.CallOption) (*TriggerTenantRiskAssessmentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TriggerTenantRiskAssessmentResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_TriggerTenantRiskAssessment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) RestartOperator(ctx context.Context, in *RestartOperatorRequest, opts ...grpc.CallOption) (*RestartOperatorResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RestartOperatorResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_RestartOperator_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) GetOperatorHealth(ctx context.Context, in *GetOperatorHealthRequest, opts ...grpc.CallOption) (*GetOperatorHealthResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetOperatorHealthResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_GetOperatorHealth_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) ListIncidents(ctx context.Context, in *ListIncidentsRequest, opts ...grpc.CallOption) (*ListIncidentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListIncidentsResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_ListIncidents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) GetIncidentDetails(ctx context.Context, in *GetIncidentDetailsRequest, opts ...grpc.CallOption) (*GetIncidentDetailsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetIncidentDetailsResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_GetIncidentDetails_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *autonpServerServiceClient) ApplyIncidentYAMLFix(ctx context.Context, in *ApplyIncidentYAMLFixRequest, opts ...grpc.CallOption) (*ApplyIncidentYAMLFixResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ApplyIncidentYAMLFixResponse)
+	err := c.cc.Invoke(ctx, AutonpServerService_ApplyIncidentYAMLFix_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AutonpServerServiceServer is the server API for AutonpServerService service.
 // All implementations must embed UnimplementedAutonpServerServiceServer
 // for forward compatibility.
@@ -739,6 +1058,12 @@ type AutonpServerServiceServer interface {
 	Logout(context.Context, *LogoutRequest) (*LogoutResponse, error)
 	ValidateSession(context.Context, *ValidateSessionRequest) (*ValidateSessionResponse, error)
 	RefreshSession(context.Context, *RefreshSessionRequest) (*RefreshSessionResponse, error)
+	// 2FA management
+	Setup2FAInitiate(context.Context, *Setup2FAInitiateRequest) (*Setup2FAInitiateResponse, error)
+	Setup2FAVerify(context.Context, *Setup2FAVerifyRequest) (*Setup2FAVerifyResponse, error)
+	Disable2FA(context.Context, *Disable2FARequest) (*Disable2FAResponse, error)
+	Verify2FA(context.Context, *Verify2FARequest) (*Verify2FAResponse, error)
+	Get2FAStatus(context.Context, *Get2FAStatusRequest) (*Get2FAStatusResponse, error)
 	// Tenant management
 	CreateTenant(context.Context, *CreateTenantRequest) (*CreateTenantResponse, error)
 	GetTenant(context.Context, *GetTenantRequest) (*GetTenantResponse, error)
@@ -746,6 +1071,7 @@ type AutonpServerServiceServer interface {
 	LinkUserToTenant(context.Context, *LinkUserToTenantRequest) (*LinkUserToTenantResponse, error)
 	// Stats for dashboard
 	GetPolicyCountForTenant(context.Context, *GetPolicyCountForTenantRequest) (*GetPolicyCountForTenantResponse, error)
+	GetAuthorizationPolicyCountForTenant(context.Context, *GetAuthorizationPolicyCountForTenantRequest) (*GetAuthorizationPolicyCountForTenantResponse, error)
 	GetUserCountForTenant(context.Context, *GetUserCountForTenantRequest) (*GetUserCountForTenantResponse, error)
 	GetClusterStats(context.Context, *GetClusterStatsRequest) (*GetClusterStatsResponse, error)
 	// Recent activity for dashboard
@@ -778,17 +1104,43 @@ type AutonpServerServiceServer interface {
 	GetAllNamespaceOwnershipMappings(context.Context, *GetAllNamespaceOwnershipMappingsRequest) (*GetAllNamespaceOwnershipMappingsResponse, error)
 	// Policy Review Management
 	GetPoliciesAwaitingMyReview(context.Context, *GetPoliciesAwaitingMyReviewRequest) (*GetPoliciesAwaitingMyReviewResponse, error)
-	GetMyPendingReviewCount(context.Context, *GetMyPendingReviewCountRequest) (*GetMyPendingReviewCountResponse, error)
+	GetMyPendingNetworkPolicyReviewCount(context.Context, *GetMyPendingNetworkPolicyReviewCountRequest) (*GetMyPendingNetworkPolicyReviewCountResponse, error)
+	GetMyPendingAuthorizationPolicyReviewCount(context.Context, *GetMyPendingAuthorizationPolicyReviewCountRequest) (*GetMyPendingAuthorizationPolicyReviewCountResponse, error)
 	SubmitPolicyReview(context.Context, *SubmitPolicyReviewRequest) (*SubmitPolicyReviewResponse, error)
 	GetPolicyReviewStatus(context.Context, *GetPolicyReviewStatusRequest) (*GetPolicyReviewStatusResponse, error)
 	// Risk Assessment Management
 	TriggerRiskAssessment(context.Context, *TriggerRiskAssessmentRequest) (*TriggerRiskAssessmentResponse, error)
 	GetRiskAssessmentStatus(context.Context, *GetRiskAssessmentStatusRequest) (*GetRiskAssessmentStatusResponse, error)
 	ListRiskAssessments(context.Context, *ListRiskAssessmentsRequest) (*ListRiskAssessmentsResponse, error)
+	GetRiskAssessmentFinding(context.Context, *GetRiskAssessmentFindingRequest) (*GetRiskAssessmentFindingResponse, error)
 	// L7 Access Log APIs
 	GetInventoryL7AccessLogs(context.Context, *GetInventoryL7AccessLogsRequest) (*GetInventoryL7AccessLogsResponse, error)
 	GetInventoryClusterL7AccessLogs(context.Context, *GetInventoryClusterL7AccessLogsRequest) (*GetInventoryClusterL7AccessLogsResponse, error)
 	GetIndividualL7AccessLogsBetweenNamespaces(context.Context, *GetIndividualL7AccessLogsBetweenNamespacesRequest) (*GetIndividualL7AccessLogsBetweenNamespacesResponse, error)
+	// Vulnerability dashboard messages
+	GetVulnerabilityDashboard(context.Context, *GetVulnerabilityDashboardRequest) (*GetVulnerabilityDashboardResponse, error)
+	// Finding fix validation
+	ValidateRiskAssessmentFixes(context.Context, *ValidateRiskAssessmentFixesRequest) (*ValidateRiskAssessmentFixesResponse, error)
+	// Network Policy Simulations
+	CreateNetworkPolicySimulation(context.Context, *CreateNetworkPolicySimulationRequest) (*CreateNetworkPolicySimulationResponse, error)
+	ListNetworkPolicySimulations(context.Context, *ListNetworkPolicySimulationsRequest) (*ListNetworkPolicySimulationsResponse, error)
+	GetNetworkPolicySimulation(context.Context, *GetNetworkPolicySimulationRequest) (*GetNetworkPolicySimulationResponse, error)
+	DeleteNetworkPolicySimulation(context.Context, *DeleteNetworkPolicySimulationRequest) (*DeleteNetworkPolicySimulationResponse, error)
+	// Authorization Policy Simulations
+	CreateAuthorizationPolicySimulation(context.Context, *CreateAuthorizationPolicySimulationRequest) (*CreateAuthorizationPolicySimulationResponse, error)
+	ListAuthorizationPolicySimulations(context.Context, *ListAuthorizationPolicySimulationsRequest) (*ListAuthorizationPolicySimulationsResponse, error)
+	GetAuthorizationPolicySimulation(context.Context, *GetAuthorizationPolicySimulationRequest) (*GetAuthorizationPolicySimulationResponse, error)
+	DeleteAuthorizationPolicySimulation(context.Context, *DeleteAuthorizationPolicySimulationRequest) (*DeleteAuthorizationPolicySimulationResponse, error)
+	// Admin Dashboard APIs
+	ListTenants(context.Context, *ListTenantsRequest) (*ListTenantsResponse, error)
+	GetTenantClusters(context.Context, *GetTenantClustersRequest) (*GetTenantClustersResponse, error)
+	TriggerTenantRiskAssessment(context.Context, *TriggerTenantRiskAssessmentRequest) (*TriggerTenantRiskAssessmentResponse, error)
+	RestartOperator(context.Context, *RestartOperatorRequest) (*RestartOperatorResponse, error)
+	GetOperatorHealth(context.Context, *GetOperatorHealthRequest) (*GetOperatorHealthResponse, error)
+	// Incident Response APIs (K8s SRE)
+	ListIncidents(context.Context, *ListIncidentsRequest) (*ListIncidentsResponse, error)
+	GetIncidentDetails(context.Context, *GetIncidentDetailsRequest) (*GetIncidentDetailsResponse, error)
+	ApplyIncidentYAMLFix(context.Context, *ApplyIncidentYAMLFixRequest) (*ApplyIncidentYAMLFixResponse, error)
 	mustEmbedUnimplementedAutonpServerServiceServer()
 }
 
@@ -847,6 +1199,21 @@ func (UnimplementedAutonpServerServiceServer) ValidateSession(context.Context, *
 func (UnimplementedAutonpServerServiceServer) RefreshSession(context.Context, *RefreshSessionRequest) (*RefreshSessionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RefreshSession not implemented")
 }
+func (UnimplementedAutonpServerServiceServer) Setup2FAInitiate(context.Context, *Setup2FAInitiateRequest) (*Setup2FAInitiateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Setup2FAInitiate not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) Setup2FAVerify(context.Context, *Setup2FAVerifyRequest) (*Setup2FAVerifyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Setup2FAVerify not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) Disable2FA(context.Context, *Disable2FARequest) (*Disable2FAResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Disable2FA not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) Verify2FA(context.Context, *Verify2FARequest) (*Verify2FAResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Verify2FA not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) Get2FAStatus(context.Context, *Get2FAStatusRequest) (*Get2FAStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Get2FAStatus not implemented")
+}
 func (UnimplementedAutonpServerServiceServer) CreateTenant(context.Context, *CreateTenantRequest) (*CreateTenantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateTenant not implemented")
 }
@@ -861,6 +1228,9 @@ func (UnimplementedAutonpServerServiceServer) LinkUserToTenant(context.Context, 
 }
 func (UnimplementedAutonpServerServiceServer) GetPolicyCountForTenant(context.Context, *GetPolicyCountForTenantRequest) (*GetPolicyCountForTenantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPolicyCountForTenant not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) GetAuthorizationPolicyCountForTenant(context.Context, *GetAuthorizationPolicyCountForTenantRequest) (*GetAuthorizationPolicyCountForTenantResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAuthorizationPolicyCountForTenant not implemented")
 }
 func (UnimplementedAutonpServerServiceServer) GetUserCountForTenant(context.Context, *GetUserCountForTenantRequest) (*GetUserCountForTenantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetUserCountForTenant not implemented")
@@ -940,8 +1310,11 @@ func (UnimplementedAutonpServerServiceServer) GetAllNamespaceOwnershipMappings(c
 func (UnimplementedAutonpServerServiceServer) GetPoliciesAwaitingMyReview(context.Context, *GetPoliciesAwaitingMyReviewRequest) (*GetPoliciesAwaitingMyReviewResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPoliciesAwaitingMyReview not implemented")
 }
-func (UnimplementedAutonpServerServiceServer) GetMyPendingReviewCount(context.Context, *GetMyPendingReviewCountRequest) (*GetMyPendingReviewCountResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetMyPendingReviewCount not implemented")
+func (UnimplementedAutonpServerServiceServer) GetMyPendingNetworkPolicyReviewCount(context.Context, *GetMyPendingNetworkPolicyReviewCountRequest) (*GetMyPendingNetworkPolicyReviewCountResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMyPendingNetworkPolicyReviewCount not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) GetMyPendingAuthorizationPolicyReviewCount(context.Context, *GetMyPendingAuthorizationPolicyReviewCountRequest) (*GetMyPendingAuthorizationPolicyReviewCountResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMyPendingAuthorizationPolicyReviewCount not implemented")
 }
 func (UnimplementedAutonpServerServiceServer) SubmitPolicyReview(context.Context, *SubmitPolicyReviewRequest) (*SubmitPolicyReviewResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitPolicyReview not implemented")
@@ -958,6 +1331,9 @@ func (UnimplementedAutonpServerServiceServer) GetRiskAssessmentStatus(context.Co
 func (UnimplementedAutonpServerServiceServer) ListRiskAssessments(context.Context, *ListRiskAssessmentsRequest) (*ListRiskAssessmentsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListRiskAssessments not implemented")
 }
+func (UnimplementedAutonpServerServiceServer) GetRiskAssessmentFinding(context.Context, *GetRiskAssessmentFindingRequest) (*GetRiskAssessmentFindingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRiskAssessmentFinding not implemented")
+}
 func (UnimplementedAutonpServerServiceServer) GetInventoryL7AccessLogs(context.Context, *GetInventoryL7AccessLogsRequest) (*GetInventoryL7AccessLogsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetInventoryL7AccessLogs not implemented")
 }
@@ -966,6 +1342,60 @@ func (UnimplementedAutonpServerServiceServer) GetInventoryClusterL7AccessLogs(co
 }
 func (UnimplementedAutonpServerServiceServer) GetIndividualL7AccessLogsBetweenNamespaces(context.Context, *GetIndividualL7AccessLogsBetweenNamespacesRequest) (*GetIndividualL7AccessLogsBetweenNamespacesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetIndividualL7AccessLogsBetweenNamespaces not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) GetVulnerabilityDashboard(context.Context, *GetVulnerabilityDashboardRequest) (*GetVulnerabilityDashboardResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetVulnerabilityDashboard not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) ValidateRiskAssessmentFixes(context.Context, *ValidateRiskAssessmentFixesRequest) (*ValidateRiskAssessmentFixesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ValidateRiskAssessmentFixes not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) CreateNetworkPolicySimulation(context.Context, *CreateNetworkPolicySimulationRequest) (*CreateNetworkPolicySimulationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateNetworkPolicySimulation not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) ListNetworkPolicySimulations(context.Context, *ListNetworkPolicySimulationsRequest) (*ListNetworkPolicySimulationsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListNetworkPolicySimulations not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) GetNetworkPolicySimulation(context.Context, *GetNetworkPolicySimulationRequest) (*GetNetworkPolicySimulationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetNetworkPolicySimulation not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) DeleteNetworkPolicySimulation(context.Context, *DeleteNetworkPolicySimulationRequest) (*DeleteNetworkPolicySimulationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteNetworkPolicySimulation not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) CreateAuthorizationPolicySimulation(context.Context, *CreateAuthorizationPolicySimulationRequest) (*CreateAuthorizationPolicySimulationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateAuthorizationPolicySimulation not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) ListAuthorizationPolicySimulations(context.Context, *ListAuthorizationPolicySimulationsRequest) (*ListAuthorizationPolicySimulationsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAuthorizationPolicySimulations not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) GetAuthorizationPolicySimulation(context.Context, *GetAuthorizationPolicySimulationRequest) (*GetAuthorizationPolicySimulationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAuthorizationPolicySimulation not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) DeleteAuthorizationPolicySimulation(context.Context, *DeleteAuthorizationPolicySimulationRequest) (*DeleteAuthorizationPolicySimulationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteAuthorizationPolicySimulation not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) ListTenants(context.Context, *ListTenantsRequest) (*ListTenantsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListTenants not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) GetTenantClusters(context.Context, *GetTenantClustersRequest) (*GetTenantClustersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTenantClusters not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) TriggerTenantRiskAssessment(context.Context, *TriggerTenantRiskAssessmentRequest) (*TriggerTenantRiskAssessmentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TriggerTenantRiskAssessment not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) RestartOperator(context.Context, *RestartOperatorRequest) (*RestartOperatorResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RestartOperator not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) GetOperatorHealth(context.Context, *GetOperatorHealthRequest) (*GetOperatorHealthResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetOperatorHealth not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) ListIncidents(context.Context, *ListIncidentsRequest) (*ListIncidentsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListIncidents not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) GetIncidentDetails(context.Context, *GetIncidentDetailsRequest) (*GetIncidentDetailsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetIncidentDetails not implemented")
+}
+func (UnimplementedAutonpServerServiceServer) ApplyIncidentYAMLFix(context.Context, *ApplyIncidentYAMLFixRequest) (*ApplyIncidentYAMLFixResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ApplyIncidentYAMLFix not implemented")
 }
 func (UnimplementedAutonpServerServiceServer) mustEmbedUnimplementedAutonpServerServiceServer() {}
 func (UnimplementedAutonpServerServiceServer) testEmbeddedByValue()                             {}
@@ -1276,6 +1706,96 @@ func _AutonpServerService_RefreshSession_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AutonpServerService_Setup2FAInitiate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Setup2FAInitiateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).Setup2FAInitiate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_Setup2FAInitiate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).Setup2FAInitiate(ctx, req.(*Setup2FAInitiateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_Setup2FAVerify_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Setup2FAVerifyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).Setup2FAVerify(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_Setup2FAVerify_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).Setup2FAVerify(ctx, req.(*Setup2FAVerifyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_Disable2FA_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Disable2FARequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).Disable2FA(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_Disable2FA_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).Disable2FA(ctx, req.(*Disable2FARequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_Verify2FA_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Verify2FARequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).Verify2FA(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_Verify2FA_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).Verify2FA(ctx, req.(*Verify2FARequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_Get2FAStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Get2FAStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).Get2FAStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_Get2FAStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).Get2FAStatus(ctx, req.(*Get2FAStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AutonpServerService_CreateTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateTenantRequest)
 	if err := dec(in); err != nil {
@@ -1362,6 +1882,24 @@ func _AutonpServerService_GetPolicyCountForTenant_Handler(srv interface{}, ctx c
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AutonpServerServiceServer).GetPolicyCountForTenant(ctx, req.(*GetPolicyCountForTenantRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_GetAuthorizationPolicyCountForTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAuthorizationPolicyCountForTenantRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).GetAuthorizationPolicyCountForTenant(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_GetAuthorizationPolicyCountForTenant_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).GetAuthorizationPolicyCountForTenant(ctx, req.(*GetAuthorizationPolicyCountForTenantRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1834,20 +2372,38 @@ func _AutonpServerService_GetPoliciesAwaitingMyReview_Handler(srv interface{}, c
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AutonpServerService_GetMyPendingReviewCount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetMyPendingReviewCountRequest)
+func _AutonpServerService_GetMyPendingNetworkPolicyReviewCount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMyPendingNetworkPolicyReviewCountRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AutonpServerServiceServer).GetMyPendingReviewCount(ctx, in)
+		return srv.(AutonpServerServiceServer).GetMyPendingNetworkPolicyReviewCount(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AutonpServerService_GetMyPendingReviewCount_FullMethodName,
+		FullMethod: AutonpServerService_GetMyPendingNetworkPolicyReviewCount_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AutonpServerServiceServer).GetMyPendingReviewCount(ctx, req.(*GetMyPendingReviewCountRequest))
+		return srv.(AutonpServerServiceServer).GetMyPendingNetworkPolicyReviewCount(ctx, req.(*GetMyPendingNetworkPolicyReviewCountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_GetMyPendingAuthorizationPolicyReviewCount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMyPendingAuthorizationPolicyReviewCountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).GetMyPendingAuthorizationPolicyReviewCount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_GetMyPendingAuthorizationPolicyReviewCount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).GetMyPendingAuthorizationPolicyReviewCount(ctx, req.(*GetMyPendingAuthorizationPolicyReviewCountRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1942,6 +2498,24 @@ func _AutonpServerService_ListRiskAssessments_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AutonpServerService_GetRiskAssessmentFinding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRiskAssessmentFindingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).GetRiskAssessmentFinding(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_GetRiskAssessmentFinding_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).GetRiskAssessmentFinding(ctx, req.(*GetRiskAssessmentFindingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AutonpServerService_GetInventoryL7AccessLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetInventoryL7AccessLogsRequest)
 	if err := dec(in); err != nil {
@@ -1992,6 +2566,330 @@ func _AutonpServerService_GetIndividualL7AccessLogsBetweenNamespaces_Handler(srv
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AutonpServerServiceServer).GetIndividualL7AccessLogsBetweenNamespaces(ctx, req.(*GetIndividualL7AccessLogsBetweenNamespacesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_GetVulnerabilityDashboard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetVulnerabilityDashboardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).GetVulnerabilityDashboard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_GetVulnerabilityDashboard_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).GetVulnerabilityDashboard(ctx, req.(*GetVulnerabilityDashboardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_ValidateRiskAssessmentFixes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ValidateRiskAssessmentFixesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).ValidateRiskAssessmentFixes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_ValidateRiskAssessmentFixes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).ValidateRiskAssessmentFixes(ctx, req.(*ValidateRiskAssessmentFixesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_CreateNetworkPolicySimulation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateNetworkPolicySimulationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).CreateNetworkPolicySimulation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_CreateNetworkPolicySimulation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).CreateNetworkPolicySimulation(ctx, req.(*CreateNetworkPolicySimulationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_ListNetworkPolicySimulations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNetworkPolicySimulationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).ListNetworkPolicySimulations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_ListNetworkPolicySimulations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).ListNetworkPolicySimulations(ctx, req.(*ListNetworkPolicySimulationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_GetNetworkPolicySimulation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNetworkPolicySimulationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).GetNetworkPolicySimulation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_GetNetworkPolicySimulation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).GetNetworkPolicySimulation(ctx, req.(*GetNetworkPolicySimulationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_DeleteNetworkPolicySimulation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteNetworkPolicySimulationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).DeleteNetworkPolicySimulation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_DeleteNetworkPolicySimulation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).DeleteNetworkPolicySimulation(ctx, req.(*DeleteNetworkPolicySimulationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_CreateAuthorizationPolicySimulation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateAuthorizationPolicySimulationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).CreateAuthorizationPolicySimulation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_CreateAuthorizationPolicySimulation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).CreateAuthorizationPolicySimulation(ctx, req.(*CreateAuthorizationPolicySimulationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_ListAuthorizationPolicySimulations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAuthorizationPolicySimulationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).ListAuthorizationPolicySimulations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_ListAuthorizationPolicySimulations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).ListAuthorizationPolicySimulations(ctx, req.(*ListAuthorizationPolicySimulationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_GetAuthorizationPolicySimulation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAuthorizationPolicySimulationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).GetAuthorizationPolicySimulation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_GetAuthorizationPolicySimulation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).GetAuthorizationPolicySimulation(ctx, req.(*GetAuthorizationPolicySimulationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_DeleteAuthorizationPolicySimulation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteAuthorizationPolicySimulationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).DeleteAuthorizationPolicySimulation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_DeleteAuthorizationPolicySimulation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).DeleteAuthorizationPolicySimulation(ctx, req.(*DeleteAuthorizationPolicySimulationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_ListTenants_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListTenantsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).ListTenants(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_ListTenants_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).ListTenants(ctx, req.(*ListTenantsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_GetTenantClusters_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTenantClustersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).GetTenantClusters(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_GetTenantClusters_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).GetTenantClusters(ctx, req.(*GetTenantClustersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_TriggerTenantRiskAssessment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TriggerTenantRiskAssessmentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).TriggerTenantRiskAssessment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_TriggerTenantRiskAssessment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).TriggerTenantRiskAssessment(ctx, req.(*TriggerTenantRiskAssessmentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_RestartOperator_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestartOperatorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).RestartOperator(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_RestartOperator_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).RestartOperator(ctx, req.(*RestartOperatorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_GetOperatorHealth_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOperatorHealthRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).GetOperatorHealth(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_GetOperatorHealth_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).GetOperatorHealth(ctx, req.(*GetOperatorHealthRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_ListIncidents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListIncidentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).ListIncidents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_ListIncidents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).ListIncidents(ctx, req.(*ListIncidentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_GetIncidentDetails_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetIncidentDetailsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).GetIncidentDetails(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_GetIncidentDetails_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).GetIncidentDetails(ctx, req.(*GetIncidentDetailsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutonpServerService_ApplyIncidentYAMLFix_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyIncidentYAMLFixRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutonpServerServiceServer).ApplyIncidentYAMLFix(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutonpServerService_ApplyIncidentYAMLFix_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutonpServerServiceServer).ApplyIncidentYAMLFix(ctx, req.(*ApplyIncidentYAMLFixRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2068,6 +2966,26 @@ var AutonpServerService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AutonpServerService_RefreshSession_Handler,
 		},
 		{
+			MethodName: "Setup2FAInitiate",
+			Handler:    _AutonpServerService_Setup2FAInitiate_Handler,
+		},
+		{
+			MethodName: "Setup2FAVerify",
+			Handler:    _AutonpServerService_Setup2FAVerify_Handler,
+		},
+		{
+			MethodName: "Disable2FA",
+			Handler:    _AutonpServerService_Disable2FA_Handler,
+		},
+		{
+			MethodName: "Verify2FA",
+			Handler:    _AutonpServerService_Verify2FA_Handler,
+		},
+		{
+			MethodName: "Get2FAStatus",
+			Handler:    _AutonpServerService_Get2FAStatus_Handler,
+		},
+		{
 			MethodName: "CreateTenant",
 			Handler:    _AutonpServerService_CreateTenant_Handler,
 		},
@@ -2086,6 +3004,10 @@ var AutonpServerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPolicyCountForTenant",
 			Handler:    _AutonpServerService_GetPolicyCountForTenant_Handler,
+		},
+		{
+			MethodName: "GetAuthorizationPolicyCountForTenant",
+			Handler:    _AutonpServerService_GetAuthorizationPolicyCountForTenant_Handler,
 		},
 		{
 			MethodName: "GetUserCountForTenant",
@@ -2192,8 +3114,12 @@ var AutonpServerService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AutonpServerService_GetPoliciesAwaitingMyReview_Handler,
 		},
 		{
-			MethodName: "GetMyPendingReviewCount",
-			Handler:    _AutonpServerService_GetMyPendingReviewCount_Handler,
+			MethodName: "GetMyPendingNetworkPolicyReviewCount",
+			Handler:    _AutonpServerService_GetMyPendingNetworkPolicyReviewCount_Handler,
+		},
+		{
+			MethodName: "GetMyPendingAuthorizationPolicyReviewCount",
+			Handler:    _AutonpServerService_GetMyPendingAuthorizationPolicyReviewCount_Handler,
 		},
 		{
 			MethodName: "SubmitPolicyReview",
@@ -2216,6 +3142,10 @@ var AutonpServerService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AutonpServerService_ListRiskAssessments_Handler,
 		},
 		{
+			MethodName: "GetRiskAssessmentFinding",
+			Handler:    _AutonpServerService_GetRiskAssessmentFinding_Handler,
+		},
+		{
 			MethodName: "GetInventoryL7AccessLogs",
 			Handler:    _AutonpServerService_GetInventoryL7AccessLogs_Handler,
 		},
@@ -2226,6 +3156,78 @@ var AutonpServerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetIndividualL7AccessLogsBetweenNamespaces",
 			Handler:    _AutonpServerService_GetIndividualL7AccessLogsBetweenNamespaces_Handler,
+		},
+		{
+			MethodName: "GetVulnerabilityDashboard",
+			Handler:    _AutonpServerService_GetVulnerabilityDashboard_Handler,
+		},
+		{
+			MethodName: "ValidateRiskAssessmentFixes",
+			Handler:    _AutonpServerService_ValidateRiskAssessmentFixes_Handler,
+		},
+		{
+			MethodName: "CreateNetworkPolicySimulation",
+			Handler:    _AutonpServerService_CreateNetworkPolicySimulation_Handler,
+		},
+		{
+			MethodName: "ListNetworkPolicySimulations",
+			Handler:    _AutonpServerService_ListNetworkPolicySimulations_Handler,
+		},
+		{
+			MethodName: "GetNetworkPolicySimulation",
+			Handler:    _AutonpServerService_GetNetworkPolicySimulation_Handler,
+		},
+		{
+			MethodName: "DeleteNetworkPolicySimulation",
+			Handler:    _AutonpServerService_DeleteNetworkPolicySimulation_Handler,
+		},
+		{
+			MethodName: "CreateAuthorizationPolicySimulation",
+			Handler:    _AutonpServerService_CreateAuthorizationPolicySimulation_Handler,
+		},
+		{
+			MethodName: "ListAuthorizationPolicySimulations",
+			Handler:    _AutonpServerService_ListAuthorizationPolicySimulations_Handler,
+		},
+		{
+			MethodName: "GetAuthorizationPolicySimulation",
+			Handler:    _AutonpServerService_GetAuthorizationPolicySimulation_Handler,
+		},
+		{
+			MethodName: "DeleteAuthorizationPolicySimulation",
+			Handler:    _AutonpServerService_DeleteAuthorizationPolicySimulation_Handler,
+		},
+		{
+			MethodName: "ListTenants",
+			Handler:    _AutonpServerService_ListTenants_Handler,
+		},
+		{
+			MethodName: "GetTenantClusters",
+			Handler:    _AutonpServerService_GetTenantClusters_Handler,
+		},
+		{
+			MethodName: "TriggerTenantRiskAssessment",
+			Handler:    _AutonpServerService_TriggerTenantRiskAssessment_Handler,
+		},
+		{
+			MethodName: "RestartOperator",
+			Handler:    _AutonpServerService_RestartOperator_Handler,
+		},
+		{
+			MethodName: "GetOperatorHealth",
+			Handler:    _AutonpServerService_GetOperatorHealth_Handler,
+		},
+		{
+			MethodName: "ListIncidents",
+			Handler:    _AutonpServerService_ListIncidents_Handler,
+		},
+		{
+			MethodName: "GetIncidentDetails",
+			Handler:    _AutonpServerService_GetIncidentDetails_Handler,
+		},
+		{
+			MethodName: "ApplyIncidentYAMLFix",
+			Handler:    _AutonpServerService_ApplyIncidentYAMLFix_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
