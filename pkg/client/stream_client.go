@@ -1603,12 +1603,15 @@ func (s *StreamClient) applyYamlManifest(ctx context.Context, manifest *v1.YamlM
 	return result
 }
 
-// immutableResourceTypes lists Kubernetes resource types whose spec (or significant
-// parts of it) is immutable after creation. For these resources, `kubectl apply`
-// will fail when the fix changes an immutable field, so we use `kubectl replace
-// --force` (delete + recreate) instead.
+// immutableResourceTypes lists Kubernetes resource types whose spec is almost
+// entirely immutable after creation. These always use `kubectl replace --force`
+// (delete + recreate) because `kubectl apply` will fail on virtually any change.
 //
-// The map keys are lowercase kind names to simplify case-insensitive matching.
+// Resources with only a few immutable fields (PVC, PV, Service) are NOT listed
+// here — they use the normal apply-first path with automatic fallback to replace
+// when an immutable-field error is detected (see isImmutableFieldError). This
+// avoids unnecessary delete+recreate, which is destructive for stateful resources
+// (PVC/PV deletion can destroy data, Service deletion deprovisions load balancers).
 var immutableResourceTypes = map[string]bool{
 	// Pod — almost all spec fields are immutable after creation
 	"pod": true,
@@ -1617,18 +1620,12 @@ var immutableResourceTypes = map[string]bool{
 	// CronJob's jobTemplate is effectively immutable once child Jobs exist;
 	// replace --force on the CronJob itself is safe (only future runs affected)
 	"cronjob": true,
-	// PVC — spec.storageClassName, accessModes, volumeMode, selector are immutable;
-	// only resources.requests and volumeAttributesClassName can be patched on bound claims
-	"persistentvolumeclaim": true,
-	// PV — storageClassName, accessModes, capacity (partially), and more are immutable
-	"persistentvolume": true,
-	// Service — spec.clusterIP/clusterIPs are immutable and some type transitions are forbidden
-	"service": true,
 }
 
 // applyResourceToCluster applies YAML content to the cluster using kubectl.
-// For resources with immutable spec fields (Pods, Jobs, PVCs, PVs, Services),
-// it uses delete+recreate instead of apply.
+// Pods, Jobs, and CronJobs always use delete+recreate. All other resources
+// use kubectl apply first, with automatic fallback to delete+recreate if
+// an immutable-field error is detected.
 func (s *StreamClient) applyResourceToCluster(ctx context.Context, yamlContent, resourceType, namespace string) error {
 	// Create a temporary file for the YAML content
 	tmpFile, err := os.CreateTemp("", "kestrel-apply-*.yaml")
