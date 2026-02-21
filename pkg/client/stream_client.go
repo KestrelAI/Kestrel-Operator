@@ -2579,7 +2579,7 @@ func (s *StreamClient) sendL7FlowsToStreamWithDone(ctx context.Context, stream v
 					)
 				}
 
-				s.Logger.Info("Sent L7 access log", logFields...)
+				s.Logger.Debug("Sent L7 access log", logFields...)
 
 				// Validate if we have sufficient data for Authorization Policy generation
 				if l7Log.HttpData != nil && l7Log.Source != nil && l7Log.Destination != nil {
@@ -2596,10 +2596,10 @@ func (s *StreamClient) sendL7FlowsToStreamWithDone(ctx context.Context, stream v
 					}
 
 					if len(authPolicyData) >= 3 {
-						s.Logger.Info("L7 log contains sufficient data for Authorization Policy",
+						s.Logger.Debug("L7 log contains sufficient data for Authorization Policy",
 							zap.String("policy_data", strings.Join(authPolicyData, ", ")))
 					} else {
-						s.Logger.Info("L7 log missing data for Authorization Policy generation",
+						s.Logger.Debug("L7 log missing data for Authorization Policy generation",
 							zap.String("available_data", strings.Join(authPolicyData, ", ")))
 					}
 				}
