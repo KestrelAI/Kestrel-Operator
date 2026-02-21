@@ -1,16 +1,15 @@
 # Kestrel Operator
 
-An operator for streaming Kubernetes resource metadata and network traffic telemetry over mTLS to Kestrel Cloud.
+An operator for streaming Kubernetes resource metadata, events, logs, and network traffic telemetry over mTLS to Kestrel Cloud.
 
 ## Overview
 
 The Kestrel Operator connects to Kestrel Cloud using gRPC bidirectional streaming. It authenticates using OAuth2 credentials, establishes an mTLS HTTP/2 connection, and performs the following functions:
 
+- **Event and Log Ingestion**: Collects Kubernetes events, pod logs and statuses, node conditions, etc. for 24/7, real-time incident detection
 - **Resource Ingestion**: Monitors and streams Kubernetes workloads, services, namespaces, and network policies
 - **Network Flow Collection**: Collects L3/L4 network flow data from Cilium Hubble Relay (optional)
 - **L7 Access Log Collection**: Collects L7 access logs from Istio Envoy proxies via a gRPC Access Log Service (optional)
-- **Network Policy Management**: Receives network policies from Kestrel Cloud to dry-run; applies network policies with explicit approval.
-- **Authorization Policy Management**: Receives Istio authorization policies from Kestrel Cloud to dry-run; applies authorization policies with explicit approval.
 - **API & Command Execution**: Executes Kubernetes and Cilium API calls, and shell commands as requested by AI Agents on Kestrel Cloud.
 
 ## Cilium Integration
@@ -21,14 +20,12 @@ The Kestrel Operator can optionally integrate with Cilium for L3/L4 network flow
 
 The operator will continue to function normally without Cilium installed, providing:
 - Kubernetes resource monitoring and ingestion
-- Network policy effectiveness analysis and management
 - Server communication and command execution
 
 ### With Cilium
 
 When Cilium is available, the Kestrel Operator additionally provides:
 - Real-time network flow data collection
-- Enhanced network policy recommendations based on observed traffic
 
 ### Configuration
 
@@ -48,13 +45,12 @@ DISABLE_CILIUM_FLOWS=true
 
 ## Istio Service Mesh Integration
 
-The Kestrel Operator integrates with Istio for L7 access log collection via Envoy's Access Log Service (ALS). This integration provides detailed L7 (HTTP/gRPC) traffic visibility for authorization policy analysis and recommendation.
+The Kestrel Operator integrates with Istio for L7 access log collection via Envoy's Access Log Service (ALS). This integration provides detailed L7 (HTTP/gRPC) traffic visibility.
 
 ### Without Istio
 
 The operator will continue to function normally without Istio installed, providing:
 - Kubernetes resource monitoring and ingestion
-- Network policy effectiveness analysis and management (L3/L4 only)
 - Server communication and command execution
 
 ### With Istio
@@ -62,8 +58,6 @@ The operator will continue to function normally without Istio installed, providi
 When Istio is available and properly configured, the Kestrel Operator additionally provides:
 - Real-time L7 access log collection from Envoy proxies
 - HTTP request/response analysis including methods, paths, status codes, and headers
-- Authorization policy recommendations based on observed L7 traffic patterns
-- Authorization policy effectiveness evaluation using L7 traffic patterns
 
 ### Prerequisites
 
