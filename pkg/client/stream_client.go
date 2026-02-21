@@ -1603,8 +1603,32 @@ func (s *StreamClient) applyYamlManifest(ctx context.Context, manifest *v1.YamlM
 	return result
 }
 
-// applyResourceToCluster applies YAML content to the cluster using kubectl
-// For Pods with spec changes, it uses delete+recreate instead of apply due to Kubernetes limitations
+// immutableResourceTypes lists Kubernetes resource types whose spec (or significant
+// parts of it) is immutable after creation. For these resources, `kubectl apply`
+// will fail when the fix changes an immutable field, so we use `kubectl replace
+// --force` (delete + recreate) instead.
+//
+// The map keys are lowercase kind names to simplify case-insensitive matching.
+var immutableResourceTypes = map[string]bool{
+	// Pod — almost all spec fields are immutable after creation
+	"pod": true,
+	// Job — spec.selector and spec.template are immutable
+	"job": true,
+	// CronJob's jobTemplate is effectively immutable once child Jobs exist;
+	// replace --force on the CronJob itself is safe (only future runs affected)
+	"cronjob": true,
+	// PVC — spec.storageClassName, accessModes, volumeMode, selector are immutable;
+	// only resources.requests and volumeAttributesClassName can be patched on bound claims
+	"persistentvolumeclaim": true,
+	// PV — storageClassName, accessModes, capacity (partially), and more are immutable
+	"persistentvolume": true,
+	// Service — spec.clusterIP/clusterIPs are immutable and some type transitions are forbidden
+	"service": true,
+}
+
+// applyResourceToCluster applies YAML content to the cluster using kubectl.
+// For resources with immutable spec fields (Pods, Jobs, PVCs, PVs, Services),
+// it uses delete+recreate instead of apply.
 func (s *StreamClient) applyResourceToCluster(ctx context.Context, yamlContent, resourceType, namespace string) error {
 	// Create a temporary file for the YAML content
 	tmpFile, err := os.CreateTemp("", "kestrel-apply-*.yaml")
@@ -1620,61 +1644,77 @@ func (s *StreamClient) applyResourceToCluster(ctx context.Context, yamlContent, 
 	}
 	tmpFile.Close()
 
-	// For Pods, use replace (delete + recreate) instead of apply
-	// This is necessary because Kubernetes doesn't allow updating most pod spec fields
-	// (only image, activeDeadlineSeconds, tolerations, and terminationGracePeriodSeconds can be updated)
-	if strings.ToLower(resourceType) == "pod" {
-		s.Logger.Info("Detected Pod resource - using replace strategy (delete + recreate) instead of apply",
-			zap.String("namespace", namespace))
-
-		// Use kubectl replace --force which does delete + recreate
-		cmd := exec.CommandContext(ctx, "kubectl", "replace", "--force", "-f", tmpFile.Name(), "--timeout=30s")
-
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			// If replace fails because pod doesn't exist, try create instead
-			if strings.Contains(string(output), "not found") {
-				s.Logger.Info("Pod not found, using create instead of replace",
-					zap.String("namespace", namespace))
-
-				createCmd := exec.CommandContext(ctx, "kubectl", "create", "-f", tmpFile.Name(), "--timeout=30s")
-				createOutput, createErr := createCmd.CombinedOutput()
-				if createErr != nil {
-					return fmt.Errorf("kubectl create failed: %w, output: %s", createErr, string(createOutput))
-				}
-
-				s.Logger.Info("kubectl create completed successfully",
-					zap.String("output", string(createOutput)),
-					zap.String("resource_type", resourceType),
-					zap.String("namespace", namespace))
-				return nil
-			}
-
-			return fmt.Errorf("kubectl replace failed: %w, output: %s", err, string(output))
-		}
-
-		s.Logger.Info("kubectl replace completed successfully (pod deleted and recreated)",
-			zap.String("output", string(output)),
-			zap.String("resource_type", resourceType),
-			zap.String("namespace", namespace))
-
-		return nil
+	if immutableResourceTypes[strings.ToLower(resourceType)] {
+		return s.replaceResource(ctx, tmpFile.Name(), resourceType, namespace)
 	}
 
-	// For all other resources, use regular kubectl apply
+	// For mutable resources, try kubectl apply first. If it fails because of
+	// an immutable-field error, fall back to replace automatically.
 	cmd := exec.CommandContext(ctx, "kubectl", "apply", "-f", tmpFile.Name(), "--timeout=30s")
-
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("kubectl apply failed: %w, output: %s", err, string(output))
+		outStr := string(output)
+		if isImmutableFieldError(outStr) {
+			s.Logger.Warn("kubectl apply hit immutable field — falling back to replace (delete + recreate)",
+				zap.String("resource_type", resourceType),
+				zap.String("namespace", namespace))
+			return s.replaceResource(ctx, tmpFile.Name(), resourceType, namespace)
+		}
+		return fmt.Errorf("kubectl apply failed: %w, output: %s", err, outStr)
 	}
 
 	s.Logger.Info("kubectl apply completed successfully",
 		zap.String("output", string(output)),
 		zap.String("resource_type", resourceType),
 		zap.String("namespace", namespace))
-
 	return nil
+}
+
+// replaceResource performs a delete+recreate using kubectl replace --force.
+// If the resource doesn't exist yet, it falls back to kubectl create.
+func (s *StreamClient) replaceResource(ctx context.Context, filePath, resourceType, namespace string) error {
+	s.Logger.Info("Using replace strategy (delete + recreate) for resource with immutable fields",
+		zap.String("resource_type", resourceType),
+		zap.String("namespace", namespace))
+
+	cmd := exec.CommandContext(ctx, "kubectl", "replace", "--force", "-f", filePath, "--timeout=30s")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if strings.Contains(string(output), "not found") {
+			s.Logger.Info("Resource not found, using create instead of replace",
+				zap.String("resource_type", resourceType),
+				zap.String("namespace", namespace))
+
+			createCmd := exec.CommandContext(ctx, "kubectl", "create", "-f", filePath, "--timeout=30s")
+			createOutput, createErr := createCmd.CombinedOutput()
+			if createErr != nil {
+				return fmt.Errorf("kubectl create failed: %w, output: %s", createErr, string(createOutput))
+			}
+
+			s.Logger.Info("kubectl create completed successfully",
+				zap.String("output", string(createOutput)),
+				zap.String("resource_type", resourceType),
+				zap.String("namespace", namespace))
+			return nil
+		}
+		return fmt.Errorf("kubectl replace failed: %w, output: %s", err, string(output))
+	}
+
+	s.Logger.Info("kubectl replace completed successfully (resource deleted and recreated)",
+		zap.String("output", string(output)),
+		zap.String("resource_type", resourceType),
+		zap.String("namespace", namespace))
+	return nil
+}
+
+// isImmutableFieldError returns true if kubectl output indicates the apply failed
+// because of immutable fields (covers the common Kubernetes API error patterns).
+func isImmutableFieldError(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "spec is immutable") ||
+		strings.Contains(lower, "field is immutable") ||
+		strings.Contains(lower, "forbidden: spec") ||
+		strings.Contains(lower, "immutable after creation")
 }
 
 // handleNetworkPolicy validates network policies from the server and sends appropriate responses
