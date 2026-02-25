@@ -5,24 +5,25 @@ description: "Understanding the Kestrel Operator and its role in your Kubernetes
 
 ## What is the Kestrel Operator?
 
-The Kestrel Operator is a lightweight Kubernetes agent that bridges your clusters with the Kestrel AI platform. It enables real-time network traffic analysis and AI-powered security policy generation without requiring any changes to your existing applications.
+The Kestrel Operator is a lightweight Kubernetes agent that connects your clusters to the Kestrel AI platform. It streams Kubernetes resource metadata, events, logs, and network traffic telemetry over mTLS to Kestrel Cloud — enabling 24/7 real-time incident detection without requiring any changes to your existing infrastructure or applications.
 
 ## Key Features
+
+### Incident Detection and Response
+- **24/7 real-time incident detection** from Kubernetes events, pod logs, node conditions, and network telemetry
+- **Event and log ingestion** streamed to Kestrel Cloud for automated root cause analysis
+- **API and command execution** on behalf of AI Agents on Kestrel Cloud for investigation and remediation
 
 ### Kubernetes Risk Assessments
 - **Intelligent AI agent based risk discovery** inside your Kubernetes Cluster
 - **Actionable fixes** for all issues found
-- **Highlight attack chains** that other tools wihtout Kubernetes context will miss
+- **Highlight attack chains** that other tools without Kubernetes context will miss
 
 ### Cluster Inventory and Traffic Visibility
 - **Real-time flow collection** from Cilium Hubble or Istio service mesh
 - **Zero application changes** required
 - **Automatic workload discovery** and inventory management
-- **Topology map** wiith highlighted suspicious flows
-
-### Intelligent Network Policy Generation
-- **AI generated least-privilege policies** with safe defaults and recommendations that block risky flows
-- **AI agents that learn your network patterns** and adapt to detect anomalies
+- **Topology map** with highlighted suspicious flows
 
 
 ## Architecture
@@ -31,8 +32,8 @@ The Kestrel Operator consists of several key components:
 
 ### Stream Client
 Maintains a secure gRPC connection to Kestrel Cloud using mTLS authentication. Handles bidirectional streaming for:
-- Sending resource metadata and network flows
-- Receiving policy configurations and commands
+- Sending resource metadata, events, logs, and network flows
+- Receiving and executing read-only API calls and commands from Kestrel Cloud
 
 ### Network Integrations
 - **Cilium Integration**: Collects L3/L4 network flows from Hubble Relay
