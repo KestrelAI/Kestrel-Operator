@@ -85,11 +85,31 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 		queryString = apiPath[qIdx+1:]
 	}
 
+	// Check for metadata-only flag (custom param, not forwarded to K8s API)
+	metadataOnly := false
+	if queryString != "" {
+		var filteredPairs []string
+		for _, pair := range strings.Split(queryString, "&") {
+			if pair == "metadata=true" {
+				metadataOnly = true
+			} else {
+				filteredPairs = append(filteredPairs, pair)
+			}
+		}
+		queryString = strings.Join(filteredPairs, "&")
+	}
+
 	// Create REST client for the API call
 	restClient := e.ClientSet.RESTClient()
 
 	// Execute the GET request
 	req := restClient.Get().AbsPath("/" + strings.TrimPrefix(cleanPath, "/"))
+
+	// When metadata-only is requested, use PartialObjectMetadataList to return
+	// only resource metadata (name, namespace, labels, etc.) without spec/status.
+	if metadataOnly {
+		req = req.SetHeader("Accept", "application/json;as=PartialObjectMetadataList;g=meta.k8s.io;v=v1")
+	}
 
 	// Apply query parameters (e.g., tailLines, fieldSelector, labelSelector)
 	if queryString != "" {
