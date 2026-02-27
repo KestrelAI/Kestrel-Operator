@@ -115,7 +115,7 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 
 	// Validate that the result is valid JSON.
 	// Log sub-resources return plain text, so skip JSON validation for those.
-	isLogSubresource := strings.Contains(cleanPath, "/log")
+	isLogSubresource := strings.HasSuffix(cleanPath, "/log")
 	if !isLogSubresource {
 		var jsonValidation interface{}
 		if err := json.Unmarshal(resultBytes, &jsonValidation); err != nil {
