@@ -77,11 +77,48 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 		return result
 	}
 
+	// Split path from query parameters (e.g., "api/v1/.../log?tailLines=50")
+	cleanPath := apiPath
+	var queryString string
+	if qIdx := strings.Index(apiPath, "?"); qIdx >= 0 {
+		cleanPath = apiPath[:qIdx]
+		queryString = apiPath[qIdx+1:]
+	}
+
+	// Check for metadata-only flag (custom param, not forwarded to K8s API)
+	metadataOnly := false
+	if queryString != "" {
+		var filteredPairs []string
+		for _, pair := range strings.Split(queryString, "&") {
+			if pair == "metadata=true" {
+				metadataOnly = true
+			} else {
+				filteredPairs = append(filteredPairs, pair)
+			}
+		}
+		queryString = strings.Join(filteredPairs, "&")
+	}
+
 	// Create REST client for the API call
 	restClient := e.ClientSet.RESTClient()
 
 	// Execute the GET request
-	req := restClient.Get().AbsPath("/" + strings.TrimPrefix(apiPath, "/"))
+	req := restClient.Get().AbsPath("/" + strings.TrimPrefix(cleanPath, "/"))
+
+	// When metadata-only is requested, use PartialObjectMetadataList to return
+	// only resource metadata (name, namespace, labels, etc.) without spec/status.
+	if metadataOnly {
+		req = req.SetHeader("Accept", "application/json;as=PartialObjectMetadataList;g=meta.k8s.io;v=v1")
+	}
+
+	// Apply query parameters (e.g., tailLines, fieldSelector, labelSelector)
+	if queryString != "" {
+		for _, pair := range strings.Split(queryString, "&") {
+			if k, v, ok := strings.Cut(pair, "="); ok && k != "" {
+				req = req.Param(k, v)
+			}
+		}
+	}
 
 	// Execute with context
 	resultBytes, err := req.DoRaw(ctx)
@@ -96,17 +133,21 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 		return result
 	}
 
-	// Validate that the result is valid JSON
-	var jsonValidation interface{}
-	if err := json.Unmarshal(resultBytes, &jsonValidation); err != nil {
-		result.Success = false
-		result.ErrorMessage = fmt.Sprintf("Invalid JSON response: %v", err)
-		result.StatusCode = http.StatusInternalServerError
+	// Validate that the result is valid JSON.
+	// Log sub-resources return plain text, so skip JSON validation for those.
+	isLogSubresource := strings.HasSuffix(cleanPath, "/log")
+	if !isLogSubresource {
+		var jsonValidation interface{}
+		if err := json.Unmarshal(resultBytes, &jsonValidation); err != nil {
+			result.Success = false
+			result.ErrorMessage = fmt.Sprintf("Invalid JSON response: %v", err)
+			result.StatusCode = http.StatusInternalServerError
 
-		e.Logger.Error("Invalid JSON response from Kubernetes API",
-			zap.String("api_path", apiPath),
-			zap.Error(err))
-		return result
+			e.Logger.Error("Invalid JSON response from Kubernetes API",
+				zap.String("api_path", apiPath),
+				zap.Error(err))
+			return result
+		}
 	}
 
 	// Success
@@ -123,8 +164,13 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 
 // isValidAPIPath performs basic validation on the API path
 func (e *APIExecutor) isValidAPIPath(apiPath string) bool {
+	// Strip query parameters before validating the path
+	path := apiPath
+	if qIdx := strings.Index(path, "?"); qIdx >= 0 {
+		path = path[:qIdx]
+	}
 	// Remove leading slash if present
-	path := strings.TrimPrefix(apiPath, "/")
+	path = strings.TrimPrefix(path, "/")
 
 	// Must not be empty
 	if path == "" {
