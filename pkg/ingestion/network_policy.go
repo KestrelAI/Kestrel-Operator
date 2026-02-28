@@ -30,6 +30,7 @@ type NetworkPolicyIngester struct {
 	logger            *zap.Logger
 	networkPolicyChan chan *v1.NetworkPolicy
 	informerFactory   informers.SharedInformerFactory
+	ctx               context.Context
 	stopCh            chan struct{}
 	stopped           bool
 	mu                sync.Mutex
@@ -71,6 +72,9 @@ func (npi *NetworkPolicyIngester) StartSync(ctx context.Context, syncDone chan<-
 	}
 
 	npi.logger.Info("Starting network policy ingester with modern informer factory")
+
+	// Store context for use in event handlers (e.g., sendNetworkPolicy)
+	npi.ctx = ctx
 
 	// Set up network policy informer
 	npi.setupNetworkPolicyInformer()
@@ -158,7 +162,7 @@ func (npi *NetworkPolicyIngester) sendInitialNetworkPolicyInventory(ctx context.
 // sendNetworkPolicy converts a Kubernetes NetworkPolicy to protobuf and sends it to the stream
 func (npi *NetworkPolicyIngester) sendNetworkPolicy(np *networkingv1.NetworkPolicy, action string) {
 	// Resolve target workloads for this policy
-	targetWorkloads := npi.ResolveTargetWorkloads(context.Background(), *np)
+	targetWorkloads := npi.ResolveTargetWorkloads(npi.ctx, *np)
 
 	kind := np.Kind
 	if kind == "" {
@@ -355,7 +359,7 @@ func (npi *NetworkPolicyIngester) ResolveTargetWorkloads(ctx context.Context, np
 }
 
 // ApplyNetworkPolicy applies a network policy received from the server to the cluster
-func ApplyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, policy *networkingv1.NetworkPolicy) error {
+func ApplyNetworkPolicy(ctx context.Context, k8sClient kubernetes.Interface, policy *networkingv1.NetworkPolicy) error {
 	// Check for nil policy or client
 	if policy == nil {
 		return fmt.Errorf("policy cannot be nil")

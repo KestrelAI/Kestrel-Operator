@@ -657,6 +657,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 	// Define the stream function that will be retried
 	streamFunc := func(ctx context.Context) error {
+		// Create an attempt-scoped context so that all resources (shared informer factory,
+		// ingester goroutines) are cleaned up when this attempt returns — whether due to
+		// error or successful completion. Without this, the factory's watchers would leak
+		// across reconnection attempts because the outer ctx from StreamWithRetry stays alive.
+		attemptCtx, attemptCancel := context.WithCancel(ctx)
+		defer attemptCancel()
+
 		// Create a shared clientset and informer factory for all standard ingesters.
 		// SharedInformerFactories cannot be restarted after stopping,
 		// so we must create new ones on each reconnection.
@@ -720,8 +727,9 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		s.Logger.Info("All ingesters created successfully for this connection")
 
-		// Create stream with tenant context
-		stream, ctx, err := s.createStreamWithTenantContext(ctx, streamClient)
+		// Create stream with tenant context (derived from attemptCtx so it's
+		// cancelled when this attempt ends, stopping the shared factory).
+		stream, ctx, err := s.createStreamWithTenantContext(attemptCtx, streamClient)
 		if err != nil {
 			return err
 		}
