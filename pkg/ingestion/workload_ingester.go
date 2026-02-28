@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	v1 "operator/api/gen/cloud/v1"
-	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -21,7 +19,7 @@ import (
 )
 
 type WorkloadIngester struct {
-	clientset       *kubernetes.Clientset
+	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	workloadChan    chan *v1.Workload
 	informerFactory informers.SharedInformerFactory
@@ -30,24 +28,15 @@ type WorkloadIngester struct {
 	mu              sync.Mutex
 }
 
-// NewWorkloadIngester creates a new workload ingester using modern informer factory
-func NewWorkloadIngester(logger *zap.Logger, workloadChan chan *v1.Workload) (*WorkloadIngester, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory - this is the modern way
-	// It automatically handles caching, reconnections, and resource management
-	informerFactory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
-
+// NewWorkloadIngester creates a new workload ingester using a shared informer factory
+func NewWorkloadIngester(logger *zap.Logger, workloadChan chan *v1.Workload, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *WorkloadIngester {
 	return &WorkloadIngester{
 		clientset:       clientset,
 		logger:          logger,
 		workloadChan:    workloadChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
-	}, nil
+	}
 }
 
 // StartSync starts the workload ingester and signals when initial sync is complete
@@ -77,25 +66,8 @@ func (wi *WorkloadIngester) StartSync(ctx context.Context, syncDone chan<- error
 		syncDone <- nil
 	}
 
-	// Start all informers - this replaces the manual controller.Run calls
-	wi.informerFactory.Start(wi.stopCh)
-
-	// Wait for all caches to sync before processing events
-	wi.logger.Info("Waiting for workload informer caches to sync...")
-	if !cache.WaitForCacheSync(wi.stopCh,
-		wi.informerFactory.Apps().V1().Deployments().Informer().HasSynced,
-		wi.informerFactory.Apps().V1().StatefulSets().Informer().HasSynced,
-		wi.informerFactory.Apps().V1().DaemonSets().Informer().HasSynced,
-		wi.informerFactory.Apps().V1().ReplicaSets().Informer().HasSynced,
-		wi.informerFactory.Batch().V1().Jobs().Informer().HasSynced,
-		wi.informerFactory.Batch().V1().CronJobs().Informer().HasSynced,
-		wi.informerFactory.Core().V1().Pods().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for workload informer caches to sync")
-	}
-	wi.logger.Info("All workload informer caches synced successfully")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	wi.safeClose()
 	wi.logger.Info("Stopped workload ingester")

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	v1 "operator/api/gen/cloud/v1"
-	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -21,9 +20,47 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
+// Pre-compiled regex patterns — compiled once at package init, not per log line.
+var (
+	logTimestampRegex = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)\s+(.*)`)
+	exitCodeRegex     = regexp.MustCompile(`exit code (\d+)|exited with code (\d+)`)
+
+	// Structured logging level patterns (JSON and logfmt formats)
+	levelPatterns = []struct {
+		re    *regexp.Regexp
+		level string
+	}{
+		{regexp.MustCompile(`"level"\s*:\s*"(error|fatal|critical)"`), "ERROR"},
+		{regexp.MustCompile(`"level"\s*:\s*"(warn|warning)"`), "WARN"},
+		{regexp.MustCompile(`"level"\s*:\s*"info"`), "INFO"},
+		{regexp.MustCompile(`"level"\s*:\s*"debug"`), "DEBUG"},
+		{regexp.MustCompile(`level=(error|fatal|critical)`), "ERROR"},
+		{regexp.MustCompile(`level=(warn|warning)`), "WARN"},
+		{regexp.MustCompile(`level=info`), "INFO"},
+		{regexp.MustCompile(`level=debug`), "DEBUG"},
+	}
+
+	// Error type detection patterns
+	errorTypePatterns = []struct {
+		re        *regexp.Regexp
+		errorType string
+	}{
+		{regexp.MustCompile(`(?i)OutOfMemoryException|OOM|out of memory`), "OutOfMemoryException"},
+		{regexp.MustCompile(`(?i)NullPointerException|null pointer|nil pointer`), "NullPointerException"},
+		{regexp.MustCompile(`(?i)SegmentationFault|segfault|SIGSEGV`), "SegmentationFault"},
+		{regexp.MustCompile(`(?i)panic:`), "Panic"},
+		{regexp.MustCompile(`(?i)AssertionError|assertion failed`), "AssertionError"},
+		{regexp.MustCompile(`(?i)TimeoutException|timeout|timed out`), "TimeoutException"},
+		{regexp.MustCompile(`(?i)ConnectionException|connection refused|connection reset`), "ConnectionException"},
+		{regexp.MustCompile(`(?i)FileNotFoundException|no such file`), "FileNotFoundException"},
+		{regexp.MustCompile(`(?i)PermissionDenied|permission denied|access denied`), "PermissionDenied"},
+		{regexp.MustCompile(`(?i)RuntimeError|runtime error`), "RuntimeError"},
+	}
+)
+
 // PodLogStreamer handles streaming pod logs from all pods in the cluster for incident investigation
 type PodLogStreamer struct {
-	clientset       *kubernetes.Clientset
+	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	logChan         chan *v1.PodLogs
 	informerFactory informers.SharedInformerFactory
@@ -40,16 +77,8 @@ type PodLogStreamer struct {
 	streamingMu   sync.RWMutex
 }
 
-// NewPodLogStreamer creates a new pod log streamer
-func NewPodLogStreamer(logger *zap.Logger, logChan chan *v1.PodLogs) (*PodLogStreamer, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory
-	informerFactory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
-
+// NewPodLogStreamer creates a new pod log streamer using a shared informer factory
+func NewPodLogStreamer(logger *zap.Logger, logChan chan *v1.PodLogs, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *PodLogStreamer {
 	return &PodLogStreamer{
 		clientset:       clientset,
 		logger:          logger,
@@ -58,7 +87,7 @@ func NewPodLogStreamer(logger *zap.Logger, logChan chan *v1.PodLogs) (*PodLogStr
 		stopCh:          make(chan struct{}),
 		activeStreams:   make(map[string]context.CancelFunc),
 		streamingPods:   make(map[string]bool),
-	}, nil
+	}
 }
 
 // StartSync starts the pod log streamer
@@ -73,19 +102,8 @@ func (pls *PodLogStreamer) StartSync(ctx context.Context, syncDone chan<- error)
 		syncDone <- nil
 	}
 
-	// Start informer - AddFunc will start log streaming for existing problematic pods during sync
-	pls.informerFactory.Start(pls.stopCh)
-
-	// Wait for cache sync
-	pls.logger.Info("Waiting for pod log streamer cache to sync...")
-	if !cache.WaitForCacheSync(pls.stopCh,
-		pls.informerFactory.Core().V1().Pods().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for pod log streamer cache to sync")
-	}
-	pls.logger.Info("Pod log streamer cache synced successfully")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	pls.safeClose()
 	pls.logger.Info("Stopped pod log streamer")
@@ -376,8 +394,7 @@ func (pls *PodLogStreamer) parseLogLine(logLine string, lineNumber int64) *v1.Lo
 
 	// Try to extract timestamp (format: 2024-01-15T10:30:45.123456789Z)
 	// Kubernetes log timestamps are at the start of the line
-	timestampRegex := regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)\s+(.*)`)
-	if matches := timestampRegex.FindStringSubmatch(logLine); len(matches) == 3 {
+	if matches := logTimestampRegex.FindStringSubmatch(logLine); len(matches) == 3 {
 		timestampStr := matches[1]
 		actualMessage := matches[2]
 
@@ -416,23 +433,8 @@ func (pls *PodLogStreamer) detectLogLevel(message string) string {
 	}
 
 	// Check for structured logging formats (JSON, logfmt)
-	// Look for level field indicators
-	levelPatterns := []struct {
-		pattern string
-		level   string
-	}{
-		{`"level"\s*:\s*"(error|fatal|critical)"`, "ERROR"},
-		{`"level"\s*:\s*"(warn|warning)"`, "WARN"},
-		{`"level"\s*:\s*"info"`, "INFO"},
-		{`"level"\s*:\s*"debug"`, "DEBUG"},
-		{`level=(error|fatal|critical)`, "ERROR"},
-		{`level=(warn|warning)`, "WARN"},
-		{`level=info`, "INFO"},
-		{`level=debug`, "DEBUG"},
-	}
-
 	for _, p := range levelPatterns {
-		if matched, _ := regexp.MatchString(p.pattern, messageLower); matched {
+		if p.re.MatchString(messageLower) {
 			return p.level
 		}
 	}
@@ -445,24 +447,8 @@ func (pls *PodLogStreamer) parseErrorInfo(message string) *v1.LogErrorInfo {
 	errorInfo := &v1.LogErrorInfo{}
 
 	// Detect common error types
-	errorPatterns := []struct {
-		pattern   string
-		errorType string
-	}{
-		{`OutOfMemoryException|OOM|out of memory`, "OutOfMemoryException"},
-		{`NullPointerException|null pointer|nil pointer`, "NullPointerException"},
-		{`SegmentationFault|segfault|SIGSEGV`, "SegmentationFault"},
-		{`panic:`, "Panic"},
-		{`AssertionError|assertion failed`, "AssertionError"},
-		{`TimeoutException|timeout|timed out`, "TimeoutException"},
-		{`ConnectionException|connection refused|connection reset`, "ConnectionException"},
-		{`FileNotFoundException|no such file`, "FileNotFoundException"},
-		{`PermissionDenied|permission denied|access denied`, "PermissionDenied"},
-		{`RuntimeError|runtime error`, "RuntimeError"},
-	}
-
-	for _, p := range errorPatterns {
-		if matched, _ := regexp.MatchString(`(?i)`+p.pattern, message); matched {
+	for _, p := range errorTypePatterns {
+		if p.re.MatchString(message) {
 			errorInfo.ErrorType = p.errorType
 			break
 		}
@@ -486,7 +472,6 @@ func (pls *PodLogStreamer) parseErrorInfo(message string) *v1.LogErrorInfo {
 	}
 
 	// Try to extract exit code
-	exitCodeRegex := regexp.MustCompile(`exit code (\d+)|exited with code (\d+)`)
 	if matches := exitCodeRegex.FindStringSubmatch(message); len(matches) > 1 {
 		for i := 1; i < len(matches); i++ {
 			if matches[i] != "" {
