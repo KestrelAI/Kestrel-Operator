@@ -40,6 +40,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sInformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -656,62 +657,53 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 	// Define the stream function that will be retried
 	streamFunc := func(ctx context.Context) error {
-		// Create fresh ingesters for each connection attempt
+		// Create an attempt-scoped context so that all resources (shared informer factory,
+		// ingester goroutines) are cleaned up when this attempt returns — whether due to
+		// error or successful completion. Without this, the factory's watchers would leak
+		// across reconnection attempts because the outer ctx from StreamWithRetry stays alive.
+		attemptCtx, attemptCancel := context.WithCancel(ctx)
+		defer attemptCancel()
+
+		// Create a shared clientset and informer factory for all standard ingesters.
 		// SharedInformerFactories cannot be restarted after stopping,
-		// so we must create new ingesters (with new factories) on each reconnection
-		s.Logger.Info("Creating fresh ingesters for this connection")
+		// so we must create new ones on each reconnection.
+		s.Logger.Info("Creating shared clientset and informer factory for this connection")
+
+		sharedClientset, err := k8s_helper.NewClientSet()
+		if err != nil {
+			s.Logger.Error("Failed to create shared kubernetes clientset", zap.Error(err))
+			return err
+		}
+		sharedFactory := k8sInformers.NewSharedInformerFactory(sharedClientset, 30*time.Second)
 
 		// Create network policy ingester (only if Cilium flows are enabled)
 		var networkPolicyIngester *ingestion.NetworkPolicyIngester
 		disableCilium := getEnvOrDefault("DISABLE_CILIUM_FLOWS", "false")
 		if disableCilium != "true" {
-			var err error
-			networkPolicyIngester, err = ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
-			if err != nil {
-				s.Logger.Error("Failed to create network policy ingester", zap.Error(err))
-				return err
-			}
+			networkPolicyIngester = ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan, sharedClientset, sharedFactory)
 			s.Logger.Info("Network policy ingester created")
 		} else {
 			s.Logger.Info("Network policy ingester disabled (Cilium flows disabled)")
 		}
 
 		// Create workload ingester
-		workloadIngester, err := ingestion.NewWorkloadIngester(s.Logger, workloadChan)
-		if err != nil {
-			s.Logger.Error("Failed to create workload ingester", zap.Error(err))
-			return err
-		}
+		workloadIngester := ingestion.NewWorkloadIngester(s.Logger, workloadChan, sharedClientset, sharedFactory)
 
 		// Create namespace ingester
-		namespaceIngester, err := ingestion.NewNamespaceIngester(s.Logger, namespaceChan)
-		if err != nil {
-			s.Logger.Error("Failed to create namespace ingester", zap.Error(err))
-			return err
-		}
+		namespaceIngester := ingestion.NewNamespaceIngester(s.Logger, namespaceChan, sharedClientset, sharedFactory)
 
 		// Create service ingester
-		serviceIngester, err := ingestion.NewServiceIngester(s.Logger, serviceChan)
-		if err != nil {
-			s.Logger.Error("Failed to create service ingester", zap.Error(err))
-			return err
-		}
+		serviceIngester := ingestion.NewServiceIngester(s.Logger, serviceChan, sharedClientset, sharedFactory)
 
 		// Create pod ingester
-		podIngester, err := ingestion.NewPodIngester(s.Logger, podChan)
-		if err != nil {
-			s.Logger.Error("Failed to create pod ingester", zap.Error(err))
-			return err
-		}
+		podIngester := ingestion.NewPodIngester(s.Logger, podChan, sharedClientset, sharedFactory)
 
 		// Create node ingester (for VPC Flow Logs node IP resolution)
-		nodeIngester, err := ingestion.NewNodeIngester(s.Logger, nodeChan)
-		if err != nil {
-			s.Logger.Error("Failed to create node ingester", zap.Error(err))
-			return err
-		}
+		nodeIngester := ingestion.NewNodeIngester(s.Logger, nodeChan, sharedClientset, sharedFactory)
 
 		// Create authorization policy ingester (only if Istio is enabled)
+		// Note: AuthorizationPolicyIngester uses its own DynamicSharedInformerFactory
+		// for Istio CRDs, so it is NOT included in the shared factory.
 		var authorizationPolicyIngester *ingestion.AuthorizationPolicyIngester
 		enableIstioALS := getEnvOrDefault("ENABLE_ISTIO_ALS", "false")
 		if enableIstioALS == "true" {
@@ -727,40 +719,17 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		}
 
 		// Create incident detection ingesters
-		eventIngester, err := ingestion.NewEventIngester(s.Logger, eventChan)
-		if err != nil {
-			s.Logger.Error("Failed to create event ingester", zap.Error(err))
-			return err
-		}
-
-		podStatusMonitor, err := ingestion.NewPodStatusMonitor(s.Logger, podStatusChan)
-		if err != nil {
-			s.Logger.Error("Failed to create pod status monitor", zap.Error(err))
-			return err
-		}
-
-		nodeConditionMonitor, err := ingestion.NewNodeConditionMonitor(s.Logger, nodeConditionChan)
-		if err != nil {
-			s.Logger.Error("Failed to create node condition monitor", zap.Error(err))
-			return err
-		}
-
-		rolloutMonitor, err := ingestion.NewWorkloadRolloutMonitor(s.Logger, rolloutStatusChan)
-		if err != nil {
-			s.Logger.Error("Failed to create workload rollout monitor", zap.Error(err))
-			return err
-		}
-
-		podLogStreamer, err := ingestion.NewPodLogStreamer(s.Logger, podLogsChan)
-		if err != nil {
-			s.Logger.Error("Failed to create pod log streamer", zap.Error(err))
-			return err
-		}
+		eventIngester := ingestion.NewEventIngester(s.Logger, eventChan, sharedClientset, sharedFactory)
+		podStatusMonitor := ingestion.NewPodStatusMonitor(s.Logger, podStatusChan, sharedClientset, sharedFactory)
+		nodeConditionMonitor := ingestion.NewNodeConditionMonitor(s.Logger, nodeConditionChan, sharedClientset, sharedFactory)
+		rolloutMonitor := ingestion.NewWorkloadRolloutMonitor(s.Logger, rolloutStatusChan, sharedClientset, sharedFactory)
+		podLogStreamer := ingestion.NewPodLogStreamer(s.Logger, podLogsChan, sharedClientset, sharedFactory)
 
 		s.Logger.Info("All ingesters created successfully for this connection")
 
-		// Create stream with tenant context
-		stream, ctx, err := s.createStreamWithTenantContext(ctx, streamClient)
+		// Create stream with tenant context (derived from attemptCtx so it's
+		// cancelled when this attempt ends, stopping the shared factory).
+		stream, ctx, err := s.createStreamWithTenantContext(attemptCtx, streamClient)
 		if err != nil {
 			return err
 		}
@@ -1057,6 +1026,22 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		}
 
 		s.Logger.Info("All incident detection ingesters initialized successfully")
+
+		// Start the shared informer factory and wait for all caches to sync.
+		// All ingesters have registered their event handlers at this point
+		// (syncDone signals ensure setupXxxInformer methods completed).
+		s.Logger.Info("Starting shared informer factory")
+		sharedFactory.Start(ctx.Done())
+
+		s.Logger.Info("Waiting for shared informer caches to sync...")
+		syncResults := sharedFactory.WaitForCacheSync(ctx.Done())
+		for informerType, synced := range syncResults {
+			if !synced {
+				s.Logger.Error("Failed to sync informer cache", zap.String("type", informerType.String()))
+				return fmt.Errorf("failed to sync shared informer cache for %v", informerType)
+			}
+		}
+		s.Logger.Info("All shared informer caches synced successfully")
 
 		// Send inventory commit message to signal that initial inventory is complete
 		s.Logger.Info("Sending inventory commit message to server")

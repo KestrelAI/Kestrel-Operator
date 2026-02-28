@@ -7,12 +7,12 @@ import (
 	"time"
 
 	v1 "operator/api/gen/cloud/v1"
-	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -20,7 +20,7 @@ import (
 
 // WorkloadRolloutMonitor monitors deployment, statefulset, and daemonset rollout status for incident detection
 type WorkloadRolloutMonitor struct {
-	clientset       *kubernetes.Clientset
+	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	rolloutChan     chan *v1.WorkloadRolloutStatus
 	informerFactory informers.SharedInformerFactory
@@ -44,16 +44,8 @@ type rolloutStateSnapshot struct {
 	conditions         map[string]string // condition type -> status
 }
 
-// NewWorkloadRolloutMonitor creates a new workload rollout monitor for incident detection
-func NewWorkloadRolloutMonitor(logger *zap.Logger, rolloutChan chan *v1.WorkloadRolloutStatus) (*WorkloadRolloutMonitor, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory with shorter resync for rollout monitoring
-	informerFactory := informers.NewSharedInformerFactory(clientset, 15*time.Second)
-
+// NewWorkloadRolloutMonitor creates a new workload rollout monitor using a shared informer factory
+func NewWorkloadRolloutMonitor(logger *zap.Logger, rolloutChan chan *v1.WorkloadRolloutStatus, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *WorkloadRolloutMonitor {
 	return &WorkloadRolloutMonitor{
 		clientset:             clientset,
 		logger:                logger,
@@ -61,7 +53,7 @@ func NewWorkloadRolloutMonitor(logger *zap.Logger, rolloutChan chan *v1.Workload
 		informerFactory:       informerFactory,
 		stopCh:                make(chan struct{}),
 		previousRolloutStates: make(map[string]*rolloutStateSnapshot),
-	}, nil
+	}
 }
 
 // StartSync starts the workload rollout monitor and signals when initial sync is complete
@@ -74,26 +66,16 @@ func (wrm *WorkloadRolloutMonitor) StartSync(ctx context.Context, syncDone chan<
 	wrm.setupStatefulSetInformer()
 	wrm.setupDaemonSetInformer()
 
+	// Start periodic reconciliation to clean up stale state map entries
+	go wrm.startReconcileLoop(ctx)
+
 	// Signal that setup is complete
 	if syncDone != nil {
 		syncDone <- nil
 	}
 
-	// Start all informers - AddFunc will be called for all existing workloads during cache sync
-	wrm.informerFactory.Start(wrm.stopCh)
-
-	// Wait for all caches to sync before processing events
-	wrm.logger.Info("Waiting for workload rollout informer caches to sync...")
-	if !cache.WaitForCacheSync(wrm.stopCh,
-		wrm.informerFactory.Apps().V1().Deployments().Informer().HasSynced,
-		wrm.informerFactory.Apps().V1().StatefulSets().Informer().HasSynced,
-		wrm.informerFactory.Apps().V1().DaemonSets().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for workload rollout informer caches to sync")
-	}
-	wrm.logger.Info("Workload rollout informer caches synced successfully")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	wrm.safeClose()
 	wrm.logger.Info("Stopped workload rollout monitor")
@@ -467,6 +449,68 @@ func (wrm *WorkloadRolloutMonitor) updateDaemonSetRolloutSnapshot(ds *appsv1.Dae
 	wrm.rolloutMu.Lock()
 	wrm.previousRolloutStates[key] = snapshot
 	wrm.rolloutMu.Unlock()
+}
+
+// startReconcileLoop periodically removes stale entries from the rollout state map
+func (wrm *WorkloadRolloutMonitor) startReconcileLoop(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			wrm.reconcileStateMap()
+		}
+	}
+}
+
+// reconcileStateMap removes rollout state map entries for workloads that no longer exist in the informer cache
+func (wrm *WorkloadRolloutMonitor) reconcileStateMap() {
+	activeKeys := make(map[string]struct{})
+
+	// List all Deployments from cache
+	deployments, err := wrm.informerFactory.Apps().V1().Deployments().Lister().List(labels.Everything())
+	if err != nil {
+		wrm.logger.Warn("Failed to list deployments for state map reconciliation", zap.Error(err))
+		return
+	}
+	for _, d := range deployments {
+		activeKeys[fmt.Sprintf("%s/%s/%s", d.Namespace, "Deployment", d.Name)] = struct{}{}
+	}
+
+	// List all StatefulSets from cache
+	statefulSets, err := wrm.informerFactory.Apps().V1().StatefulSets().Lister().List(labels.Everything())
+	if err != nil {
+		wrm.logger.Warn("Failed to list statefulsets for state map reconciliation", zap.Error(err))
+		return
+	}
+	for _, s := range statefulSets {
+		activeKeys[fmt.Sprintf("%s/%s/%s", s.Namespace, "StatefulSet", s.Name)] = struct{}{}
+	}
+
+	// List all DaemonSets from cache
+	daemonSets, err := wrm.informerFactory.Apps().V1().DaemonSets().Lister().List(labels.Everything())
+	if err != nil {
+		wrm.logger.Warn("Failed to list daemonsets for state map reconciliation", zap.Error(err))
+		return
+	}
+	for _, d := range daemonSets {
+		activeKeys[fmt.Sprintf("%s/%s/%s", d.Namespace, "DaemonSet", d.Name)] = struct{}{}
+	}
+
+	wrm.rolloutMu.Lock()
+	removed := 0
+	for key := range wrm.previousRolloutStates {
+		if _, exists := activeKeys[key]; !exists {
+			delete(wrm.previousRolloutStates, key)
+			removed++
+		}
+	}
+	wrm.rolloutMu.Unlock()
+	if removed > 0 {
+		wrm.logger.Info("Reconciled workload rollout state map", zap.Int("removed", removed))
+	}
 }
 
 // removeRolloutSnapshot removes the rollout snapshot for a deleted workload

@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	v1 "operator/api/gen/cloud/v1"
-	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -19,7 +17,7 @@ import (
 )
 
 type PodIngester struct {
-	clientset       *kubernetes.Clientset
+	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	podChan         chan *v1.Pod
 	informerFactory informers.SharedInformerFactory
@@ -28,23 +26,15 @@ type PodIngester struct {
 	mu              sync.Mutex
 }
 
-// NewPodIngester creates a new pod ingester for streaming pods to the server
-func NewPodIngester(logger *zap.Logger, podChan chan *v1.Pod) (*PodIngester, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory
-	informerFactory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
-
+// NewPodIngester creates a new pod ingester using a shared informer factory
+func NewPodIngester(logger *zap.Logger, podChan chan *v1.Pod, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *PodIngester {
 	return &PodIngester{
 		clientset:       clientset,
 		logger:          logger,
 		podChan:         podChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
-	}, nil
+	}
 }
 
 // StartSync starts the pod ingester and signals when initial sync is complete
@@ -68,19 +58,8 @@ func (pi *PodIngester) StartSync(ctx context.Context, syncDone chan<- error) err
 		syncDone <- nil
 	}
 
-	// Start all informers
-	pi.informerFactory.Start(pi.stopCh)
-
-	// Wait for all caches to sync before processing events
-	pi.logger.Info("Waiting for pod informer cache to sync...")
-	if !cache.WaitForCacheSync(pi.stopCh,
-		pi.informerFactory.Core().V1().Pods().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for pod informer cache to sync")
-	}
-	pi.logger.Info("Pod informer cache synced successfully")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	pi.safeClose()
 	pi.logger.Info("Stopped pod ingester")

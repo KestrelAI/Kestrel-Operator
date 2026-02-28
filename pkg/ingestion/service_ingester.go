@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	v1 "operator/api/gen/cloud/v1"
-	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -20,7 +18,7 @@ import (
 )
 
 type ServiceIngester struct {
-	clientset       *kubernetes.Clientset
+	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	serviceChan     chan *v1.Service
 	informerFactory informers.SharedInformerFactory
@@ -29,24 +27,15 @@ type ServiceIngester struct {
 	mu              sync.Mutex
 }
 
-// NewServiceIngester creates a new service ingester using modern informer factory
-func NewServiceIngester(logger *zap.Logger, serviceChan chan *v1.Service) (*ServiceIngester, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory - this is the modern way
-	// It automatically handles caching, reconnections, and resource management
-	informerFactory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
-
+// NewServiceIngester creates a new service ingester using a shared informer factory
+func NewServiceIngester(logger *zap.Logger, serviceChan chan *v1.Service, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *ServiceIngester {
 	return &ServiceIngester{
 		clientset:       clientset,
 		logger:          logger,
 		serviceChan:     serviceChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
-	}, nil
+	}
 }
 
 // StartSync starts the service ingester and signals when initial sync is complete
@@ -70,19 +59,8 @@ func (si *ServiceIngester) StartSync(ctx context.Context, syncDone chan<- error)
 		syncDone <- nil
 	}
 
-	// Start all informers - this replaces the manual controller.Run calls
-	si.informerFactory.Start(si.stopCh)
-
-	// Wait for all caches to sync before processing events
-	si.logger.Info("Waiting for service informer caches to sync...")
-	if !cache.WaitForCacheSync(si.stopCh,
-		si.informerFactory.Core().V1().Services().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for service informer caches to sync")
-	}
-	si.logger.Info("All service informer caches synced successfully")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	si.safeClose()
 	si.logger.Info("Stopped service ingester")

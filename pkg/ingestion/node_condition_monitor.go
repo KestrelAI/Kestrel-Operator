@@ -2,16 +2,15 @@ package ingestion
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
 	v1 "operator/api/gen/cloud/v1"
-	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -19,7 +18,7 @@ import (
 
 // NodeConditionMonitor monitors node condition changes for incident detection
 type NodeConditionMonitor struct {
-	clientset       *kubernetes.Clientset
+	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	conditionChan   chan *v1.NodeConditionChange
 	informerFactory informers.SharedInformerFactory
@@ -42,16 +41,8 @@ type nodeConditionSnapshot struct {
 	conditions       map[string]corev1.ConditionStatus // condition type -> status
 }
 
-// NewNodeConditionMonitor creates a new node condition monitor for incident detection
-func NewNodeConditionMonitor(logger *zap.Logger, conditionChan chan *v1.NodeConditionChange) (*NodeConditionMonitor, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory with shorter resync for incident detection
-	informerFactory := informers.NewSharedInformerFactory(clientset, 10*time.Second)
-
+// NewNodeConditionMonitor creates a new node condition monitor using a shared informer factory
+func NewNodeConditionMonitor(logger *zap.Logger, conditionChan chan *v1.NodeConditionChange, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *NodeConditionMonitor {
 	return &NodeConditionMonitor{
 		clientset:          clientset,
 		logger:             logger,
@@ -59,7 +50,7 @@ func NewNodeConditionMonitor(logger *zap.Logger, conditionChan chan *v1.NodeCond
 		informerFactory:    informerFactory,
 		stopCh:             make(chan struct{}),
 		previousConditions: make(map[string]*nodeConditionSnapshot),
-	}, nil
+	}
 }
 
 // StartSync starts the node condition monitor and signals when initial sync is complete
@@ -69,24 +60,16 @@ func (ncm *NodeConditionMonitor) StartSync(ctx context.Context, syncDone chan<- 
 	// Set up node informer - AddFunc will be called for all existing nodes during cache sync
 	ncm.setupNodeInformer()
 
+	// Start periodic reconciliation to clean up stale state map entries
+	go ncm.startReconcileLoop(ctx)
+
 	// Signal that setup is complete
 	if syncDone != nil {
 		syncDone <- nil
 	}
 
-	// Start all informers - AddFunc will be called for all nodes during cache sync
-	ncm.informerFactory.Start(ncm.stopCh)
-
-	// Wait for all caches to sync before processing events
-	ncm.logger.Info("Waiting for node condition informer cache to sync...")
-	if !cache.WaitForCacheSync(ncm.stopCh,
-		ncm.informerFactory.Core().V1().Nodes().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for node condition informer cache to sync")
-	}
-	ncm.logger.Info("Node condition informer cache synced successfully")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	ncm.safeClose()
 	ncm.logger.Info("Stopped node condition monitor")
@@ -247,6 +230,45 @@ func (ncm *NodeConditionMonitor) removeNodeConditionSnapshot(node *corev1.Node) 
 	ncm.conditionsMu.Lock()
 	delete(ncm.previousConditions, node.Name)
 	ncm.conditionsMu.Unlock()
+}
+
+// startReconcileLoop periodically removes stale entries from the conditions map
+func (ncm *NodeConditionMonitor) startReconcileLoop(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			ncm.reconcileStateMap()
+		}
+	}
+}
+
+// reconcileStateMap removes condition map entries for nodes that no longer exist in the informer cache
+func (ncm *NodeConditionMonitor) reconcileStateMap() {
+	nodes, err := ncm.informerFactory.Core().V1().Nodes().Lister().List(labels.Everything())
+	if err != nil {
+		ncm.logger.Warn("Failed to list nodes for state map reconciliation", zap.Error(err))
+		return
+	}
+	activeNodes := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		activeNodes[node.Name] = struct{}{}
+	}
+	ncm.conditionsMu.Lock()
+	removed := 0
+	for key := range ncm.previousConditions {
+		if _, exists := activeNodes[key]; !exists {
+			delete(ncm.previousConditions, key)
+			removed++
+		}
+	}
+	ncm.conditionsMu.Unlock()
+	if removed > 0 {
+		ncm.logger.Info("Reconciled node condition map", zap.Int("removed", removed))
+	}
 }
 
 // sendNodeCondition converts a Node to protobuf NodeConditionChange and sends it to the stream

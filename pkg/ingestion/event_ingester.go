@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	v1 "operator/api/gen/cloud/v1"
-	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -19,7 +17,7 @@ import (
 
 // EventIngester handles the ingestion of Kubernetes Events for incident detection
 type EventIngester struct {
-	clientset       *kubernetes.Clientset
+	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	eventChan       chan *v1.KubernetesEvent
 	informerFactory informers.SharedInformerFactory
@@ -28,23 +26,15 @@ type EventIngester struct {
 	mu              sync.Mutex
 }
 
-// NewEventIngester creates a new event ingester for streaming events to the server
-func NewEventIngester(logger *zap.Logger, eventChan chan *v1.KubernetesEvent) (*EventIngester, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory with shorter resync period for events (events are time-sensitive)
-	informerFactory := informers.NewSharedInformerFactory(clientset, 10*time.Second)
-
+// NewEventIngester creates a new event ingester using a shared informer factory
+func NewEventIngester(logger *zap.Logger, eventChan chan *v1.KubernetesEvent, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *EventIngester {
 	return &EventIngester{
 		clientset:       clientset,
 		logger:          logger,
 		eventChan:       eventChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
-	}, nil
+	}
 }
 
 // StartSync starts the event ingester and signals when initial sync is complete
@@ -60,20 +50,8 @@ func (ei *EventIngester) StartSync(ctx context.Context, syncDone chan<- error) e
 		syncDone <- nil
 	}
 
-	// Start all informers
-	// During cache sync, AddFunc will be called for ALL existing Warning events
-	ei.informerFactory.Start(ei.stopCh)
-
-	// Wait for all caches to sync before processing events
-	ei.logger.Info("Waiting for event informer cache to sync...")
-	if !cache.WaitForCacheSync(ei.stopCh,
-		ei.informerFactory.Core().V1().Events().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for event informer cache to sync")
-	}
-	ei.logger.Info("Event informer cache synced successfully - all existing events processed via AddFunc")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	ei.safeClose()
 	ei.logger.Info("Stopped event ingester")
