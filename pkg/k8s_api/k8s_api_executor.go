@@ -96,17 +96,25 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 		return result
 	}
 
-	// Validate that the result is valid JSON
-	var jsonValidation interface{}
-	if err := json.Unmarshal(resultBytes, &jsonValidation); err != nil {
-		result.Success = false
-		result.ErrorMessage = fmt.Sprintf("Invalid JSON response: %v", err)
-		result.StatusCode = http.StatusInternalServerError
+	// Check if this is a log endpoint or other non-JSON endpoint
+	// Pod logs return plain text, not JSON
+	isLogEndpoint := strings.Contains(apiPath, "/log")
+	isExecEndpoint := strings.Contains(apiPath, "/exec")
+	isProxyEndpoint := strings.Contains(apiPath, "/proxy")
 
-		e.Logger.Error("Invalid JSON response from Kubernetes API",
-			zap.String("api_path", apiPath),
-			zap.Error(err))
-		return result
+	// Only validate JSON for non-log/exec/proxy endpoints
+	if !isLogEndpoint && !isExecEndpoint && !isProxyEndpoint {
+		var jsonValidation interface{}
+		if err := json.Unmarshal(resultBytes, &jsonValidation); err != nil {
+			result.Success = false
+			result.ErrorMessage = fmt.Sprintf("Invalid JSON response: %v", err)
+			result.StatusCode = http.StatusInternalServerError
+
+			e.Logger.Error("Invalid JSON response from Kubernetes API",
+				zap.String("api_path", apiPath),
+				zap.Error(err))
+			return result
+		}
 	}
 
 	// Success
@@ -116,7 +124,8 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 
 	e.Logger.Debug("API call completed successfully",
 		zap.String("api_path", apiPath),
-		zap.Int("response_size", len(resultBytes)))
+		zap.Int("response_size", len(resultBytes)),
+		zap.Bool("is_log_endpoint", isLogEndpoint))
 
 	return result
 }

@@ -10,6 +10,11 @@ on:
         required: true
         default: 'latest'
         type: string
+      image_name:
+        description: 'Image name (kestrel-operator or kestrel-operator-onprem)'
+        required: false
+        default: 'kestrel-operator'
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -42,7 +47,7 @@ jobs:
       id: meta-operator
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ github.repository }}
+        images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ github.event.inputs.image_name || 'kestrel-operator' }}
         tags: |
           type=raw,value=${{ github.event.inputs.image_tag || 'latest' }}
 
