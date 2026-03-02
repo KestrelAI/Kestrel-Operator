@@ -133,6 +133,8 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 		return result
 	}
 
+	rawSize := len(resultBytes)
+
 	// Log sub-resources return plain text — skip JSON processing entirely.
 	isLogSubresource := strings.HasSuffix(cleanPath, "/log")
 	if isLogSubresource {
@@ -140,16 +142,70 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 		result.ResponseData = string(resultBytes)
 		result.StatusCode = http.StatusOK
 
-		e.Logger.Debug("API call completed successfully",
+		e.Logger.Info("[DEBUG-RESPONSE] Log sub-resource response",
 			zap.String("api_path", apiPath),
-			zap.Int("response_size", len(resultBytes)))
+			zap.Int("response_bytes", rawSize))
 		return result
 	}
+
+	// === TEMPORARY DEBUG: log raw response size and top-level field sizes ===
+	e.Logger.Info("[DEBUG-RESPONSE] Raw K8s API response",
+		zap.String("api_path", apiPath),
+		zap.Bool("metadata_only", metadataOnly),
+		zap.Int("raw_bytes", rawSize))
+
+	// Measure field-level sizes before stripping
+	var rawObj map[string]json.RawMessage
+	if err := json.Unmarshal(resultBytes, &rawObj); err == nil {
+		// Check if list response
+		if itemsRaw, ok := rawObj["items"]; ok {
+			var items []map[string]json.RawMessage
+			if err := json.Unmarshal(itemsRaw, &items); err == nil {
+				totalManagedFields := 0
+				totalAnnotations := 0
+				totalLastApplied := 0
+				totalSpec := 0
+				totalStatus := 0
+				for _, item := range items {
+					if metaRaw, ok := item["metadata"]; ok {
+						var meta map[string]json.RawMessage
+						if err := json.Unmarshal(metaRaw, &meta); err == nil {
+							totalManagedFields += len(meta["managedFields"])
+							if annotRaw, ok := meta["annotations"]; ok {
+								totalAnnotations += len(annotRaw)
+								var annots map[string]string
+								if err := json.Unmarshal(annotRaw, &annots); err == nil {
+									totalLastApplied += len(annots[lastAppliedAnnotation])
+								}
+							}
+						}
+					}
+					totalSpec += len(item["spec"])
+					totalStatus += len(item["status"])
+				}
+				e.Logger.Info("[DEBUG-RESPONSE] List response field breakdown",
+					zap.String("api_path", apiPath),
+					zap.Int("item_count", len(items)),
+					zap.Int("managedFields_bytes", totalManagedFields),
+					zap.Int("annotations_bytes", totalAnnotations),
+					zap.Int("lastAppliedConfig_bytes", totalLastApplied),
+					zap.Int("spec_bytes", totalSpec),
+					zap.Int("status_bytes", totalStatus))
+			}
+		}
+	}
+	// === END TEMPORARY DEBUG ===
 
 	// Strip managedFields and last-applied-configuration annotation from JSON
 	// responses. These fields are large, carry no diagnostic value for the AI
 	// chat agent, and can account for 40-50% of total response size.
 	resultBytes = stripJSONBloat(resultBytes)
+
+	e.Logger.Info("[DEBUG-RESPONSE] After stripping bloat",
+		zap.String("api_path", apiPath),
+		zap.Int("stripped_bytes", len(resultBytes)),
+		zap.Int("saved_bytes", rawSize-len(resultBytes)),
+		zap.Float64("reduction_pct", float64(rawSize-len(resultBytes))/float64(rawSize)*100))
 
 	// Validate JSON
 	var jsonValidation interface{}
