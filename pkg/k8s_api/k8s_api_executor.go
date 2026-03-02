@@ -133,21 +133,35 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 		return result
 	}
 
-	// Validate that the result is valid JSON.
-	// Log sub-resources return plain text, so skip JSON validation for those.
+	// Log sub-resources return plain text — skip JSON processing entirely.
 	isLogSubresource := strings.HasSuffix(cleanPath, "/log")
-	if !isLogSubresource {
-		var jsonValidation interface{}
-		if err := json.Unmarshal(resultBytes, &jsonValidation); err != nil {
-			result.Success = false
-			result.ErrorMessage = fmt.Sprintf("Invalid JSON response: %v", err)
-			result.StatusCode = http.StatusInternalServerError
+	if isLogSubresource {
+		result.Success = true
+		result.ResponseData = string(resultBytes)
+		result.StatusCode = http.StatusOK
 
-			e.Logger.Error("Invalid JSON response from Kubernetes API",
-				zap.String("api_path", apiPath),
-				zap.Error(err))
-			return result
-		}
+		e.Logger.Debug("API call completed successfully",
+			zap.String("api_path", apiPath),
+			zap.Int("response_size", len(resultBytes)))
+		return result
+	}
+
+	// Strip managedFields and last-applied-configuration annotation from JSON
+	// responses. These fields are large, carry no diagnostic value for the AI
+	// chat agent, and can account for 40-50% of total response size.
+	resultBytes = stripJSONBloat(resultBytes)
+
+	// Validate JSON
+	var jsonValidation interface{}
+	if err := json.Unmarshal(resultBytes, &jsonValidation); err != nil {
+		result.Success = false
+		result.ErrorMessage = fmt.Sprintf("Invalid JSON response: %v", err)
+		result.StatusCode = http.StatusInternalServerError
+
+		e.Logger.Error("Invalid JSON response from Kubernetes API",
+			zap.String("api_path", apiPath),
+			zap.Error(err))
+		return result
 	}
 
 	// Success
@@ -160,6 +174,73 @@ func (e *APIExecutor) executeAPICall(ctx context.Context, apiPath string) *v1.Ku
 		zap.Int("response_size", len(resultBytes)))
 
 	return result
+}
+
+const lastAppliedAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
+
+// stripJSONBloat removes managedFields and the last-applied-configuration
+// annotation from Kubernetes API JSON responses. These are large, carry no
+// diagnostic value, and can account for 40-50% of response size.
+// Works on both single resources and list responses (with "items" array).
+func stripJSONBloat(data []byte) []byte {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return data
+	}
+
+	// Check if this is a list response (has "items" array)
+	if itemsRaw, ok := obj["items"]; ok {
+		var items []map[string]json.RawMessage
+		if err := json.Unmarshal(itemsRaw, &items); err == nil {
+			for i := range items {
+				stripMetadataBloat(items[i])
+			}
+			if cleaned, err := json.Marshal(items); err == nil {
+				obj["items"] = cleaned
+			}
+		}
+	} else {
+		// Single resource
+		stripMetadataBloat(obj)
+	}
+
+	// Also strip top-level managedFields (for single resources)
+	result, err := json.Marshal(obj)
+	if err != nil {
+		return data
+	}
+	return result
+}
+
+// stripMetadataBloat removes managedFields and last-applied-configuration
+// from a single resource's JSON representation.
+func stripMetadataBloat(obj map[string]json.RawMessage) {
+	metaRaw, ok := obj["metadata"]
+	if !ok {
+		return
+	}
+
+	var meta map[string]json.RawMessage
+	if err := json.Unmarshal(metaRaw, &meta); err != nil {
+		return
+	}
+
+	delete(meta, "managedFields")
+
+	// Strip last-applied-configuration from annotations
+	if annotRaw, ok := meta["annotations"]; ok {
+		var annotations map[string]string
+		if err := json.Unmarshal(annotRaw, &annotations); err == nil {
+			delete(annotations, lastAppliedAnnotation)
+			if cleaned, err := json.Marshal(annotations); err == nil {
+				meta["annotations"] = cleaned
+			}
+		}
+	}
+
+	if cleaned, err := json.Marshal(meta); err == nil {
+		obj["metadata"] = cleaned
+	}
 }
 
 // isValidAPIPath performs basic validation on the API path
