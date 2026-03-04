@@ -5,23 +5,42 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"sync/atomic"
 
+	v1 "operator/api/gen/cloud/v1"
 	"operator/pkg/client"
+	"operator/pkg/operatorlog"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func main() {
 	log.Println("Starting Kestrel AI Operator...")
 
-	logger, err := zap.NewProduction()
-	if err != nil {
-		log.Fatalf("Failed to create logger: %v", err)
-	}
+	// Set up operator log streaming channels (long-lived, survive gRPC reconnections)
+	operatorLogEntryCh := make(chan *v1.LogEntry, operatorlog.DefaultEntryChanSize)
+	operatorLogBatchCh := make(chan *v1.PodLogs, operatorlog.DefaultBatchChanSize)
+	streamingEnabled := &atomic.Bool{}
+	streamingEnabled.Store(true)
+
+	// Build tee core: logs go to both stderr (JSON) and the streaming channel
+	baseCore := zapcore.NewCore(
+		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
+		zapcore.Lock(os.Stderr),
+		zapcore.InfoLevel,
+	)
+	streamingCore := operatorlog.NewStreamingCore(zapcore.InfoLevel, operatorLogEntryCh, streamingEnabled)
+	teeCore := zapcore.NewTee(baseCore, streamingCore)
+	logger := zap.New(teeCore, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 
 	// Create a context with cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Start the operator log batcher (runs for the process lifetime)
+	batcher := operatorlog.NewOperatorLogBatcher(operatorLogEntryCh, operatorLogBatchCh)
+	go batcher.Run(ctx)
 
 	// Load configuration from environment variables (populated by Helm)
 	config, err := client.LoadConfigFromEnv()
@@ -40,6 +59,9 @@ func main() {
 		return
 	}
 	defer streamClient.Client.Close()
+
+	// Connect operator log batch channel to the stream client
+	streamClient.SetOperatorLogChannel(operatorLogBatchCh)
 
 	// Get health server port from environment variable (default to 8081)
 	healthPortStr := getEnvOrDefault("HEALTH_PORT", "8081")
