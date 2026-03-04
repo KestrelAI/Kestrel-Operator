@@ -2281,12 +2281,9 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 		case operatorLogs, ok := <-operatorLogsChan:
 			// Check if operator logs channel was closed
 			if !ok {
-				s.Logger.Warn("Operator logs channel closed unexpectedly")
-				select {
-				case done <- fmt.Errorf("operator logs channel closed"):
-				default:
-				}
-				return
+				s.Logger.Warn("Operator logs channel closed; disabling operator log forwarding")
+				operatorLogsChan = nil
+				continue
 			}
 
 			// Check context again before sending
