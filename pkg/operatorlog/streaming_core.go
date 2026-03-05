@@ -138,7 +138,7 @@ func (c *StreamingCore) convertToLogEntry(ent zapcore.Entry, fields []zapcore.Fi
 		// Extract error info from fields
 		for _, f := range fields {
 			if f.Type == zapcore.ErrorType {
-				if err, ok := f.Interface.(error); ok {
+				if err, ok := f.Interface.(error); ok && err != nil {
 					errorInfo.ErrorType = fmt.Sprintf("%T", err)
 					errorInfo.ErrorMessage = err.Error()
 					hasErrorInfo = true
@@ -176,7 +176,7 @@ func fieldValue(f zapcore.Field) interface{} {
 	case zapcore.StringType:
 		return f.String
 	case zapcore.ErrorType:
-		if err, ok := f.Interface.(error); ok {
+		if err, ok := f.Interface.(error); ok && err != nil {
 			return err.Error()
 		}
 		return f.Interface
