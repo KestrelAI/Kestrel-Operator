@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	serverv1 "operator/api/gen/server/v1"
@@ -44,7 +45,6 @@ import (
 	"k8s.io/client-go/rest"
 
 	"operator/pkg/envoy_als"
-	"sync/atomic"
 )
 
 var _ = appsv1.Deployment{}
@@ -85,6 +85,10 @@ type StreamClient struct {
 	lastEOFTime      int64 // atomic unix timestamp of last EOF error
 	healthMu         sync.RWMutex
 	lastError        error // last error encountered (protected by healthMu)
+
+	// Operator log streaming (set via SetOperatorLogStreaming)
+	operatorLogBatchCh <-chan *v1.PodLogs
+	operatorLogEnabled *atomic.Bool
 }
 
 const (
@@ -99,6 +103,14 @@ const (
 	minUnhealthyForLiveness  = 1 * time.Minute  // Minimum unhealthy duration for liveness failure
 	maxHealthyGapForLiveness = 30 * time.Second // Max gap between EOFs for liveness failure
 )
+
+// SetOperatorLogStreaming sets the channel from which operator log batches will be read.
+// The enabled flag gates sending (not capture): logs always buffer in channels,
+// but are only sent over gRPC when enabled is true (set after initial sync).
+func (s *StreamClient) SetOperatorLogStreaming(ch <-chan *v1.PodLogs, enabled *atomic.Bool) {
+	s.operatorLogBatchCh = ch
+	s.operatorLogEnabled = enabled
+}
 
 // protectedSend ensures thread-safe sending on the gRPC stream
 func (s *StreamClient) protectedSend(stream v1.StreamService_StreamDataClient, req *v1.StreamDataRequest) error {
@@ -656,6 +668,12 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 	// Define the stream function that will be retried
 	streamFunc := func(ctx context.Context) error {
+		// Disable operator log sending until initial sync completes on this connection.
+		// Without this, reconnections would immediately send buffered logs before the stream is ready.
+		if s.operatorLogEnabled != nil {
+			s.operatorLogEnabled.Store(false)
+		}
+
 		// Create fresh ingesters for each connection attempt
 		// SharedInformerFactories cannot be restarted after stopping,
 		// so we must create new ingesters (with new factories) on each reconnection
@@ -771,7 +789,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		// Start sending incident detection data (separate from inventory)
 		incidentDone := make(chan error, 1)
-		go s.sendIncidentData(ctx, stream, eventChan, podStatusChan, nodeConditionChan, rolloutStatusChan, podLogsChan, incidentDone)
+		go s.sendIncidentData(ctx, stream, eventChan, podStatusChan, nodeConditionChan, rolloutStatusChan, podLogsChan, s.operatorLogBatchCh, incidentDone)
 
 		// Create channels to signal when initial inventory sync is complete
 		workloadSyncDone := make(chan error, 1)
@@ -1070,6 +1088,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			return err
 		}
 		s.Logger.Info("Successfully sent inventory commit message")
+
+		// Enable operator log streaming now that initial sync is complete and stream is stable.
+		// Startup logs were buffered in channels and will be sent as the backlog is drained.
+		if s.operatorLogEnabled != nil {
+			s.operatorLogEnabled.Store(true)
+			s.Logger.Info("Operator log streaming enabled")
+		}
 
 		// Start exporting Cilium flows with context (only if Cilium is available)
 		if flowCollector != nil {
@@ -2124,9 +2149,29 @@ func (s *StreamClient) sendNodeToServer(stream v1.StreamService_StreamDataClient
 }
 
 // sendIncidentData collects incident detection data and sends it to the server
-func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, done chan<- error) {
+func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, operatorLogsChan <-chan *v1.PodLogs, done chan<- error) {
+	// Operator log send gating: start with nil channel (select ignores nil channels).
+	// When operatorLogEnabled becomes true, activeOperatorLogsChan is set to the real channel.
+	// This prevents consuming buffered logs before the stream is ready.
+	var activeOperatorLogsChan <-chan *v1.PodLogs
+	if s.operatorLogEnabled != nil && s.operatorLogEnabled.Load() {
+		activeOperatorLogsChan = operatorLogsChan
+	}
+
+	// Periodically check if operator log sending should be enabled
+	enableCheckTicker := time.NewTicker(1 * time.Second)
+	defer enableCheckTicker.Stop()
+
 	for {
 		select {
+		case <-enableCheckTicker.C:
+			// Activate operator log channel once sending is enabled
+			if activeOperatorLogsChan == nil && operatorLogsChan != nil &&
+				s.operatorLogEnabled != nil && s.operatorLogEnabled.Load() {
+				activeOperatorLogsChan = operatorLogsChan
+				s.Logger.Info("Operator log sending activated")
+			}
+			continue
 		case <-ctx.Done():
 			// Context is done, exit the goroutine
 			return
@@ -2248,6 +2293,29 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 			default:
 				if err := s.sendPodLogsToServer(stream, podLogs); err != nil {
 					s.Logger.Error("Failed to send pod logs data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
+		case operatorLogs, ok := <-activeOperatorLogsChan:
+			// Check if operator logs channel was closed
+			if !ok {
+				s.Logger.Warn("Operator logs channel closed; disabling operator log forwarding")
+				activeOperatorLogsChan = nil
+				operatorLogsChan = nil
+				continue
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendPodLogsToServer(stream, operatorLogs); err != nil {
+					s.Logger.Error("Failed to send operator logs data", zap.Error(err))
 					select {
 					case done <- err:
 					default:
