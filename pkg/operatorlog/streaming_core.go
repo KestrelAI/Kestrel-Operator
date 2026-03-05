@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -70,13 +69,6 @@ func (c *StreamingCore) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapc
 // This method must NEVER call any zap logging methods to avoid infinite recursion.
 func (c *StreamingCore) Write(ent zapcore.Entry, fields []zapcore.Field) error {
 	if !c.enabled.Load() {
-		return nil
-	}
-
-	// Skip backpressure warnings to prevent feedback loop: these warnings are
-	// generated when send channels are full, and streaming them would compete
-	// for the same sendMu, amplifying the congestion.
-	if strings.Contains(ent.Message, "channel full") {
 		return nil
 	}
 
