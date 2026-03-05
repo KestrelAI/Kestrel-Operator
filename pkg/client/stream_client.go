@@ -648,20 +648,23 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	}
 
 	// Set up workload, namespace, network policy, service, and authorization policy ingestion channels
-	workloadChan := make(chan *v1.Workload, 1000)
-	namespaceChan := make(chan *v1.Namespace, 100)
-	networkPolicyChan := make(chan *v1.NetworkPolicy, 100)
-	serviceChan := make(chan *v1.Service, 100)
-	authorizationPolicyChan := make(chan *v1.AuthorizationPolicy, 100)
-	podChan := make(chan *v1.Pod, 2000) // Larger buffer for pods
-	nodeChan := make(chan *v1.Node, 100)
+	workloadChan := make(chan *v1.Workload, 5000)
+	namespaceChan := make(chan *v1.Namespace, 500)
+	networkPolicyChan := make(chan *v1.NetworkPolicy, 500)
+	serviceChan := make(chan *v1.Service, 500)
+	authorizationPolicyChan := make(chan *v1.AuthorizationPolicy, 500)
+	podChan := make(chan *v1.Pod, 10000)
+	nodeChan := make(chan *v1.Node, 500)
 
 	// Set up incident detection channels
-	eventChan := make(chan *v1.KubernetesEvent, 500)               // Kubernetes events
-	podStatusChan := make(chan *v1.PodStatusChange, 500)           // Pod status changes
-	nodeConditionChan := make(chan *v1.NodeConditionChange, 100)   // Node condition changes
-	rolloutStatusChan := make(chan *v1.WorkloadRolloutStatus, 200) // Workload rollout status
-	podLogsChan := make(chan *v1.PodLogs, 1000)                    // Pod logs (larger buffer for log batches)
+	eventChan := make(chan *v1.KubernetesEvent, 2000)
+	podStatusChan := make(chan *v1.PodStatusChange, 2000)
+	nodeConditionChan := make(chan *v1.NodeConditionChange, 500)
+	rolloutStatusChan := make(chan *v1.WorkloadRolloutStatus, 1000)
+	// Pod log streaming disabled — the unbounded goroutine-per-pod design causes
+	// OOM on large clusters. Pass nil channel to sendIncidentData (nil channels
+	// block forever in select, so the case is effectively disabled).
+	var podLogsChan chan *v1.PodLogs
 
 	// Create a new stream service client
 	streamClient := v1.NewStreamServiceClient(s.Client)
@@ -766,12 +769,6 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		rolloutMonitor, err := ingestion.NewWorkloadRolloutMonitor(s.Logger, rolloutStatusChan)
 		if err != nil {
 			s.Logger.Error("Failed to create workload rollout monitor", zap.Error(err))
-			return err
-		}
-
-		podLogStreamer, err := ingestion.NewPodLogStreamer(s.Logger, podLogsChan)
-		if err != nil {
-			s.Logger.Error("Failed to create pod log streamer", zap.Error(err))
 			return err
 		}
 
@@ -938,15 +935,8 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			}
 		}()
 
-		// Pod log streamer
-		podLogsCtx, podLogsCancel := context.WithCancel(ctx)
-		defer podLogsCancel()
-		go func() {
-			if err := podLogStreamer.StartSync(podLogsCtx, podLogsSyncDone); err != nil {
-				s.Logger.Error("Pod log streamer failed", zap.Error(err))
-				podLogsSyncDone <- err
-			}
-		}()
+		// Pod log streamer disabled — signal sync complete immediately
+		podLogsSyncDone <- nil
 
 		// Wait for all ingesters to complete their initial sync
 		s.Logger.Info("Waiting for initial inventory sync to complete...")
