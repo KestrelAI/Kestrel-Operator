@@ -110,7 +110,7 @@ func (c *StreamingCore) convertToLogEntry(ent zapcore.Entry, fields []zapcore.Fi
 	var level string
 	switch ent.Level {
 	case zapcore.DebugLevel:
-		level = "INFO" // map debug to INFO for the proto
+		level = "DEBUG"
 	case zapcore.InfoLevel:
 		level = "INFO"
 	case zapcore.WarnLevel:
@@ -183,6 +183,9 @@ func fieldValue(f zapcore.Field) interface{} {
 	case zapcore.DurationType:
 		return time.Duration(f.Integer).String()
 	case zapcore.TimeType:
+		if t, ok := f.Interface.(time.Time); ok {
+			return t.Format(time.RFC3339Nano)
+		}
 		return time.Unix(0, f.Integer).Format(time.RFC3339Nano)
 	case zapcore.StringerType:
 		if s, ok := f.Interface.(fmt.Stringer); ok {

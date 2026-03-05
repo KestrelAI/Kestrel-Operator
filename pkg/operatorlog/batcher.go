@@ -100,8 +100,6 @@ func (b *OperatorLogBatcher) Run(ctx context.Context) {
 // flush sends a batch of log entries as a PodLogs message.
 // Non-blocking — if batchCh is full, the batch is silently dropped.
 func (b *OperatorLogBatcher) flush(entries []*v1.LogEntry) {
-	offset := b.streamOffset.Add(int64(len(entries)))
-
 	podLogs := &v1.PodLogs{
 		PodName:             b.podName,
 		Namespace:           b.podNamespace,
@@ -112,14 +110,14 @@ func (b *OperatorLogBatcher) flush(entries []*v1.LogEntry) {
 		CollectionTimestamp: timestamppb.Now(),
 		TotalLines:          int64(len(entries)),
 		StreamComplete:      false, // continuous stream
-		StreamOffset:        offset,
 		OwnerReferences:     nil, // not available for operator itself
 		NodeName:            b.nodeName,
 	}
 
-	// Non-blocking send — drop under backpressure
+	// Non-blocking send — only advance offset on successful send
 	select {
 	case b.batchCh <- podLogs:
+		podLogs.StreamOffset = b.streamOffset.Add(int64(len(entries)))
 	default:
 	}
 }
