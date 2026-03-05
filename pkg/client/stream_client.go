@@ -59,6 +59,9 @@ type ServerConfig struct {
 	ClientKeyFile  string
 	CACertFile     string
 	ServerName     string // For SNI and certificate verification
+	// InsecureSkipVerify skips server certificate verification (for on-prem)
+	// When true, still uses TLS encryption but doesn't verify server cert hostname
+	InsecureSkipVerify bool
 }
 
 // StreamClient is the client for streaming data to and from the server
@@ -85,6 +88,9 @@ type StreamClient struct {
 	lastEOFTime      int64 // atomic unix timestamp of last EOF error
 	healthMu         sync.RWMutex
 	lastError        error // last error encountered (protected by healthMu)
+
+	// Operator log streaming channel (set via SetOperatorLogChannel)
+	operatorLogBatchCh <-chan *v1.PodLogs
 }
 
 const (
@@ -99,6 +105,12 @@ const (
 	minUnhealthyForLiveness  = 1 * time.Minute  // Minimum unhealthy duration for liveness failure
 	maxHealthyGapForLiveness = 30 * time.Second // Max gap between EOFs for liveness failure
 )
+
+// SetOperatorLogChannel sets the channel from which operator log batches will be read
+// and sent over the gRPC stream alongside application pod logs.
+func (s *StreamClient) SetOperatorLogChannel(ch <-chan *v1.PodLogs) {
+	s.operatorLogBatchCh = ch
+}
 
 // protectedSend ensures thread-safe sending on the gRPC stream
 func (s *StreamClient) protectedSend(stream v1.StreamService_StreamDataClient, req *v1.StreamDataRequest) error {
@@ -340,15 +352,22 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{clientCert},
-		RootCAs:      caCertPool,
-		ServerName:   config.ServerName,
+		Certificates:       []tls.Certificate{clientCert},
+		RootCAs:            caCertPool,
+		ServerName:         config.ServerName,
+		InsecureSkipVerify: config.InsecureSkipVerify,
 	}
 
 	creds = credentials.NewTLS(tlsConfig)
-	logger.Info("Using mTLS with client certificate authentication",
-		zap.String("client_cert", config.ClientCertFile),
-		zap.String("server_name", config.ServerName))
+	if config.InsecureSkipVerify {
+		logger.Info("Using TLS with client certificate (server verification DISABLED - on-prem mode)",
+			zap.String("client_cert", config.ClientCertFile),
+			zap.String("server_name", config.ServerName))
+	} else {
+		logger.Info("Using mTLS with client certificate authentication",
+			zap.String("client_cert", config.ClientCertFile),
+			zap.String("server_name", config.ServerName))
+	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
 	// Add keepalive parameters for long-lived streams (24 hours)
@@ -483,8 +502,11 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	caCertFile := getEnvOrDefault("CA_CERT_FILE", "/tls/ca.crt")
 	serverName := getEnvOrDefault("SERVER_NAME", host)
 
+	// TLS verification configuration (for on-prem deployments)
+	insecureSkipVerify := getEnvOrDefault("TLS_INSECURE_SKIP_VERIFY", "false") == "true"
+
 	// Log certificate file paths for debugging
-	log.Printf("Certificate file paths: cert=%s, key=%s, ca=%s", clientCertFile, clientKeyFile, caCertFile)
+	log.Printf("Certificate file paths: cert=%s, key=%s, ca=%s, insecureSkipVerify=%v", clientCertFile, clientKeyFile, caCertFile, insecureSkipVerify)
 
 	// Token loading strategy: Check runtime secret first, fallback to Helm-managed secret
 	token, err := loadTokenWithFallback()
@@ -503,13 +525,14 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	}
 
 	return &ServerConfig{
-		Host:           host,
-		Port:           port,
-		Token:          token,
-		ClientCertFile: clientCertFile,
-		ClientKeyFile:  clientKeyFile,
-		CACertFile:     caCertFile,
-		ServerName:     serverName,
+		Host:               host,
+		Port:               port,
+		Token:              token,
+		ClientCertFile:     clientCertFile,
+		ClientKeyFile:      clientKeyFile,
+		CACertFile:         caCertFile,
+		ServerName:         serverName,
+		InsecureSkipVerify: insecureSkipVerify,
 	}, nil
 }
 
@@ -771,7 +794,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		// Start sending incident detection data (separate from inventory)
 		incidentDone := make(chan error, 1)
-		go s.sendIncidentData(ctx, stream, eventChan, podStatusChan, nodeConditionChan, rolloutStatusChan, podLogsChan, incidentDone)
+		go s.sendIncidentData(ctx, stream, eventChan, podStatusChan, nodeConditionChan, rolloutStatusChan, podLogsChan, s.operatorLogBatchCh, incidentDone)
 
 		// Create channels to signal when initial inventory sync is complete
 		workloadSyncDone := make(chan error, 1)
@@ -2124,7 +2147,7 @@ func (s *StreamClient) sendNodeToServer(stream v1.StreamService_StreamDataClient
 }
 
 // sendIncidentData collects incident detection data and sends it to the server
-func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, done chan<- error) {
+func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, operatorLogsChan <-chan *v1.PodLogs, done chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -2248,6 +2271,28 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 			default:
 				if err := s.sendPodLogsToServer(stream, podLogs); err != nil {
 					s.Logger.Error("Failed to send pod logs data", zap.Error(err))
+					select {
+					case done <- err:
+					default:
+					}
+					return
+				}
+			}
+		case operatorLogs, ok := <-operatorLogsChan:
+			// Check if operator logs channel was closed
+			if !ok {
+				s.Logger.Warn("Operator logs channel closed; disabling operator log forwarding")
+				operatorLogsChan = nil
+				continue
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendPodLogsToServer(stream, operatorLogs); err != nil {
+					s.Logger.Error("Failed to send operator logs data", zap.Error(err))
 					select {
 					case done <- err:
 					default:
