@@ -117,6 +117,7 @@ func (ncm *NodeConditionMonitor) setupNodeInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if node, ok := obj.(*corev1.Node); ok {
 				// Always send node deletions (critical incident signal)
 				ncm.sendNodeCondition(node, "DELETE")

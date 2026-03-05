@@ -180,6 +180,7 @@ func (pls *PodLogStreamer) setupPodInformer(ctx context.Context) {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if pod, ok := obj.(*corev1.Pod); ok {
 				podKey := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 

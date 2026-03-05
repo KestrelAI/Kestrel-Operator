@@ -97,6 +97,7 @@ func (pi *PodIngester) setupPodInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if pod, ok := obj.(*corev1.Pod); ok {
 				pi.sendPod(pod, "DELETE")
 			}

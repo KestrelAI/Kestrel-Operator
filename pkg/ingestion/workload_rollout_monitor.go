@@ -119,6 +119,7 @@ func (wrm *WorkloadRolloutMonitor) setupDeploymentInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if deployment, ok := obj.(*appsv1.Deployment); ok {
 				if wrm.isDeploymentProblematic(deployment) {
 					wrm.sendDeploymentRolloutStatus(deployment, "DELETE")
@@ -154,6 +155,7 @@ func (wrm *WorkloadRolloutMonitor) setupStatefulSetInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if sts, ok := obj.(*appsv1.StatefulSet); ok {
 				if wrm.isStatefulSetProblematic(sts) {
 					wrm.sendStatefulSetRolloutStatus(sts, "DELETE")
@@ -189,6 +191,7 @@ func (wrm *WorkloadRolloutMonitor) setupDaemonSetInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if ds, ok := obj.(*appsv1.DaemonSet); ok {
 				if wrm.isDaemonSetProblematic(ds) {
 					wrm.sendDaemonSetRolloutStatus(ds, "DELETE")

@@ -97,6 +97,7 @@ func (ni *NodeIngester) setupNodeInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if node, ok := obj.(*corev1.Node); ok {
 				ni.sendNode(node, "DELETE")
 			}

@@ -111,6 +111,7 @@ func (ni *NamespaceIngester) setupNamespaceInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if namespace, ok := obj.(*corev1.Namespace); ok {
 				ni.sendNamespace(namespace.ObjectMeta, "DELETE")
 			}

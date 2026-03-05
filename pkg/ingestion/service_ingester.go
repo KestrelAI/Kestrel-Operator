@@ -98,6 +98,7 @@ func (si *ServiceIngester) setupServiceInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if service, ok := obj.(*corev1.Service); ok {
 				si.sendService(service, "DELETE")
 			}

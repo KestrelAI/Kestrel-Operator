@@ -89,6 +89,15 @@ func (wi *WorkloadIngester) safeClose() {
 	}
 }
 
+// unwrapDeletedObject handles informer tombstones (cache.DeletedFinalStateUnknown)
+// that may be delivered instead of the actual object on delete events.
+func unwrapDeletedObject(obj interface{}) interface{} {
+	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		return tombstone.Obj
+	}
+	return obj
+}
+
 // serviceAccountOrDefault returns the service account name, defaulting to "default"
 // if empty (matching Kubernetes behavior).
 func serviceAccountOrDefault(sa string) string {
@@ -114,6 +123,7 @@ func (wi *WorkloadIngester) setupDeploymentInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if deployment, ok := obj.(*appsv1.Deployment); ok {
 				wi.sendWorkload(deployment.ObjectMeta, "Deployment", "DELETE", serviceAccountOrDefault(deployment.Spec.Template.Spec.ServiceAccountName))
 			}
@@ -139,6 +149,7 @@ func (wi *WorkloadIngester) setupStatefulSetInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if statefulSet, ok := obj.(*appsv1.StatefulSet); ok {
 				wi.sendWorkload(statefulSet.ObjectMeta, "StatefulSet", "DELETE", serviceAccountOrDefault(statefulSet.Spec.Template.Spec.ServiceAccountName))
 			}
@@ -164,6 +175,7 @@ func (wi *WorkloadIngester) setupDaemonSetInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if daemonSet, ok := obj.(*appsv1.DaemonSet); ok {
 				wi.sendWorkload(daemonSet.ObjectMeta, "DaemonSet", "DELETE", serviceAccountOrDefault(daemonSet.Spec.Template.Spec.ServiceAccountName))
 			}
@@ -189,6 +201,7 @@ func (wi *WorkloadIngester) setupReplicaSetInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if replicaSet, ok := obj.(*appsv1.ReplicaSet); ok {
 				wi.sendWorkload(replicaSet.ObjectMeta, "ReplicaSet", "DELETE", serviceAccountOrDefault(replicaSet.Spec.Template.Spec.ServiceAccountName))
 			}
@@ -214,6 +227,7 @@ func (wi *WorkloadIngester) setupJobInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if job, ok := obj.(*batchv1.Job); ok {
 				wi.sendWorkload(job.ObjectMeta, "Job", "DELETE", serviceAccountOrDefault(job.Spec.Template.Spec.ServiceAccountName))
 			}
@@ -239,6 +253,7 @@ func (wi *WorkloadIngester) setupCronJobInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if cronJob, ok := obj.(*batchv1.CronJob); ok {
 				wi.sendWorkload(cronJob.ObjectMeta, "CronJob", "DELETE", serviceAccountOrDefault(cronJob.Spec.JobTemplate.Spec.Template.Spec.ServiceAccountName))
 			}
@@ -269,6 +284,7 @@ func (wi *WorkloadIngester) setupPodInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if pod, ok := obj.(*corev1.Pod); ok {
 				if len(pod.OwnerReferences) == 0 {
 					wi.sendWorkload(pod.ObjectMeta, "Pod", "DELETE", serviceAccountOrDefault(pod.Spec.ServiceAccountName))

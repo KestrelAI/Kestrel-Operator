@@ -132,6 +132,7 @@ func (npi *NetworkPolicyIngester) setupNetworkPolicyInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if np, ok := obj.(*networkingv1.NetworkPolicy); ok {
 				npi.sendNetworkPolicy(np, "DELETE")
 			}

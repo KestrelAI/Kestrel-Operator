@@ -117,6 +117,7 @@ func (psm *PodStatusMonitor) setupPodInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if pod, ok := obj.(*corev1.Pod); ok {
 				// Send deletion if pod was in problematic state
 				if psm.isPodProblematic(pod) {

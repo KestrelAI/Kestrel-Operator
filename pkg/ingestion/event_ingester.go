@@ -95,6 +95,7 @@ func (ei *EventIngester) setupEventInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if event, ok := obj.(*corev1.Event); ok {
 				// Track deletion of warning events
 				if event.Type == corev1.EventTypeWarning {
