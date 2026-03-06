@@ -188,7 +188,7 @@ func fieldValue(f zapcore.Field) interface{} {
 		}
 		return time.Unix(0, f.Integer).Format(time.RFC3339Nano)
 	case zapcore.StringerType:
-		if s, ok := f.Interface.(fmt.Stringer); ok {
+		if s, ok := f.Interface.(fmt.Stringer); ok && s != nil {
 			return s.String()
 		}
 		return fmt.Sprintf("%v", f.Interface)

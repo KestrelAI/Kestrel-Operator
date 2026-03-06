@@ -60,6 +60,9 @@ type ServerConfig struct {
 	ClientKeyFile  string
 	CACertFile     string
 	ServerName     string // For SNI and certificate verification
+	// InsecureSkipVerify skips server certificate verification (for on-prem)
+	// When true, still uses TLS encryption but doesn't verify server cert hostname
+	InsecureSkipVerify bool
 }
 
 // StreamClient is the client for streaming data to and from the server
@@ -354,15 +357,22 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{clientCert},
-		RootCAs:      caCertPool,
-		ServerName:   config.ServerName,
+		Certificates:       []tls.Certificate{clientCert},
+		RootCAs:            caCertPool,
+		ServerName:         config.ServerName,
+		InsecureSkipVerify: config.InsecureSkipVerify,
 	}
 
 	creds = credentials.NewTLS(tlsConfig)
-	logger.Info("Using mTLS with client certificate authentication",
-		zap.String("client_cert", config.ClientCertFile),
-		zap.String("server_name", config.ServerName))
+	if config.InsecureSkipVerify {
+		logger.Info("Using TLS with client certificate (server verification DISABLED - on-prem mode)",
+			zap.String("client_cert", config.ClientCertFile),
+			zap.String("server_name", config.ServerName))
+	} else {
+		logger.Info("Using mTLS with client certificate authentication",
+			zap.String("client_cert", config.ClientCertFile),
+			zap.String("server_name", config.ServerName))
+	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
 	// Add keepalive parameters for long-lived streams (24 hours)
@@ -497,8 +507,11 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	caCertFile := getEnvOrDefault("CA_CERT_FILE", "/tls/ca.crt")
 	serverName := getEnvOrDefault("SERVER_NAME", host)
 
+	// TLS verification configuration (for on-prem deployments)
+	insecureSkipVerify := getEnvOrDefault("TLS_INSECURE_SKIP_VERIFY", "false") == "true"
+
 	// Log certificate file paths for debugging
-	log.Printf("Certificate file paths: cert=%s, key=%s, ca=%s", clientCertFile, clientKeyFile, caCertFile)
+	log.Printf("Certificate file paths: cert=%s, key=%s, ca=%s, insecureSkipVerify=%v", clientCertFile, clientKeyFile, caCertFile, insecureSkipVerify)
 
 	// Token loading strategy: Check runtime secret first, fallback to Helm-managed secret
 	token, err := loadTokenWithFallback()
@@ -522,8 +535,9 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 		Token:          token,
 		ClientCertFile: clientCertFile,
 		ClientKeyFile:  clientKeyFile,
-		CACertFile:     caCertFile,
-		ServerName:     serverName,
+		CACertFile:         caCertFile,
+		ServerName:         serverName,
+		InsecureSkipVerify: insecureSkipVerify,
 	}, nil
 }
 
@@ -663,9 +677,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	podStatusChan := make(chan *v1.PodStatusChange, 2000)
 	nodeConditionChan := make(chan *v1.NodeConditionChange, 500)
 	rolloutStatusChan := make(chan *v1.WorkloadRolloutStatus, 1000)
-	// Pod log streaming disabled — the unbounded goroutine-per-pod design causes
-	// OOM on large clusters. Pass nil channel to sendIncidentData (nil channels
-	// block forever in select, so the case is effectively disabled).
+	// Pod log streaming disabled.
 	var podLogsChan chan *v1.PodLogs
 
 	// Create a new stream service client

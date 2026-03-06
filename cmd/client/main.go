@@ -21,10 +21,15 @@ func main() {
 	// Set up operator log streaming channels (long-lived, survive gRPC reconnections)
 	operatorLogEntryCh := make(chan *v1.LogEntry, operatorlog.DefaultEntryChanSize)
 	operatorLogBatchCh := make(chan *v1.PodLogs, operatorlog.DefaultBatchChanSize)
+	// Two-phase operator log streaming:
+	// - streamingEnabled: controls log capture into the channel (true from start
+	//   so startup logs are buffered and not lost)
+	// - sendingEnabled:   controls gRPC delivery (false until initial inventory
+	//   sync completes, to avoid contending with the sync on sendMu)
 	streamingEnabled := &atomic.Bool{}
-	streamingEnabled.Store(true) // Capture enabled from the start so startup logs buffer in channels
+	streamingEnabled.Store(true)
 	sendingEnabled := &atomic.Bool{}
-	sendingEnabled.Store(false) // Sending disabled until initial sync completes
+	sendingEnabled.Store(false)
 
 	// Build tee core: logs go to both stderr (JSON) and the streaming channel
 	baseCore := zapcore.NewCore(

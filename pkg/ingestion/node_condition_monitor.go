@@ -62,8 +62,6 @@ func (ncm *NodeConditionMonitor) StartSync(ctx context.Context, syncDone chan<- 
 	// Set up node informer - AddFunc will be called for all existing nodes during cache sync
 	ncm.setupNodeInformer()
 
-	// Start periodic reconciliation to clean up stale state map entries
-	go ncm.startReconcileLoop(ctx)
 
 	// Signal that setup is complete
 	if syncDone != nil {
