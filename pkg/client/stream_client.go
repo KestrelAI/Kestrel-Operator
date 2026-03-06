@@ -422,10 +422,13 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
-	// Add keepalive parameters for long-lived streams (24 hours)
+	// Add keepalive parameters for long-lived streams.
+	// Time is set to 30s to keep streams alive through GCP load balancer
+	// idle timeouts (~60s per-stream), since connection-level pings don't
+	// prevent per-stream idle resets.
 	opts = append(opts, grpc.WithKeepaliveParams(keepalive.ClientParameters{
-		Time:                5 * time.Minute,  // Send pings every 5 minutes during idle
-		Timeout:             30 * time.Second, // Wait 30 seconds for ping response
+		Time:                30 * time.Second, // Send pings every 30s to prevent LB idle stream resets
+		Timeout:             10 * time.Second, // Wait 10 seconds for ping response
 		PermitWithoutStream: true,             // Send pings even without active streams
 	}))
 
@@ -1414,18 +1417,9 @@ func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, s
 	go s.handleServerMessages(ctx, stream, done)
 
 	// Start goroutine to handle incoming control messages (tool requests) from server.
-	// Control stream errors are non-fatal — the operator falls back to handling
-	// tool requests on the data stream. We do NOT feed into `done` here.
-	go func() {
-		controlDone := make(chan error, 1)
-		s.handleControlMessages(ctx, controlStream, controlDone)
-		// Log but don't propagate — data stream stays alive
-		select {
-		case err := <-controlDone:
-			s.Logger.Warn("Control stream ended, falling back to data stream for tool requests", zap.Error(err))
-		default:
-		}
-	}()
+	// If the control stream dies, it feeds into `done` and tears down everything —
+	// both streams reconnect together to stay in sync.
+	go s.handleControlMessages(ctx, controlStream, done)
 
 	// Start goroutine to collect flow data and send to server
 	go s.sendFlowData(ctx, stream, flowChan, done)
