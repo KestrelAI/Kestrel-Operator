@@ -21,18 +21,25 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	StreamService_StreamData_FullMethodName    = "/cloud.v1.StreamService/StreamData"
 	StreamService_StreamControl_FullMethodName = "/cloud.v1.StreamService/StreamControl"
+	StreamService_StreamFlows_FullMethodName   = "/cloud.v1.StreamService/StreamFlows"
+	StreamService_StreamEvents_FullMethodName  = "/cloud.v1.StreamService/StreamEvents"
 )
 
 // StreamServiceClient is the client API for StreamService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Service definition with bi-directional streaming RPC
+// Service definition with bi-directional streaming RPCs.
+// The operator opens 4 streams on a single gRPC connection:
+//   - StreamData:    K8s resource inventory (workloads, pods, services, etc.)
+//   - StreamFlows:   Network flow data (Cilium L3/L4 + Envoy L7)
+//   - StreamControl: Tool calls (K8s API, shell, YAML, certs, etc.)
+//   - StreamEvents:  K8s events, pod status changes, node conditions, rollout status
 type StreamServiceClient interface {
-	// Bi-directional streaming RPC for telemetry data (flows, inventory, incidents)
 	StreamData(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamDataRequest, StreamDataResponse], error)
-	// Bi-directional streaming RPC for tool calls (K8s API, shell, YAML, etc.)
 	StreamControl(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamControlRequest, StreamControlResponse], error)
+	StreamFlows(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamFlowsRequest, StreamFlowsResponse], error)
+	StreamEvents(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamEventsRequest, StreamEventsResponse], error)
 }
 
 type streamServiceClient struct {
@@ -69,16 +76,47 @@ func (c *streamServiceClient) StreamControl(ctx context.Context, opts ...grpc.Ca
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StreamService_StreamControlClient = grpc.BidiStreamingClient[StreamControlRequest, StreamControlResponse]
 
+func (c *streamServiceClient) StreamFlows(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamFlowsRequest, StreamFlowsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &StreamService_ServiceDesc.Streams[2], StreamService_StreamFlows_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamFlowsRequest, StreamFlowsResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StreamService_StreamFlowsClient = grpc.BidiStreamingClient[StreamFlowsRequest, StreamFlowsResponse]
+
+func (c *streamServiceClient) StreamEvents(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamEventsRequest, StreamEventsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &StreamService_ServiceDesc.Streams[3], StreamService_StreamEvents_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamEventsRequest, StreamEventsResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StreamService_StreamEventsClient = grpc.BidiStreamingClient[StreamEventsRequest, StreamEventsResponse]
+
 // StreamServiceServer is the server API for StreamService service.
 // All implementations must embed UnimplementedStreamServiceServer
 // for forward compatibility.
 //
-// Service definition with bi-directional streaming RPC
+// Service definition with bi-directional streaming RPCs.
+// The operator opens 4 streams on a single gRPC connection:
+//   - StreamData:    K8s resource inventory (workloads, pods, services, etc.)
+//   - StreamFlows:   Network flow data (Cilium L3/L4 + Envoy L7)
+//   - StreamControl: Tool calls (K8s API, shell, YAML, certs, etc.)
+//   - StreamEvents:  K8s events, pod status changes, node conditions, rollout status
 type StreamServiceServer interface {
-	// Bi-directional streaming RPC for telemetry data (flows, inventory, incidents)
 	StreamData(grpc.BidiStreamingServer[StreamDataRequest, StreamDataResponse]) error
-	// Bi-directional streaming RPC for tool calls (K8s API, shell, YAML, etc.)
 	StreamControl(grpc.BidiStreamingServer[StreamControlRequest, StreamControlResponse]) error
+	StreamFlows(grpc.BidiStreamingServer[StreamFlowsRequest, StreamFlowsResponse]) error
+	StreamEvents(grpc.BidiStreamingServer[StreamEventsRequest, StreamEventsResponse]) error
 	mustEmbedUnimplementedStreamServiceServer()
 }
 
@@ -94,6 +132,12 @@ func (UnimplementedStreamServiceServer) StreamData(grpc.BidiStreamingServer[Stre
 }
 func (UnimplementedStreamServiceServer) StreamControl(grpc.BidiStreamingServer[StreamControlRequest, StreamControlResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamControl not implemented")
+}
+func (UnimplementedStreamServiceServer) StreamFlows(grpc.BidiStreamingServer[StreamFlowsRequest, StreamFlowsResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamFlows not implemented")
+}
+func (UnimplementedStreamServiceServer) StreamEvents(grpc.BidiStreamingServer[StreamEventsRequest, StreamEventsResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamEvents not implemented")
 }
 func (UnimplementedStreamServiceServer) mustEmbedUnimplementedStreamServiceServer() {}
 func (UnimplementedStreamServiceServer) testEmbeddedByValue()                       {}
@@ -130,6 +174,20 @@ func _StreamService_StreamControl_Handler(srv interface{}, stream grpc.ServerStr
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StreamService_StreamControlServer = grpc.BidiStreamingServer[StreamControlRequest, StreamControlResponse]
 
+func _StreamService_StreamFlows_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(StreamServiceServer).StreamFlows(&grpc.GenericServerStream[StreamFlowsRequest, StreamFlowsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StreamService_StreamFlowsServer = grpc.BidiStreamingServer[StreamFlowsRequest, StreamFlowsResponse]
+
+func _StreamService_StreamEvents_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(StreamServiceServer).StreamEvents(&grpc.GenericServerStream[StreamEventsRequest, StreamEventsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StreamService_StreamEventsServer = grpc.BidiStreamingServer[StreamEventsRequest, StreamEventsResponse]
+
 // StreamService_ServiceDesc is the grpc.ServiceDesc for StreamService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -147,6 +205,18 @@ var StreamService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "StreamControl",
 			Handler:       _StreamService_StreamControl_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "StreamFlows",
+			Handler:       _StreamService_StreamFlows_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "StreamEvents",
+			Handler:       _StreamService_StreamEvents_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
