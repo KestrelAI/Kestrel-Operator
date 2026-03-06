@@ -23,6 +23,7 @@ const (
 	StreamService_StreamControl_FullMethodName = "/cloud.v1.StreamService/StreamControl"
 	StreamService_StreamFlows_FullMethodName   = "/cloud.v1.StreamService/StreamFlows"
 	StreamService_StreamEvents_FullMethodName  = "/cloud.v1.StreamService/StreamEvents"
+	StreamService_StreamLogs_FullMethodName    = "/cloud.v1.StreamService/StreamLogs"
 )
 
 // StreamServiceClient is the client API for StreamService service.
@@ -30,16 +31,18 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // Service definition with bi-directional streaming RPCs.
-// The operator opens 4 streams on a single gRPC connection:
+// The operator opens up to 5 streams on a single gRPC connection:
 //   - StreamData:    K8s resource inventory (workloads, pods, services, etc.)
 //   - StreamFlows:   Network flow data (Cilium L3/L4 + Envoy L7)
 //   - StreamControl: Tool calls (K8s API, shell, YAML, certs, etc.)
 //   - StreamEvents:  K8s events, pod status changes, node conditions, rollout status
+//   - StreamLogs:    Pod logs and operator logs
 type StreamServiceClient interface {
 	StreamData(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamDataRequest, StreamDataResponse], error)
 	StreamControl(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamControlRequest, StreamControlResponse], error)
 	StreamFlows(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamFlowsRequest, StreamFlowsResponse], error)
 	StreamEvents(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamEventsRequest, StreamEventsResponse], error)
+	StreamLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamLogsRequest, StreamLogsResponse], error)
 }
 
 type streamServiceClient struct {
@@ -102,21 +105,36 @@ func (c *streamServiceClient) StreamEvents(ctx context.Context, opts ...grpc.Cal
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StreamService_StreamEventsClient = grpc.BidiStreamingClient[StreamEventsRequest, StreamEventsResponse]
 
+func (c *streamServiceClient) StreamLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamLogsRequest, StreamLogsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &StreamService_ServiceDesc.Streams[4], StreamService_StreamLogs_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamLogsRequest, StreamLogsResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StreamService_StreamLogsClient = grpc.BidiStreamingClient[StreamLogsRequest, StreamLogsResponse]
+
 // StreamServiceServer is the server API for StreamService service.
 // All implementations must embed UnimplementedStreamServiceServer
 // for forward compatibility.
 //
 // Service definition with bi-directional streaming RPCs.
-// The operator opens 4 streams on a single gRPC connection:
+// The operator opens up to 5 streams on a single gRPC connection:
 //   - StreamData:    K8s resource inventory (workloads, pods, services, etc.)
 //   - StreamFlows:   Network flow data (Cilium L3/L4 + Envoy L7)
 //   - StreamControl: Tool calls (K8s API, shell, YAML, certs, etc.)
 //   - StreamEvents:  K8s events, pod status changes, node conditions, rollout status
+//   - StreamLogs:    Pod logs and operator logs
 type StreamServiceServer interface {
 	StreamData(grpc.BidiStreamingServer[StreamDataRequest, StreamDataResponse]) error
 	StreamControl(grpc.BidiStreamingServer[StreamControlRequest, StreamControlResponse]) error
 	StreamFlows(grpc.BidiStreamingServer[StreamFlowsRequest, StreamFlowsResponse]) error
 	StreamEvents(grpc.BidiStreamingServer[StreamEventsRequest, StreamEventsResponse]) error
+	StreamLogs(grpc.BidiStreamingServer[StreamLogsRequest, StreamLogsResponse]) error
 	mustEmbedUnimplementedStreamServiceServer()
 }
 
@@ -138,6 +156,9 @@ func (UnimplementedStreamServiceServer) StreamFlows(grpc.BidiStreamingServer[Str
 }
 func (UnimplementedStreamServiceServer) StreamEvents(grpc.BidiStreamingServer[StreamEventsRequest, StreamEventsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamEvents not implemented")
+}
+func (UnimplementedStreamServiceServer) StreamLogs(grpc.BidiStreamingServer[StreamLogsRequest, StreamLogsResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamLogs not implemented")
 }
 func (UnimplementedStreamServiceServer) mustEmbedUnimplementedStreamServiceServer() {}
 func (UnimplementedStreamServiceServer) testEmbeddedByValue()                       {}
@@ -188,6 +209,13 @@ func _StreamService_StreamEvents_Handler(srv interface{}, stream grpc.ServerStre
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StreamService_StreamEventsServer = grpc.BidiStreamingServer[StreamEventsRequest, StreamEventsResponse]
 
+func _StreamService_StreamLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(StreamServiceServer).StreamLogs(&grpc.GenericServerStream[StreamLogsRequest, StreamLogsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StreamService_StreamLogsServer = grpc.BidiStreamingServer[StreamLogsRequest, StreamLogsResponse]
+
 // StreamService_ServiceDesc is the grpc.ServiceDesc for StreamService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -217,6 +245,12 @@ var StreamService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "StreamEvents",
 			Handler:       _StreamService_StreamEvents_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "StreamLogs",
+			Handler:       _StreamService_StreamLogs_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

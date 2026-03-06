@@ -1375,15 +1375,31 @@ message StreamEventsResponse {
   }
 }
 
+// StreamLogsRequest carries pod logs and operator logs on the dedicated logs stream.
+message StreamLogsRequest {
+  oneof request {
+    PodLogs pod_logs = 1;
+  }
+}
+
+// StreamLogsResponse carries server messages back to operator on the logs stream.
+message StreamLogsResponse {
+  oneof response {
+    Heartbeat heartbeat = 1;
+  }
+}
+
 // Service definition with bi-directional streaming RPCs.
-// The operator opens 4 streams on a single gRPC connection:
+// The operator opens up to 5 streams on a single gRPC connection:
 //   - StreamData:    K8s resource inventory (workloads, pods, services, etc.)
 //   - StreamFlows:   Network flow data (Cilium L3/L4 + Envoy L7)
 //   - StreamControl: Tool calls (K8s API, shell, YAML, certs, etc.)
 //   - StreamEvents:  K8s events, pod status changes, node conditions, rollout status
+//   - StreamLogs:    Pod logs and operator logs
 service StreamService {
   rpc StreamData(stream StreamDataRequest) returns (stream StreamDataResponse) {}
   rpc StreamControl(stream StreamControlRequest) returns (stream StreamControlResponse) {}
   rpc StreamFlows(stream StreamFlowsRequest) returns (stream StreamFlowsResponse) {}
   rpc StreamEvents(stream StreamEventsRequest) returns (stream StreamEventsResponse) {}
+  rpc StreamLogs(stream StreamLogsRequest) returns (stream StreamLogsResponse) {}
 }

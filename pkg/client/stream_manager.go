@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// StreamType identifies one of the 4 independent gRPC streams.
+// StreamType identifies one of the 5 independent gRPC streams.
 type StreamType string
 
 const (
@@ -22,10 +22,11 @@ const (
 	StreamTypeFlows   StreamType = "flows"
 	StreamTypeControl StreamType = "control"
 	StreamTypeEvents  StreamType = "events"
+	StreamTypeLogs    StreamType = "logs"
 )
 
 // AllStreamTypes lists every stream in the order they should be opened.
-var AllStreamTypes = []StreamType{StreamTypeData, StreamTypeFlows, StreamTypeControl, StreamTypeEvents}
+var AllStreamTypes = []StreamType{StreamTypeData, StreamTypeFlows, StreamTypeControl, StreamTypeEvents, StreamTypeLogs}
 
 // StreamHealth holds per-stream health information.
 type StreamHealth struct {
@@ -238,6 +239,44 @@ func (sm *StreamManager) handleEventsHeartbeats(ctx context.Context, stream v1.S
 				return
 			}
 			// Heartbeat received — stream is alive
+		}
+	}
+}
+
+// openLogsStream opens the StreamLogs RPC. Returns nil stream if server doesn't support it.
+func (sm *StreamManager) openLogsStream(ctx context.Context) (v1.StreamService_StreamLogsClient, error) {
+	ctxWithMetadata, err := sm.client.createContextWithTenantMetadata(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tenant context for logs stream: %w", err)
+	}
+	stream, err := sm.streamClient.StreamLogs(ctxWithMetadata)
+	if err != nil {
+		if isUnimplemented(err) {
+			sm.logger.Warn("Server does not support StreamLogs, falling back to data stream")
+			sm.setFallback(StreamTypeLogs)
+			return nil, nil
+		}
+		return nil, err
+	}
+	sm.setHealthy(StreamTypeLogs)
+	sm.logger.Info("Logs stream established successfully")
+	return stream, nil
+}
+
+// handleLogsHeartbeats receives heartbeat messages on the logs stream.
+// If the stream dies, marks it unhealthy but does NOT tear down other streams.
+func (sm *StreamManager) handleLogsHeartbeats(ctx context.Context, stream v1.StreamService_StreamLogsClient) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			_, err := stream.Recv()
+			if err != nil {
+				sm.setUnhealthy(StreamTypeLogs, err)
+				sm.logger.Warn("Logs stream error", zap.Error(err))
+				return
+			}
 		}
 	}
 }

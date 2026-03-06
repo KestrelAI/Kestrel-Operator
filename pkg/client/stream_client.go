@@ -108,6 +108,8 @@ type StreamClient struct {
 	streamManager  *StreamManager
 	eventsStream   v1.StreamService_StreamEventsClient // set when events stream is opened
 	eventsStreamMu sync.RWMutex                        // protects eventsStream reads/writes
+	logsStream     v1.StreamService_StreamLogsClient   // set when logs stream is opened
+	logsStreamMu   sync.RWMutex                        // protects logsStream reads/writes
 }
 
 const (
@@ -1209,6 +1211,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			sm.setFallback(StreamTypeEvents)
 		}
 
+		// Open logs stream (for pod logs and operator logs)
+		logsStream, err := sm.openLogsStream(attemptCtx)
+		if err != nil {
+			s.Logger.Warn("Failed to create logs stream, falling back to data stream for logs", zap.Error(err))
+			sm.setFallback(StreamTypeLogs)
+		}
+
 		// Start exporting Cilium flows with context (only if Cilium is available)
 		if flowCollector != nil {
 			flowCtx, flowCancel := context.WithCancel(ctx)
@@ -1220,8 +1229,8 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			s.Logger.Info("Cilium flow collection disabled, continuing without network flow data")
 		}
 
-		// Handle bidirectional streaming with all 4 streams
-		return s.handleBidirectionalStreams(ctx, stream, controlStream, flowsStream, eventsStream, sm, flowChan, inventoryDone, incidentDone, l7FlowChan)
+		// Handle bidirectional streaming with all 5 streams
+		return s.handleBidirectionalStreams(ctx, stream, controlStream, flowsStream, eventsStream, logsStream, sm, flowChan, inventoryDone, incidentDone, l7FlowChan)
 	}
 
 	// Use the retry logic to handle stream reconnection
@@ -1457,10 +1466,10 @@ func (s *StreamClient) exportCiliumFlows(ctx context.Context, flowCollector *cil
 	}
 }
 
-// handleBidirectionalStreams manages all 4 independent gRPC streams.
+// handleBidirectionalStreams manages all 5 independent gRPC streams.
 // Data and control stream errors trigger a full reconnect.
-// Flows and events stream errors only mark those streams as degraded.
-func (s *StreamClient) handleBidirectionalStreams(ctx context.Context, stream v1.StreamService_StreamDataClient, controlStream v1.StreamService_StreamControlClient, flowsStream v1.StreamService_StreamFlowsClient, eventsStream v1.StreamService_StreamEventsClient, sm *StreamManager, flowChan chan smartcache.FlowCount, inventoryDone <-chan error, incidentDone <-chan error, l7FlowChan <-chan smartcache.L7Flow) error {
+// Flows, events, and logs stream errors only mark those streams as degraded.
+func (s *StreamClient) handleBidirectionalStreams(ctx context.Context, stream v1.StreamService_StreamDataClient, controlStream v1.StreamService_StreamControlClient, flowsStream v1.StreamService_StreamFlowsClient, eventsStream v1.StreamService_StreamEventsClient, logsStream v1.StreamService_StreamLogsClient, sm *StreamManager, flowChan chan smartcache.FlowCount, inventoryDone <-chan error, incidentDone <-chan error, l7FlowChan <-chan smartcache.L7Flow) error {
 	// Fatal errors (data/control stream) trigger full reconnect
 	done := make(chan error, 1)
 
@@ -1493,16 +1502,21 @@ func (s *StreamClient) handleBidirectionalStreams(ctx context.Context, stream v1
 	}
 
 	// --- Events stream (independent lifecycle) ---
-	// Note: Events are currently sent by sendIncidentData which also handles PodLogs
-	// and operator logs. Events (K8s events, pod status, node conditions, rollout status)
-	// go on the events stream. PodLogs and operator logs stay on the data stream.
+	// Events (K8s events, pod status, node conditions, rollout status) go on the events stream.
 	if eventsStream != nil && !sm.IsFallback(StreamTypeEvents) {
-		// Store events stream on client so sendIncidentData can route events there
 		s.eventsStreamMu.Lock()
 		s.eventsStream = eventsStream
 		s.eventsStreamMu.Unlock()
-		// Receive heartbeats on events stream
 		go sm.handleEventsHeartbeats(ctx, eventsStream)
+	}
+
+	// --- Logs stream (independent lifecycle) ---
+	// Pod logs and operator logs go on the dedicated logs stream.
+	if logsStream != nil && !sm.IsFallback(StreamTypeLogs) {
+		s.logsStreamMu.Lock()
+		s.logsStream = logsStream
+		s.logsStreamMu.Unlock()
+		go sm.handleLogsHeartbeats(ctx, logsStream)
 	}
 
 	// Start periodic token renewal to ensure tokens are refreshed during long-lived connections
@@ -2445,6 +2459,26 @@ func (s *StreamClient) sendEventOrFallback(
 	return sendOnData()
 }
 
+// sendPodLogsOrFallback routes pod logs to the dedicated logs stream if available,
+// otherwise falls back to the data stream.
+func (s *StreamClient) sendPodLogsOrFallback(dataStream v1.StreamService_StreamDataClient, podLogs *v1.PodLogs) error {
+	s.logsStreamMu.RLock()
+	ls := s.logsStream
+	s.logsStreamMu.RUnlock()
+
+	if ls != nil && s.streamManager != nil && !s.streamManager.IsFallback(StreamTypeLogs) && s.streamManager.IsStreamHealthy(StreamTypeLogs) {
+		if err := s.sendPodLogsOnLogsStream(ls, podLogs); err != nil {
+			s.streamManager.setUnhealthy(StreamTypeLogs, err)
+			s.Logger.Warn("Logs stream send failed, falling back to data stream", zap.Error(err))
+			// Fall through to data stream
+		} else {
+			return nil
+		}
+	}
+	// Fallback to data stream
+	return s.sendPodLogsToServer(dataStream, podLogs)
+}
+
 // sendIncidentData collects incident detection data and sends it to the server
 func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, operatorLogsChan <-chan *v1.PodLogs, done chan<- error) {
 	// Operator log send gating: start with nil channel (select ignores nil channels).
@@ -2595,7 +2629,7 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 			case <-ctx.Done():
 				return
 			default:
-				if err := s.sendPodLogsToServer(stream, podLogs); err != nil {
+				if err := s.sendPodLogsOrFallback(stream, podLogs); err != nil {
 					s.Logger.Error("Failed to send pod logs data", zap.Error(err))
 					select {
 					case done <- err:
@@ -2618,7 +2652,7 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 			case <-ctx.Done():
 				return
 			default:
-				if err := s.sendPodLogsToServer(stream, operatorLogs); err != nil {
+				if err := s.sendPodLogsOrFallback(stream, operatorLogs); err != nil {
 					s.Logger.Warn("Failed to send operator logs data (best-effort, continuing)", zap.Error(err))
 				}
 			}
