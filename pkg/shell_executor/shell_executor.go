@@ -3,6 +3,7 @@ package shell_executor
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -20,9 +21,41 @@ type ShellExecutor struct {
 
 // NewShellExecutor creates a new shell command executor
 func NewShellExecutor(logger *zap.Logger) *ShellExecutor {
+	// Validate in-cluster connectivity at startup for early visibility
+	host := os.Getenv("KUBERNETES_SERVICE_HOST")
+	port := os.Getenv("KUBERNETES_SERVICE_PORT")
+	if host == "" || port == "" {
+		logger.Warn("KUBERNETES_SERVICE_HOST/PORT not set in operator environment — kubectl commands will use kubernetes.default.svc fallback")
+	}
+	if _, err := os.Stat("/var/run/secrets/kubernetes.io/serviceaccount/token"); err != nil {
+		logger.Warn("Service account token not found — kubectl commands may fail", zap.Error(err))
+	}
 	return &ShellExecutor{
 		Logger: logger,
 	}
+}
+
+// appendInClusterEnv ensures KUBERNETES_SERVICE_HOST and KUBERNETES_SERVICE_PORT
+// are present in the environment. These are normally injected by K8s into every pod,
+// but can be missing if enableServiceLinks is false on the pod spec. Without them,
+// kubectl falls back to localhost:8080 which hits the operator's own gRPC port.
+func appendInClusterEnv(env []string) []string {
+	hasHost, hasPort := false, false
+	for _, e := range env {
+		if strings.HasPrefix(e, "KUBERNETES_SERVICE_HOST=") {
+			hasHost = true
+		}
+		if strings.HasPrefix(e, "KUBERNETES_SERVICE_PORT=") {
+			hasPort = true
+		}
+	}
+	if !hasHost {
+		env = append(env, "KUBERNETES_SERVICE_HOST=kubernetes.default.svc")
+	}
+	if !hasPort {
+		env = append(env, "KUBERNETES_SERVICE_PORT=443")
+	}
+	return env
 }
 
 // parseShellArgs splits a command line into arguments, honouring quoting
@@ -202,10 +235,9 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, command string) *v1.
 		cmd = exec.CommandContext(ctx, parts[0], parts[1:]...)
 	}
 
-	// NOTE: Do NOT set KUBERNETES_MASTER env var here. It overrides in-cluster
-	// config and bypasses service account token auth, causing "error: EOF" /
-	// username prompts. In-cluster pods already discover the API server via
-	// KUBERNETES_SERVICE_HOST/PORT + the mounted service account token.
+	// Ensure KUBERNETES_SERVICE_HOST/PORT are in the subprocess environment.
+	// This fixes kubectl falling back to localhost:8080 when enableServiceLinks is false.
+	cmd.Env = appendInClusterEnv(os.Environ())
 
 	// Execute the command and capture output
 	stdout, err := cmd.Output()

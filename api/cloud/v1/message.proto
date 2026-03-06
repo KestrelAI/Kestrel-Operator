@@ -43,6 +43,8 @@ message StreamDataRequest {
     OTelMetricBatch otel_metric_batch = 23;
     // Response to server's metrics query
     MetricsQueryResponse metrics_query_response = 24;
+    // Operator resource usage stats for Grafana dashboards
+    OperatorStats operator_stats = 25;
   }
 }
 
@@ -1278,8 +1280,63 @@ message OTelMetricBatch {
 }
 
 
+// StreamControlRequest carries tool responses from operator to server on the control stream.
+// New operators send tool responses here instead of on the data stream.
+message StreamControlRequest {
+  oneof request {
+    KubernetesAPIResponse kubernetes_api_response = 1;
+    ShellCommandResponse shell_command_response = 2;
+    YamlDryRunResponse yaml_dry_run_response = 3;
+    YamlApplyResponse yaml_apply_response = 4;
+    CertificateRenewalResponse certificate_renewal_response = 5;
+    OperatorRestartResponse operator_restart_response = 6;
+    MetricsQueryResponse metrics_query_response = 7;
+  }
+}
+
+// StreamControlResponse carries tool requests from server to operator on the control stream.
+// New operators receive tool requests here instead of on the data stream.
+message StreamControlResponse {
+  oneof response {
+    KubernetesAPIRequest kubernetes_api_request = 1;
+    ShellCommandRequest shell_command_request = 2;
+    YamlDryRunRequest yaml_dry_run_request = 3;
+    YamlApplyRequest yaml_apply_request = 4;
+    CertificateRenewalRequest certificate_renewal_request = 5;
+    OperatorRestartRequest operator_restart_request = 6;
+    MetricsQueryRequest metrics_query_request = 7;
+  }
+}
+
+// OperatorStats reports the operator's resource usage to the server for Grafana dashboards.
+// Sent periodically on the data stream. No database storage — purely for OTEL metrics.
+message OperatorStats {
+  google.protobuf.Timestamp timestamp = 1;
+  // Go runtime
+  int64 memory_alloc_bytes = 2;       // runtime.MemStats.Alloc
+  int64 memory_sys_bytes = 3;         // runtime.MemStats.Sys
+  int64 memory_heap_inuse_bytes = 4;  // runtime.MemStats.HeapInuse
+  uint32 num_goroutines = 5;          // runtime.NumGoroutine()
+  uint32 num_gc_cycles = 6;           // runtime.MemStats.NumGC
+  // Container-level (cgroup)
+  int64 cpu_usage_nano_cores = 7;
+  int64 memory_usage_bytes = 8;       // container RSS
+  int64 cpu_limit_nano_cores = 9;
+  int64 memory_limit_bytes = 10;
+  // Stream health
+  bool data_stream_healthy = 11;
+  bool control_stream_healthy = 12;
+  int64 total_messages_sent = 13;
+  int64 total_messages_dropped = 14;
+  // Informer sync status
+  uint32 informers_synced = 15;       // count of synced informers
+  uint32 informers_total = 16;        // total informer count
+}
+
 // Service definition with bi-directional streaming RPC
 service StreamService {
-  // Bi-directional streaming RPC
+  // Bi-directional streaming RPC for telemetry data (flows, inventory, incidents)
   rpc StreamData(stream StreamDataRequest) returns (stream StreamDataResponse) {}
+  // Bi-directional streaming RPC for tool calls (K8s API, shell, YAML, etc.)
+  rpc StreamControl(stream StreamControlRequest) returns (stream StreamControlResponse) {}
 }
