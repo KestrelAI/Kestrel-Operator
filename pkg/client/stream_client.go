@@ -1383,27 +1383,29 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 			// Log all received messages for debugging
 			s.Logger.Debug("Received message from server", zap.String("message_type", fmt.Sprintf("%T", response.Response)))
 
-			// Handle the response based on its type
+			// Handle the response based on its type.
+			// Long-running handlers (API requests, shell commands, etc.) are dispatched
+			// as goroutines so they don't block the receive loop. protectedSend already
+			// serializes outbound messages via sendMu, so concurrent sends are safe.
 			switch resp := response.Response.(type) {
 			case *v1.StreamDataResponse_Ack:
-				// Server ACK is no longer needed for policy application
 				s.Logger.Debug("Received acknowledgment from server")
 			case *v1.StreamDataResponse_NetworkPolicy:
 				s.handleNetworkPolicy(ctx, stream, k8sClient, resp.NetworkPolicy)
 			case *v1.StreamDataResponse_KubernetesApiRequest:
-				s.handleKubernetesAPIRequest(ctx, stream, resp.KubernetesApiRequest)
+				go s.handleKubernetesAPIRequest(ctx, stream, resp.KubernetesApiRequest)
 			case *v1.StreamDataResponse_ShellCommandRequest:
-				s.handleShellCommandRequest(ctx, stream, resp.ShellCommandRequest)
+				go s.handleShellCommandRequest(ctx, stream, resp.ShellCommandRequest)
 			case *v1.StreamDataResponse_YamlDryRunRequest:
-				s.handleYamlDryRunRequest(ctx, stream, resp.YamlDryRunRequest)
+				go s.handleYamlDryRunRequest(ctx, stream, resp.YamlDryRunRequest)
 			case *v1.StreamDataResponse_YamlApplyRequest:
-				s.handleYamlApplyRequest(ctx, stream, resp.YamlApplyRequest)
+				go s.handleYamlApplyRequest(ctx, stream, resp.YamlApplyRequest)
 			case *v1.StreamDataResponse_CertificateRenewalRequest:
 				s.handleCertificateRenewalRequest(ctx, stream, resp.CertificateRenewalRequest)
 			case *v1.StreamDataResponse_OperatorRestartRequest:
 				s.handleOperatorRestartRequest(ctx, stream, resp.OperatorRestartRequest)
 			case *v1.StreamDataResponse_MetricsQueryRequest:
-				s.handleMetricsQueryRequest(ctx, stream, resp.MetricsQueryRequest)
+				go s.handleMetricsQueryRequest(ctx, stream, resp.MetricsQueryRequest)
 			default:
 				s.Logger.Warn("Received unhandled message type from server",
 					zap.String("message_type", fmt.Sprintf("%T", response.Response)))
