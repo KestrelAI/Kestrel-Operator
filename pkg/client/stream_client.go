@@ -422,13 +422,12 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
-	// Add keepalive parameters for long-lived streams.
-	// Time is set to 30s to keep streams alive through GCP load balancer
-	// idle timeouts (~60s per-stream), since connection-level pings don't
-	// prevent per-stream idle resets.
+	// Add keepalive parameters for long-lived gRPC connection.
+	// Note: Stream-level keepalive is handled by server-sent heartbeats on
+	// the control stream (every 30s) to prevent LB idle-stream timeouts.
 	opts = append(opts, grpc.WithKeepaliveParams(keepalive.ClientParameters{
-		Time:                30 * time.Second, // Send pings every 30s to prevent LB idle stream resets
-		Timeout:             10 * time.Second, // Wait 10 seconds for ping response
+		Time:                5 * time.Minute,  // Send HTTP/2 pings every 5 minutes during idle
+		Timeout:             30 * time.Second, // Wait 30 seconds for ping response
 		PermitWithoutStream: true,             // Send pings even without active streams
 	}))
 
@@ -1587,6 +1586,8 @@ func (s *StreamClient) handleControlMessages(ctx context.Context, controlStream 
 				s.handleOperatorRestartRequest(ctx, controlStream, resp.OperatorRestartRequest)
 			case *v1.StreamControlResponse_MetricsQueryRequest:
 				go s.handleMetricsQueryRequest(ctx, controlStream, resp.MetricsQueryRequest)
+			case *v1.StreamControlResponse_Heartbeat:
+				s.Logger.Debug("Received heartbeat on control stream")
 			default:
 				s.Logger.Warn("Received unhandled message type on control stream",
 					zap.String("message_type", fmt.Sprintf("%T", response.Response)))

@@ -1305,7 +1305,14 @@ message StreamControlResponse {
     CertificateRenewalRequest certificate_renewal_request = 5;
     OperatorRestartRequest operator_restart_request = 6;
     MetricsQueryRequest metrics_query_request = 7;
+    Heartbeat heartbeat = 8;
   }
+}
+
+// Heartbeat is a lightweight keepalive message sent by the server on the
+// control stream to prevent load balancer idle-stream timeouts.
+message Heartbeat {
+  google.protobuf.Timestamp timestamp = 1;
 }
 
 // OperatorStats reports the operator's resource usage to the server for Grafana dashboards.
