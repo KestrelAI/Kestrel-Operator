@@ -3,7 +3,6 @@ package shell_executor
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -203,15 +202,10 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, command string) *v1.
 		cmd = exec.CommandContext(ctx, parts[0], parts[1:]...)
 	}
 
-	// Ensure kubectl uses the correct API server endpoint and never falls back
-	// to localhost:8080 when discovery cache expires under API server load.
-	if k8sHost := os.Getenv("KUBERNETES_SERVICE_HOST"); k8sHost != "" {
-		k8sPort := os.Getenv("KUBERNETES_SERVICE_PORT")
-		if k8sPort == "" {
-			k8sPort = "443"
-		}
-		cmd.Env = append(os.Environ(), fmt.Sprintf("KUBERNETES_MASTER=https://%s:%s", k8sHost, k8sPort))
-	}
+	// NOTE: Do NOT set KUBERNETES_MASTER env var here. It overrides in-cluster
+	// config and bypasses service account token auth, causing "error: EOF" /
+	// username prompts. In-cluster pods already discover the API server via
+	// KUBERNETES_SERVICE_HOST/PORT + the mounted service account token.
 
 	// Execute the command and capture output
 	stdout, err := cmd.Output()
