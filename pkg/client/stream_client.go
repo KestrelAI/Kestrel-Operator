@@ -1509,13 +1509,29 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 			s.Logger.Debug("Received message from server", zap.String("message_type", fmt.Sprintf("%T", response.Response)))
 
 			// Handle the response based on its type.
-			// Data stream now only handles ACKs and network policy pushes.
-			// Tool requests are handled on the control stream via handleControlMessages.
+			// Tool requests are primarily handled on the control stream, but the
+			// server falls back to the data stream when no control stream exists
+			// (e.g. during startup before the control stream connects). We must
+			// handle them here too for that fallback path.
 			switch resp := response.Response.(type) {
 			case *v1.StreamDataResponse_Ack:
 				s.Logger.Debug("Received acknowledgment from server")
 			case *v1.StreamDataResponse_NetworkPolicy:
 				go s.handleNetworkPolicy(ctx, stream, k8sClient, resp.NetworkPolicy)
+			case *v1.StreamDataResponse_KubernetesApiRequest:
+				go s.handleKubernetesAPIRequestOnDataStream(ctx, stream, resp.KubernetesApiRequest)
+			case *v1.StreamDataResponse_ShellCommandRequest:
+				go s.handleShellCommandRequestOnDataStream(ctx, stream, resp.ShellCommandRequest)
+			case *v1.StreamDataResponse_YamlDryRunRequest:
+				go s.handleYamlDryRunRequestOnDataStream(ctx, stream, resp.YamlDryRunRequest)
+			case *v1.StreamDataResponse_YamlApplyRequest:
+				go s.handleYamlApplyRequestOnDataStream(ctx, stream, resp.YamlApplyRequest)
+			case *v1.StreamDataResponse_MetricsQueryRequest:
+				go s.handleMetricsQueryRequestOnDataStream(ctx, stream, resp.MetricsQueryRequest)
+			case *v1.StreamDataResponse_CertificateRenewalRequest:
+				s.handleCertificateRenewalRequestOnDataStream(ctx, stream, resp.CertificateRenewalRequest)
+			case *v1.StreamDataResponse_OperatorRestartRequest:
+				s.handleOperatorRestartRequestOnDataStream(ctx, stream, resp.OperatorRestartRequest)
 			default:
 				s.Logger.Warn("Received unhandled message type on data stream",
 					zap.String("message_type", fmt.Sprintf("%T", response.Response)))
@@ -3361,6 +3377,132 @@ func (s *StreamClient) GetOTelReceiver() *otel_receiver.OTelReceiverServer {
 }
 
 // monitorInformerHealth periodically checks informer sync status (observability only, no restart)
+// --- Data stream fallback handlers ---
+// These handle tool requests that arrive on the data stream (server fallback
+// when no control stream is registered). They call the same execution logic
+// as the control stream handlers but send responses on the data stream.
+
+func (s *StreamClient) handleKubernetesAPIRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, apiRequest *v1.KubernetesAPIRequest) {
+	s.Logger.Info("Handling Kubernetes API request on data stream (fallback)", zap.String("request_id", apiRequest.RequestId))
+	apiResponse := s.apiExecutor.ExecuteAPIRequests(ctx, apiRequest)
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_KubernetesApiResponse{KubernetesApiResponse: apiResponse},
+	}); err != nil {
+		s.Logger.Error("Failed to send Kubernetes API response on data stream", zap.String("request_id", apiRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleShellCommandRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, shellRequest *v1.ShellCommandRequest) {
+	s.Logger.Info("Handling shell command request on data stream (fallback)", zap.String("request_id", shellRequest.RequestId))
+	shellResponse := s.shellExecutor.ExecuteShellCommands(ctx, shellRequest)
+
+	// Truncate oversized responses (same logic as control stream handler)
+	const maxResponseBytes = 8 * 1024 * 1024
+	totalSize := 0
+	for _, result := range shellResponse.Results {
+		totalSize += len(result.Stdout) + len(result.Stderr)
+	}
+	if totalSize > maxResponseBytes {
+		perResultBudget := maxResponseBytes / len(shellResponse.Results)
+		for _, result := range shellResponse.Results {
+			truncateField := func(field *string) {
+				if len(*field) > perResultBudget {
+					truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit.]", len(*field), perResultBudget)
+					budget := perResultBudget - len(truncatedMsg)
+					if budget < 0 {
+						budget = 0
+					}
+					*field = (*field)[:budget] + truncatedMsg
+				}
+			}
+			truncateField(&result.Stdout)
+			truncateField(&result.Stderr)
+		}
+	}
+
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_ShellCommandResponse{ShellCommandResponse: shellResponse},
+	}); err != nil {
+		s.Logger.Error("Failed to send shell command response on data stream", zap.String("request_id", shellRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleYamlDryRunRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, yamlRequest *v1.YamlDryRunRequest) {
+	s.Logger.Info("Handling YAML dry-run request on data stream (fallback)", zap.String("request_id", yamlRequest.RequestId))
+	yamlValidator, err := ingestion.NewYamlValidator(s.Logger)
+	if err != nil {
+		s.Logger.Error("Failed to create YAML validator", zap.Error(err))
+		yamlResponse := &v1.YamlDryRunResponse{RequestId: yamlRequest.RequestId, GlobalErrorMessage: fmt.Sprintf("Failed to create YAML validator: %v", err)}
+		s.protectedSend(stream, &v1.StreamDataRequest{Request: &v1.StreamDataRequest_YamlDryRunResponse{YamlDryRunResponse: yamlResponse}})
+		return
+	}
+	yamlResponse := yamlValidator.ValidateYamlManifests(ctx, yamlRequest)
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_YamlDryRunResponse{YamlDryRunResponse: yamlResponse},
+	}); err != nil {
+		s.Logger.Error("Failed to send YAML dry-run response on data stream", zap.String("request_id", yamlRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleYamlApplyRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, yamlRequest *v1.YamlApplyRequest) {
+	s.Logger.Info("Handling YAML apply request on data stream (fallback)", zap.String("request_id", yamlRequest.RequestId))
+	results := make([]*v1.YamlApplyResult, 0, len(yamlRequest.YamlManifests))
+	for _, manifest := range yamlRequest.YamlManifests {
+		results = append(results, s.applyYamlManifest(ctx, manifest))
+	}
+	yamlResponse := &v1.YamlApplyResponse{RequestId: yamlRequest.RequestId, Results: results}
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_YamlApplyResponse{YamlApplyResponse: yamlResponse},
+	}); err != nil {
+		s.Logger.Error("Failed to send YAML apply response on data stream", zap.String("request_id", yamlRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleMetricsQueryRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, queryRequest *v1.MetricsQueryRequest) {
+	s.Logger.Info("Handling metrics query request on data stream (fallback)", zap.String("request_id", queryRequest.RequestId))
+	var response *v1.MetricsQueryResponse
+	if s.metricsStore == nil {
+		response = &v1.MetricsQueryResponse{RequestId: queryRequest.RequestId, ErrorMessage: "metrics store not enabled on this operator"}
+	} else {
+		var err error
+		response, err = s.metricsStore.Query(queryRequest)
+		if err != nil {
+			response = &v1.MetricsQueryResponse{RequestId: queryRequest.RequestId, ErrorMessage: err.Error()}
+		}
+	}
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_MetricsQueryResponse{MetricsQueryResponse: response},
+	}); err != nil {
+		s.Logger.Error("Failed to send metrics query response on data stream", zap.String("request_id", queryRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleCertificateRenewalRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, renewalRequest *v1.CertificateRenewalRequest) {
+	s.Logger.Info("Handling certificate renewal request on data stream (fallback)", zap.String("request_id", renewalRequest.RequestId))
+	success, errorMessage := s.applyCertificateRenewal(ctx, renewalRequest)
+	response := &v1.CertificateRenewalResponse{
+		RequestId: renewalRequest.RequestId, Success: success, ErrorMessage: errorMessage, AppliedAt: timestamppb.Now(),
+	}
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_CertificateRenewalResponse{CertificateRenewalResponse: response},
+	}); err != nil {
+		s.Logger.Error("Failed to send certificate renewal response on data stream", zap.String("request_id", renewalRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleOperatorRestartRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, restartRequest *v1.OperatorRestartRequest) {
+	s.Logger.Info("Handling operator restart request on data stream (fallback)", zap.String("request_id", restartRequest.RequestId))
+	success, errorMessage := s.applyOperatorRestart(ctx, restartRequest)
+	response := &v1.OperatorRestartResponse{
+		RequestId: restartRequest.RequestId, Success: success, ErrorMessage: errorMessage, InitiatedAt: timestamppb.Now(),
+	}
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_OperatorRestartResponse{OperatorRestartResponse: response},
+	}); err != nil {
+		s.Logger.Error("Failed to send operator restart response on data stream", zap.String("request_id", restartRequest.RequestId), zap.Error(err))
+	}
+}
+
 func (s *StreamClient) monitorInformerHealth(ctx context.Context, factory k8sInformers.SharedInformerFactory) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
