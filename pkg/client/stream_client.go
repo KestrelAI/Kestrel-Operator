@@ -1165,14 +1165,17 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		}
 
 		// Create control stream for tool calls (K8s API, shell, YAML, etc.)
+		// If the server doesn't support StreamControl (old server), fall back to
+		// data-stream-only mode where tool requests arrive on the data stream.
 		s.Logger.Info("Creating control stream for tool calls")
 		controlStream, err := s.createControlStreamWithTenantContext(attemptCtx, streamClient)
 		if err != nil {
-			s.Logger.Error("Failed to create control stream", zap.Error(err))
-			return err
+			s.Logger.Warn("Failed to create control stream, falling back to data-stream-only mode", zap.Error(err))
+			controlStream = nil
+		} else {
+			atomic.StoreInt64(&s.controlStreamHealthy, 1)
+			s.Logger.Info("Control stream established successfully")
 		}
-		atomic.StoreInt64(&s.controlStreamHealthy, 1)
-		s.Logger.Info("Control stream established successfully")
 
 		// Start exporting Cilium flows with context (only if Cilium is available)
 		if flowCollector != nil {
@@ -1418,7 +1421,11 @@ func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, s
 	// Start goroutine to handle incoming control messages (tool requests) from server.
 	// If the control stream dies, it feeds into `done` and tears down everything —
 	// both streams reconnect together to stay in sync.
-	go s.handleControlMessages(ctx, controlStream, done)
+	// If controlStream is nil (old server without StreamControl), tool requests
+	// arrive on the data stream instead and are handled in handleServerMessages.
+	if controlStream != nil {
+		go s.handleControlMessages(ctx, controlStream, done)
+	}
 
 	// Start goroutine to collect flow data and send to server
 	go s.sendFlowData(ctx, stream, flowChan, done)
