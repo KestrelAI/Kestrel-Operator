@@ -29,7 +29,7 @@ func NewDropCounter(channelName string, logger *zap.Logger, interval time.Durati
 
 // RecordDrop increments the drop count and logs a summary if the interval has elapsed.
 func (dc *DropCounter) RecordDrop() {
-	total := dc.dropped.Add(1)
+	dc.dropped.Add(1)
 
 	now := time.Now().UnixNano()
 	last := dc.lastLog.Load()
@@ -37,11 +37,12 @@ func (dc *DropCounter) RecordDrop() {
 	if now-last >= dc.interval.Nanoseconds() {
 		// Try to claim the log slot (avoid multiple goroutines logging simultaneously)
 		if dc.lastLog.CompareAndSwap(last, now) {
+			// Swap atomically so concurrent Add()s between our Add and here are not lost
+			count := dc.dropped.Swap(0)
 			dc.logger.Warn("Channel full, events dropped",
 				zap.String("channel", dc.channelName),
-				zap.Int64("dropped_since_last_log", total),
+				zap.Int64("dropped_since_last_log", count),
 			)
-			dc.dropped.Store(0)
 		}
 	}
 }

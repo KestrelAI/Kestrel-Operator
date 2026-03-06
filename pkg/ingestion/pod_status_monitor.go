@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -527,27 +526,3 @@ func (psm *PodStatusMonitor) reconcileStateMap() {
 	}
 }
 
-// sendInitialPodStatusInventory sends pods currently in problematic states
-func (psm *PodStatusMonitor) sendInitialPodStatusInventory(ctx context.Context) error {
-	psm.logger.Info("Sending initial pod status inventory (problematic pods only)")
-
-	pods, err := psm.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
-	}
-
-	problematicCount := 0
-	for _, pod := range pods.Items {
-		if psm.isPodProblematic(&pod) {
-			psm.sendPodStatus(&pod, "CREATE")
-			problematicCount++
-		}
-		// Store initial state for all pods
-		psm.updatePodStateSnapshot(&pod)
-	}
-
-	psm.logger.Info("Completed sending initial pod status inventory",
-		zap.Int("total_pods", len(pods.Items)),
-		zap.Int("problematic_pods", problematicCount))
-	return nil
-}

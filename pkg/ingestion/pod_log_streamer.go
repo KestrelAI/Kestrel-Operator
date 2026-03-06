@@ -119,17 +119,22 @@ func (pls *PodLogStreamer) Stop() {
 
 // safeClose safely closes the stop channel and cancels all active log streams
 func (pls *PodLogStreamer) safeClose() {
+	// Collect cancel functions under streamsMu first (no nesting with mu)
+	pls.streamsMu.Lock()
+	cancels := make([]context.CancelFunc, 0, len(pls.activeStreams))
+	for podKey, cancel := range pls.activeStreams {
+		pls.logger.Debug("Cancelling log stream for pod", zap.String("pod", podKey))
+		cancels = append(cancels, cancel)
+	}
+	pls.streamsMu.Unlock()
+
+	for _, cancel := range cancels {
+		cancel()
+	}
+
 	pls.mu.Lock()
 	defer pls.mu.Unlock()
 	if !pls.stopped {
-		// Cancel all active log streams
-		pls.streamsMu.Lock()
-		for podKey, cancel := range pls.activeStreams {
-			pls.logger.Debug("Cancelling log stream for pod", zap.String("pod", podKey))
-			cancel()
-		}
-		pls.streamsMu.Unlock()
-
 		close(pls.stopCh)
 		pls.stopped = true
 	}
@@ -423,7 +428,16 @@ func (pls *PodLogStreamer) parseLogLine(logLine string, lineNumber int64) *v1.Lo
 func (pls *PodLogStreamer) detectLogLevel(message string) string {
 	messageLower := strings.ToLower(message)
 
-	// Common log level patterns
+	// Check structured logging formats first (JSON, logfmt) — these are
+	// authoritative and avoid false positives from substring matching
+	// (e.g., a field named "error_count" in an INFO-level structured log).
+	for _, p := range levelPatterns {
+		if p.re.MatchString(messageLower) {
+			return p.level
+		}
+	}
+
+	// Fall back to substring matching for unstructured logs
 	if strings.Contains(messageLower, "error") || strings.Contains(messageLower, "err:") ||
 		strings.Contains(messageLower, "exception") || strings.Contains(messageLower, "fatal") {
 		return "ERROR"
@@ -433,13 +447,6 @@ func (pls *PodLogStreamer) detectLogLevel(message string) string {
 	}
 	if strings.Contains(messageLower, "debug") || strings.Contains(messageLower, "trace") {
 		return "DEBUG"
-	}
-
-	// Check for structured logging formats (JSON, logfmt)
-	for _, p := range levelPatterns {
-		if p.re.MatchString(messageLower) {
-			return p.level
-		}
 	}
 
 	return "INFO" // Default level

@@ -31,7 +31,6 @@ type NetworkPolicyIngester struct {
 	logger            *zap.Logger
 	networkPolicyChan chan *v1.NetworkPolicy
 	informerFactory   informers.SharedInformerFactory
-	ctx               context.Context
 	stopCh            chan struct{}
 	stopped           bool
 	mu                sync.Mutex
@@ -76,11 +75,8 @@ func (npi *NetworkPolicyIngester) StartSync(ctx context.Context, syncDone chan<-
 
 	npi.logger.Info("Starting network policy ingester with modern informer factory")
 
-	// Store context for use in event handlers (e.g., sendNetworkPolicy)
-	npi.ctx = ctx
-
-	// Set up network policy informer
-	npi.setupNetworkPolicyInformer()
+	// Set up network policy informer (ctx captured in event handler closures)
+	npi.setupNetworkPolicyInformer(ctx)
 
 	// Send initial inventory before starting informers
 	if err := npi.sendInitialNetworkPolicyInventory(ctx); err != nil {
@@ -120,24 +116,24 @@ func (npi *NetworkPolicyIngester) safeClose() {
 }
 
 // setupNetworkPolicyInformer sets up the modern network policy informer
-func (npi *NetworkPolicyIngester) setupNetworkPolicyInformer() {
+func (npi *NetworkPolicyIngester) setupNetworkPolicyInformer(ctx context.Context) {
 	networkPolicyInformer := npi.informerFactory.Networking().V1().NetworkPolicies().Informer()
 
 	_, err := networkPolicyInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if np, ok := obj.(*networkingv1.NetworkPolicy); ok {
-				npi.sendNetworkPolicy(np, "CREATE")
+				npi.sendNetworkPolicy(ctx, np, "CREATE")
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if np, ok := newObj.(*networkingv1.NetworkPolicy); ok {
-				npi.sendNetworkPolicy(np, "UPDATE")
+				npi.sendNetworkPolicy(ctx, np, "UPDATE")
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
 			obj = unwrapDeletedObject(obj)
 			if np, ok := obj.(*networkingv1.NetworkPolicy); ok {
-				npi.sendNetworkPolicy(np, "DELETE")
+				npi.sendNetworkPolicy(ctx, np, "DELETE")
 			}
 		},
 	})
@@ -156,7 +152,7 @@ func (npi *NetworkPolicyIngester) sendInitialNetworkPolicyInventory(ctx context.
 	}
 
 	for _, policy := range policies.Items {
-		npi.sendNetworkPolicy(&policy, "CREATE")
+		npi.sendNetworkPolicy(ctx, &policy, "CREATE")
 	}
 
 	npi.logger.Info("Completed sending initial network policy inventory")
@@ -164,9 +160,9 @@ func (npi *NetworkPolicyIngester) sendInitialNetworkPolicyInventory(ctx context.
 }
 
 // sendNetworkPolicy converts a Kubernetes NetworkPolicy to protobuf and sends it to the stream
-func (npi *NetworkPolicyIngester) sendNetworkPolicy(np *networkingv1.NetworkPolicy, action string) {
+func (npi *NetworkPolicyIngester) sendNetworkPolicy(ctx context.Context, np *networkingv1.NetworkPolicy, action string) {
 	// Resolve target workloads for this policy
-	targetWorkloads := npi.ResolveTargetWorkloads(npi.ctx, *np)
+	targetWorkloads := npi.ResolveTargetWorkloads(ctx, *np)
 
 	kind := np.Kind
 	if kind == "" {

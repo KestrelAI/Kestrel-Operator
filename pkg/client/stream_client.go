@@ -67,7 +67,8 @@ type StreamClient struct {
 	Logger        *zap.Logger
 	Client        *grpc.ClientConn
 	Config        ServerConfig
-	sendMu        sync.Mutex // Protects concurrent stream.Send calls
+	sendMu        sync.Mutex   // Protects concurrent stream.Send calls
+	tokenMu       sync.RWMutex // Protects Config.Token reads/writes
 	apiExecutor   *k8s_api.APIExecutor
 	shellExecutor *shell_executor.ShellExecutor
 
@@ -1230,7 +1231,10 @@ func extractTenantFromToken(tokenString string) (string, error) {
 
 // createStreamWithTenantContext creates a new stream with tenant context
 func (s *StreamClient) createStreamWithTenantContext(ctx context.Context, streamClient v1.StreamServiceClient) (v1.StreamService_StreamDataClient, context.Context, error) {
-	tenantID, err := extractTenantFromToken(s.Config.Token)
+	s.tokenMu.RLock()
+	token := s.Config.Token
+	s.tokenMu.RUnlock()
+	tenantID, err := extractTenantFromToken(token)
 	if err != nil {
 		s.Logger.Error("Failed to extract tenant ID from JWT token", zap.Error(err))
 		return nil, nil, fmt.Errorf("failed to extract tenant from token: %w", err)
@@ -1383,7 +1387,7 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 			case *v1.StreamDataResponse_Ack:
 				s.Logger.Debug("Received acknowledgment from server")
 			case *v1.StreamDataResponse_NetworkPolicy:
-				s.handleNetworkPolicy(ctx, stream, k8sClient, resp.NetworkPolicy)
+				go s.handleNetworkPolicy(ctx, stream, k8sClient, resp.NetworkPolicy)
 			case *v1.StreamDataResponse_KubernetesApiRequest:
 				go s.handleKubernetesAPIRequest(ctx, stream, resp.KubernetesApiRequest)
 			case *v1.StreamDataResponse_ShellCommandRequest:
@@ -1462,14 +1466,22 @@ func (s *StreamClient) handleShellCommandRequest(
 			zap.String("request_id", shellRequest.RequestId),
 			zap.Int("total_bytes", totalSize),
 			zap.Int("max_bytes", maxResponseBytes))
-		// Distribute budget evenly across results
+		// Distribute budget evenly across results (both stdout and stderr)
 		perResultBudget := maxResponseBytes / len(shellResponse.Results)
 		for _, result := range shellResponse.Results {
-			if len(result.Stdout) > perResultBudget {
-				truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit. Use more specific queries (e.g., target a single resource by name instead of listing all resources).]",
-					len(result.Stdout), perResultBudget)
-				result.Stdout = result.Stdout[:perResultBudget-len(truncatedMsg)] + truncatedMsg
+			truncateField := func(field *string) {
+				if len(*field) > perResultBudget {
+					truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit. Use more specific queries (e.g., target a single resource by name instead of listing all resources).]",
+						len(*field), perResultBudget)
+					budget := perResultBudget - len(truncatedMsg)
+					if budget < 0 {
+						budget = 0
+					}
+					*field = (*field)[:budget] + truncatedMsg
+				}
 			}
+			truncateField(&result.Stdout)
+			truncateField(&result.Stderr)
 		}
 	}
 
@@ -2459,7 +2471,9 @@ func (s *StreamClient) periodicTokenRenewal(ctx context.Context) {
 		case <-ticker.C:
 			s.Logger.Info("Performing periodic token renewal")
 
+			s.tokenMu.RLock()
 			currentToken := s.Config.Token
+			s.tokenMu.RUnlock()
 			serverClient := serverv1.NewAutonpServerServiceClient(s.Client)
 
 			// Call RenewClusterToken directly
@@ -2484,7 +2498,9 @@ func (s *StreamClient) periodicTokenRenewal(ctx context.Context) {
 				s.Logger.Info("Successfully updated runtime token secret")
 
 				// Update config token for the next renewal cycle
+				s.tokenMu.Lock()
 				s.Config.Token = resp.AccessToken
+				s.tokenMu.Unlock()
 			}
 		}
 	}

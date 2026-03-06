@@ -96,6 +96,9 @@ func (wi *WorkloadIngester) safeClose() {
 // that may be delivered instead of the actual object on delete events.
 func unwrapDeletedObject(obj interface{}) interface{} {
 	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		if tombstone.Obj == nil {
+			return obj // return the tombstone itself; caller's type assertion will skip it
+		}
 		return tombstone.Obj
 	}
 	return obj
