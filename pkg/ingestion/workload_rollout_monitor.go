@@ -68,6 +68,8 @@ func (wrm *WorkloadRolloutMonitor) StartSync(ctx context.Context, syncDone chan<
 	wrm.setupStatefulSetInformer()
 	wrm.setupDaemonSetInformer()
 
+	// Start periodic reconciliation to clean up stale state map entries
+	go wrm.startReconcileLoop(ctx)
 
 	// Signal that setup is complete
 	if syncDone != nil {
