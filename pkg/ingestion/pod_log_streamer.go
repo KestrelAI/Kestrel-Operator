@@ -38,6 +38,7 @@ type PodLogStreamer struct {
 	// Track which pods we're already streaming logs for
 	streamingPods map[string]bool
 	streamingMu   sync.RWMutex
+	dropCounter   *DropCounter
 }
 
 // NewPodLogStreamer creates a new pod log streamer
@@ -58,6 +59,7 @@ func NewPodLogStreamer(logger *zap.Logger, logChan chan *v1.PodLogs) (*PodLogStr
 		stopCh:          make(chan struct{}),
 		activeStreams:   make(map[string]context.CancelFunc),
 		streamingPods:   make(map[string]bool),
+		dropCounter:     NewDropCounter("pod_log", logger, 30*time.Second),
 	}, nil
 }
 
@@ -542,10 +544,7 @@ func (pls *PodLogStreamer) sendLogBatch(ctx context.Context, pod *corev1.Pod, co
 	case <-ctx.Done():
 		return
 	default:
-		pls.logger.Warn("Log channel full, dropping log batch",
-			zap.String("pod", fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)),
-			zap.String("container", containerName),
-			zap.Int("lines", len(logEntries)))
+		pls.dropCounter.RecordDrop()
 	}
 }
 

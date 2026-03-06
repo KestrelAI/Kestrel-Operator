@@ -27,6 +27,7 @@ type ServiceIngester struct {
 	stopCh          chan struct{}
 	stopped         bool
 	mu              sync.Mutex
+	dropCounter     *DropCounter
 }
 
 // NewServiceIngester creates a new service ingester using modern informer factory
@@ -46,6 +47,7 @@ func NewServiceIngester(logger *zap.Logger, serviceChan chan *v1.Service) (*Serv
 		serviceChan:     serviceChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
+		dropCounter:     NewDropCounter("service", logger, 30*time.Second),
 	}, nil
 }
 
@@ -186,11 +188,7 @@ func (si *ServiceIngester) sendService(service *corev1.Service, action string) {
 			zap.String("type", protoService.ServiceType),
 			zap.String("action", protoService.Action.String()))
 	default:
-		si.logger.Warn("Service channel full, dropping event",
-			zap.String("name", protoService.Name),
-			zap.String("namespace", protoService.Namespace),
-			zap.String("type", protoService.ServiceType),
-			zap.String("action", protoService.Action.String()))
+		si.dropCounter.RecordDrop()
 	}
 }
 

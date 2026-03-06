@@ -40,6 +40,7 @@ type NamespaceIngester struct {
 	stopCh          chan struct{}
 	stopped         bool
 	mu              sync.Mutex
+	dropCounter     *DropCounter
 }
 
 // NewNamespaceIngester creates a new namespace ingester using modern informer factory
@@ -59,6 +60,7 @@ func NewNamespaceIngester(logger *zap.Logger, namespaceChan chan *v1.Namespace) 
 		namespaceChan:   namespaceChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
+		dropCounter:     NewDropCounter("namespace", logger, 30*time.Second),
 	}, nil
 }
 
@@ -176,8 +178,6 @@ func (ni *NamespaceIngester) sendNamespace(meta metav1.ObjectMeta, action string
 			zap.String("name", namespace.Name),
 			zap.String("action", namespace.Action.String()))
 	default:
-		ni.logger.Warn("Namespace channel full, dropping event",
-			zap.String("name", namespace.Name),
-			zap.String("action", namespace.Action.String()))
+		ni.dropCounter.RecordDrop()
 	}
 }

@@ -24,6 +24,7 @@ type PodIngester struct {
 	podChan         chan *v1.Pod
 	informerFactory informers.SharedInformerFactory
 	stopCh          chan struct{}
+	dropCounter     *DropCounter
 	stopped         bool
 	mu              sync.Mutex
 }
@@ -44,6 +45,7 @@ func NewPodIngester(logger *zap.Logger, podChan chan *v1.Pod) (*PodIngester, err
 		podChan:         podChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
+		dropCounter:     NewDropCounter("pod", logger, 30*time.Second),
 	}, nil
 }
 
@@ -164,10 +166,7 @@ func (pi *PodIngester) sendPod(pod *corev1.Pod, action string) {
 			zap.String("podIP", protoPod.PodIp),
 			zap.String("action", protoPod.Action.String()))
 	default:
-		pi.logger.Warn("Pod channel full, dropping event",
-			zap.String("name", protoPod.Name),
-			zap.String("namespace", protoPod.Namespace),
-			zap.String("action", protoPod.Action.String()))
+		pi.dropCounter.RecordDrop()
 	}
 }
 

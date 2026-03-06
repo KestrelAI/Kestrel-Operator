@@ -31,6 +31,7 @@ type WorkloadRolloutMonitor struct {
 	// Track previous rollout states to detect failures
 	previousRolloutStates map[string]*rolloutStateSnapshot
 	rolloutMu             sync.RWMutex
+	dropCounter           *DropCounter
 }
 
 // rolloutStateSnapshot captures the rollout state for comparison
@@ -61,6 +62,7 @@ func NewWorkloadRolloutMonitor(logger *zap.Logger, rolloutChan chan *v1.Workload
 		informerFactory:       informerFactory,
 		stopCh:                make(chan struct{}),
 		previousRolloutStates: make(map[string]*rolloutStateSnapshot),
+		dropCounter:           NewDropCounter("rollout_status", logger, 30*time.Second),
 	}, nil
 }
 
@@ -538,10 +540,7 @@ func (wrm *WorkloadRolloutMonitor) sendDeploymentRolloutStatus(deployment *appsv
 			zap.Int32("ready", protoRolloutStatus.ReadyReplicas),
 			zap.Int32("desired", protoRolloutStatus.DesiredReplicas))
 	default:
-		wrm.logger.Warn("Rollout status channel full, dropping event",
-			zap.String("kind", "Deployment"),
-			zap.String("name", protoRolloutStatus.Name),
-			zap.String("namespace", protoRolloutStatus.Namespace))
+		wrm.dropCounter.RecordDrop()
 	}
 }
 
@@ -586,10 +585,7 @@ func (wrm *WorkloadRolloutMonitor) sendStatefulSetRolloutStatus(sts *appsv1.Stat
 			zap.Int32("ready", protoRolloutStatus.ReadyReplicas),
 			zap.Int32("desired", protoRolloutStatus.DesiredReplicas))
 	default:
-		wrm.logger.Warn("Rollout status channel full, dropping event",
-			zap.String("kind", "StatefulSet"),
-			zap.String("name", protoRolloutStatus.Name),
-			zap.String("namespace", protoRolloutStatus.Namespace))
+		wrm.dropCounter.RecordDrop()
 	}
 }
 
@@ -628,10 +624,7 @@ func (wrm *WorkloadRolloutMonitor) sendDaemonSetRolloutStatus(ds *appsv1.DaemonS
 			zap.Int32("ready", protoRolloutStatus.ReadyReplicas),
 			zap.Int32("desired", protoRolloutStatus.DesiredReplicas))
 	default:
-		wrm.logger.Warn("Rollout status channel full, dropping event",
-			zap.String("kind", "DaemonSet"),
-			zap.String("name", protoRolloutStatus.Name),
-			zap.String("namespace", protoRolloutStatus.Namespace))
+		wrm.dropCounter.RecordDrop()
 	}
 }
 

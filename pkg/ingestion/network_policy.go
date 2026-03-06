@@ -34,6 +34,7 @@ type NetworkPolicyIngester struct {
 	stopCh            chan struct{}
 	stopped           bool
 	mu                sync.Mutex
+	dropCounter       *DropCounter
 }
 
 // NewNetworkPolicyIngester creates a new NetworkPolicyIngester instance with channel support
@@ -52,6 +53,7 @@ func NewNetworkPolicyIngester(logger *zap.Logger, networkPolicyChan chan *v1.Net
 		networkPolicyChan: networkPolicyChan,
 		informerFactory:   informerFactory,
 		stopCh:            make(chan struct{}),
+		dropCounter:       NewDropCounter("network_policy", logger, 30*time.Second),
 	}, nil
 }
 
@@ -215,10 +217,7 @@ func (npi *NetworkPolicyIngester) sendNetworkPolicy(np *networkingv1.NetworkPoli
 			zap.String("action", protoNP.Action.String()),
 			zap.Int("target_workloads", len(targetWorkloads)))
 	default:
-		npi.logger.Warn("Network policy channel full, dropping event",
-			zap.String("name", protoNP.Metadata.Name),
-			zap.String("namespace", protoNP.Metadata.Namespace),
-			zap.String("action", protoNP.Action.String()))
+		npi.dropCounter.RecordDrop()
 	}
 }
 

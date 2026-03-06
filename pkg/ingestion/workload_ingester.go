@@ -26,6 +26,7 @@ type WorkloadIngester struct {
 	workloadChan    chan *v1.Workload
 	informerFactory informers.SharedInformerFactory
 	stopCh          chan struct{}
+	dropCounter     *DropCounter
 	stopped         bool
 	mu              sync.Mutex
 }
@@ -47,6 +48,7 @@ func NewWorkloadIngester(logger *zap.Logger, workloadChan chan *v1.Workload) (*W
 		workloadChan:    workloadChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
+		dropCounter:     NewDropCounter("workload", logger, 30*time.Second),
 	}, nil
 }
 
@@ -406,12 +408,7 @@ func (wi *WorkloadIngester) sendWorkload(meta metav1.ObjectMeta, kind, action, s
 			zap.String("serviceAccount", workload.ServiceAccount),
 			zap.String("action", workload.Action.String()))
 	default:
-		wi.logger.Warn("Workload channel full, dropping event",
-			zap.String("name", workload.Name),
-			zap.String("namespace", workload.Namespace),
-			zap.String("kind", workload.Kind),
-			zap.String("serviceAccount", workload.ServiceAccount),
-			zap.String("action", workload.Action.String()))
+		wi.dropCounter.RecordDrop()
 	}
 }
 

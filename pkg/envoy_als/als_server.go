@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	v1 "operator/api/gen/cloud/v1"
+	"operator/pkg/ingestion"
 )
 
 // ALSServer implements the Envoy Access Log Service
@@ -25,14 +26,16 @@ type ALSServer struct {
 	serverPort int
 	// streamNodes stores node IDs per stream to handle identifier-only-in-first-message optimization
 	streamNodes sync.Map // map[stream]*string
+	dropCounter *ingestion.DropCounter
 }
 
 // NewALSServer creates a new Access Log Service server
 func NewALSServer(logger *zap.Logger, l7LogChan chan *v1.L7AccessLog, port int) *ALSServer {
 	return &ALSServer{
-		logger:     logger,
-		l7LogChan:  l7LogChan,
-		serverPort: port,
+		logger:      logger,
+		l7LogChan:   l7LogChan,
+		serverPort:  port,
+		dropCounter: ingestion.NewDropCounter("l7_log", logger, 30*time.Second),
 	}
 }
 
@@ -97,7 +100,7 @@ func (s *ALSServer) processAccessLogRequest(req *accesslogv3.StreamAccessLogsMes
 						s.logger.Debug("Successfully sent HTTP L7 log to channel")
 						httpLogsProcessed++
 					default:
-						s.logger.Warn("L7 log channel full, dropping log")
+						s.dropCounter.RecordDrop()
 					}
 				}
 			} else {
@@ -124,7 +127,7 @@ func (s *ALSServer) processAccessLogRequest(req *accesslogv3.StreamAccessLogsMes
 					case s.l7LogChan <- l7Log:
 						s.logger.Debug("Successfully sent TCP L7 log to channel")
 					default:
-						s.logger.Warn("L7 log channel full, dropping log")
+						s.dropCounter.RecordDrop()
 					}
 				}
 			}

@@ -30,6 +30,7 @@ type NodeConditionMonitor struct {
 	// Track previous node conditions to detect transitions
 	previousConditions map[string]*nodeConditionSnapshot
 	conditionsMu       sync.RWMutex
+	dropCounter        *DropCounter
 }
 
 // nodeConditionSnapshot captures the relevant conditions of a node for comparison
@@ -59,6 +60,7 @@ func NewNodeConditionMonitor(logger *zap.Logger, conditionChan chan *v1.NodeCond
 		informerFactory:    informerFactory,
 		stopCh:             make(chan struct{}),
 		previousConditions: make(map[string]*nodeConditionSnapshot),
+		dropCounter:        NewDropCounter("node_condition", logger, 30*time.Second),
 	}, nil
 }
 
@@ -323,8 +325,6 @@ func (ncm *NodeConditionMonitor) sendNodeCondition(node *corev1.Node, action str
 			zap.Int("conditions", len(protoNodeCondition.Conditions)),
 			zap.String("action", protoNodeCondition.Action.String()))
 	default:
-		ncm.logger.Warn("Node condition change channel full, dropping event",
-			zap.String("name", protoNodeCondition.Name),
-			zap.String("action", protoNodeCondition.Action.String()))
+		ncm.dropCounter.RecordDrop()
 	}
 }

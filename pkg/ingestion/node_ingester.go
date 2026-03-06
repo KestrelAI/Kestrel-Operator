@@ -26,6 +26,7 @@ type NodeIngester struct {
 	stopCh          chan struct{}
 	stopped         bool
 	mu              sync.Mutex
+	dropCounter     *DropCounter
 }
 
 // NewNodeIngester creates a new node ingester for streaming nodes to the server
@@ -44,6 +45,7 @@ func NewNodeIngester(logger *zap.Logger, nodeChan chan *v1.Node) (*NodeIngester,
 		nodeChan:        nodeChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
+		dropCounter:     NewDropCounter("node", logger, 30*time.Second),
 	}, nil
 }
 
@@ -181,9 +183,7 @@ func (ni *NodeIngester) sendNode(node *corev1.Node, action string) {
 			zap.Bool("ready", protoNode.Ready),
 			zap.String("action", protoNode.Action.String()))
 	default:
-		ni.logger.Warn("Node channel full, dropping event",
-			zap.String("name", protoNode.Name),
-			zap.String("action", protoNode.Action.String()))
+		ni.dropCounter.RecordDrop()
 	}
 }
 

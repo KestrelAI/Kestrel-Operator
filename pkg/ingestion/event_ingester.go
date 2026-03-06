@@ -24,6 +24,7 @@ type EventIngester struct {
 	eventChan       chan *v1.KubernetesEvent
 	informerFactory informers.SharedInformerFactory
 	stopCh          chan struct{}
+	dropCounter     *DropCounter
 	stopped         bool
 	mu              sync.Mutex
 }
@@ -44,6 +45,7 @@ func NewEventIngester(logger *zap.Logger, eventChan chan *v1.KubernetesEvent) (*
 		eventChan:       eventChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
+		dropCounter:     NewDropCounter("event", logger, 30*time.Second),
 	}, nil
 }
 
@@ -184,10 +186,6 @@ func (ei *EventIngester) sendEvent(event *corev1.Event, action string) {
 			zap.Int32("count", protoEvent.Count),
 			zap.String("action", protoEvent.Action.String()))
 	default:
-		ei.logger.Warn("Event channel full, dropping event",
-			zap.String("name", protoEvent.Name),
-			zap.String("namespace", protoEvent.Namespace),
-			zap.String("reason", protoEvent.Reason),
-			zap.String("action", protoEvent.Action.String()))
+		ei.dropCounter.RecordDrop()
 	}
 }

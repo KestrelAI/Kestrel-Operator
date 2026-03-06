@@ -31,6 +31,7 @@ type PodStatusMonitor struct {
 	// Track previous pod states to detect meaningful changes
 	previousStates map[string]*podStateSnapshot
 	statesMu       sync.RWMutex
+	dropCounter    *DropCounter
 }
 
 // podStateSnapshot captures the relevant state of a pod for comparison
@@ -58,6 +59,7 @@ func NewPodStatusMonitor(logger *zap.Logger, statusChangeChan chan *v1.PodStatus
 		informerFactory:  informerFactory,
 		stopCh:           make(chan struct{}),
 		previousStates:   make(map[string]*podStateSnapshot),
+		dropCounter:      NewDropCounter("pod_status", logger, 30*time.Second),
 	}, nil
 }
 
@@ -396,10 +398,7 @@ func (psm *PodStatusMonitor) sendPodStatus(pod *corev1.Pod, action string) {
 			zap.Int32("totalRestarts", protoPodStatus.TotalRestartCount),
 			zap.String("action", protoPodStatus.Action.String()))
 	default:
-		psm.logger.Warn("Pod status change channel full, dropping event",
-			zap.String("name", protoPodStatus.Name),
-			zap.String("namespace", protoPodStatus.Namespace),
-			zap.String("action", protoPodStatus.Action.String()))
+		psm.dropCounter.RecordDrop()
 	}
 }
 
