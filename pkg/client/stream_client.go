@@ -1470,6 +1470,18 @@ func (s *StreamClient) exportCiliumFlows(ctx context.Context, flowCollector *cil
 // Data and control stream errors trigger a full reconnect.
 // Flows, events, and logs stream errors only mark those streams as degraded.
 func (s *StreamClient) handleBidirectionalStreams(ctx context.Context, stream v1.StreamService_StreamDataClient, controlStream v1.StreamService_StreamControlClient, flowsStream v1.StreamService_StreamFlowsClient, eventsStream v1.StreamService_StreamEventsClient, logsStream v1.StreamService_StreamLogsClient, sm *StreamManager, flowChan chan smartcache.FlowCount, inventoryDone <-chan error, incidentDone <-chan error, l7FlowChan <-chan smartcache.L7Flow) error {
+	// Clear stale stream references from any previous retry attempt so that
+	// sendEventOrFallback / sendPodLogsOrFallback don't use dead streams.
+	defer func() {
+		s.eventsStreamMu.Lock()
+		s.eventsStream = nil
+		s.eventsStreamMu.Unlock()
+		s.logsStreamMu.Lock()
+		s.logsStream = nil
+		s.logsStreamMu.Unlock()
+		s.streamManager = nil
+	}()
+
 	// Fatal errors (data/control stream) trigger full reconnect
 	done := make(chan error, 1)
 
@@ -2448,12 +2460,11 @@ func (s *StreamClient) sendEventOrFallback(
 	if es != nil && s.streamManager != nil && !s.streamManager.IsFallback(StreamTypeEvents) && s.streamManager.IsStreamHealthy(StreamTypeEvents) {
 		if err := sendOnEvents(es); err != nil {
 			s.streamManager.setUnhealthy(StreamTypeEvents, err)
-			// Events stream failed — don't fail the whole connection, just log it.
-			// The event is lost, but the operator stays connected.
-			s.Logger.Warn("Events stream send failed, event dropped", zap.Error(err))
+			s.Logger.Warn("Events stream send failed, falling back to data stream", zap.Error(err))
+			// Fall through to data stream
+		} else {
 			return nil
 		}
-		return nil
 	}
 	// Fallback to data stream
 	return sendOnData()

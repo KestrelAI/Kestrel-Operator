@@ -21,8 +21,8 @@ func (s *StreamClient) protectedFlowsSend(stream v1.StreamService_StreamFlowsCli
 }
 
 // sendFlowDataOnFlowsStream sends L3/L4 flow data on the dedicated flows stream.
-// If the flows stream dies, it marks the stream as unhealthy but does NOT trigger
-// a full reconnect — other streams continue operating.
+// If the flows stream dies, it marks the stream as unhealthy and drains the channel
+// to prevent the smart cache producer from blocking. Does NOT trigger a full reconnect.
 func (s *StreamClient) sendFlowDataOnFlowsStream(ctx context.Context, stream v1.StreamService_StreamFlowsClient, sm *StreamManager, flowChan <-chan smartcache.FlowCount) {
 	for {
 		select {
@@ -44,10 +44,26 @@ func (s *StreamClient) sendFlowDataOnFlowsStream(ctx context.Context, stream v1.
 					},
 				}
 				if err := s.protectedFlowsSend(stream, flowMsg); err != nil {
-					s.Logger.Error("Failed to send flow data on flows stream", zap.Error(err))
+					s.Logger.Error("Failed to send flow data on flows stream, draining channel", zap.Error(err))
 					sm.setUnhealthy(StreamTypeFlows, err)
+					s.drainFlowChan(ctx, flowChan)
 					return
 				}
+			}
+		}
+	}
+}
+
+// drainFlowChan discards all remaining items from flowChan until ctx is cancelled.
+// This prevents the smart cache producer from blocking when the flows stream is dead.
+func (s *StreamClient) drainFlowChan(ctx context.Context, flowChan <-chan smartcache.FlowCount) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-flowChan:
+			if !ok {
+				return
 			}
 		}
 	}
@@ -71,10 +87,25 @@ func (s *StreamClient) sendL7FlowsOnFlowsStream(ctx context.Context, stream v1.S
 					},
 				}
 				if err := s.protectedFlowsSend(stream, logMsg); err != nil {
-					s.Logger.Error("Failed to send L7 access log on flows stream", zap.Error(err))
+					s.Logger.Error("Failed to send L7 access log on flows stream, draining channel", zap.Error(err))
 					sm.setUnhealthy(StreamTypeFlows, err)
+					s.drainL7FlowChan(ctx, l7FlowChan)
 					return
 				}
+			}
+		}
+	}
+}
+
+// drainL7FlowChan discards all remaining items from l7FlowChan until ctx is cancelled.
+func (s *StreamClient) drainL7FlowChan(ctx context.Context, l7FlowChan <-chan smartcache.L7Flow) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-l7FlowChan:
+			if !ok {
+				return
 			}
 		}
 	}
