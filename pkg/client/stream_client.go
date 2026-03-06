@@ -1413,8 +1413,19 @@ func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, s
 	// Start goroutine to handle incoming data messages (ACKs, network policies) from server
 	go s.handleServerMessages(ctx, stream, done)
 
-	// Start goroutine to handle incoming control messages (tool requests) from server
-	go s.handleControlMessages(ctx, controlStream, done)
+	// Start goroutine to handle incoming control messages (tool requests) from server.
+	// Control stream errors are non-fatal — the operator falls back to handling
+	// tool requests on the data stream. We do NOT feed into `done` here.
+	go func() {
+		controlDone := make(chan error, 1)
+		s.handleControlMessages(ctx, controlStream, controlDone)
+		// Log but don't propagate — data stream stays alive
+		select {
+		case err := <-controlDone:
+			s.Logger.Warn("Control stream ended, falling back to data stream for tool requests", zap.Error(err))
+		default:
+		}
+	}()
 
 	// Start goroutine to collect flow data and send to server
 	go s.sendFlowData(ctx, stream, flowChan, done)
