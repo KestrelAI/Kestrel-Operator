@@ -1456,6 +1456,29 @@ func (s *StreamClient) handleShellCommandRequest(
 	// Execute the shell commands using our shell executor
 	shellResponse := s.shellExecutor.ExecuteShellCommands(ctx, shellRequest)
 
+	// Truncate results that would exceed gRPC max message size (10MB).
+	// We cap at 8MB total to leave room for protobuf overhead.
+	const maxResponseBytes = 8 * 1024 * 1024
+	totalSize := 0
+	for _, result := range shellResponse.Results {
+		totalSize += len(result.Stdout) + len(result.Stderr)
+	}
+	if totalSize > maxResponseBytes {
+		s.Logger.Warn("Shell command response too large, truncating to avoid gRPC limit",
+			zap.String("request_id", shellRequest.RequestId),
+			zap.Int("total_bytes", totalSize),
+			zap.Int("max_bytes", maxResponseBytes))
+		// Distribute budget evenly across results
+		perResultBudget := maxResponseBytes / len(shellResponse.Results)
+		for _, result := range shellResponse.Results {
+			if len(result.Stdout) > perResultBudget {
+				truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit. Use more specific queries (e.g., target a single resource by name instead of listing all resources).]",
+					len(result.Stdout), perResultBudget)
+				result.Stdout = result.Stdout[:perResultBudget-len(truncatedMsg)] + truncatedMsg
+			}
+		}
+	}
+
 	// Send the response back to the server
 	responseMsg := &v1.StreamDataRequest{
 		Request: &v1.StreamDataRequest_ShellCommandResponse{

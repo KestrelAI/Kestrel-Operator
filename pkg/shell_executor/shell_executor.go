@@ -3,6 +3,7 @@ package shell_executor
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -200,6 +201,16 @@ func (e *ShellExecutor) executeCommand(ctx context.Context, command string) *v1.
 		}
 
 		cmd = exec.CommandContext(ctx, parts[0], parts[1:]...)
+	}
+
+	// Ensure kubectl uses the correct API server endpoint and never falls back
+	// to localhost:8080 when discovery cache expires under API server load.
+	if k8sHost := os.Getenv("KUBERNETES_SERVICE_HOST"); k8sHost != "" {
+		k8sPort := os.Getenv("KUBERNETES_SERVICE_PORT")
+		if k8sPort == "" {
+			k8sPort = "443"
+		}
+		cmd.Env = append(os.Environ(), fmt.Sprintf("KUBERNETES_MASTER=https://%s:%s", k8sHost, k8sPort))
 	}
 
 	// Execute the command and capture output
