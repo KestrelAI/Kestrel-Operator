@@ -104,11 +104,6 @@ func (c *L7SmartCache) purgeCache() {
 	defer c.mu.Unlock()
 
 	for key, accessLog := range c.flows {
-		fmt.Printf("[DEBUG] Sending L7 flow: %s->%s:%d %s %s count=%d firstSeen=%v lastSeen=%v\n",
-			key.SourceNamespace+"/"+key.SourceName,
-			key.DestinationNamespace+"/"+key.DestinationServiceName,
-			key.DestinationPort, key.HTTPMethod, key.HTTPPath, accessLog.Count, accessLog.FirstSeen, accessLog.LastSeen)
-
 		select {
 		case c.flowChan <- L7Flow{
 			Key:       key,
