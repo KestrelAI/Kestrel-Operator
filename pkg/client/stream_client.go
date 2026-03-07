@@ -636,20 +636,22 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	}
 
 	// Set up workload, namespace, network policy, service, and authorization policy ingestion channels
-	workloadChan := make(chan *v1.Workload, 1000)
-	namespaceChan := make(chan *v1.Namespace, 100)
-	networkPolicyChan := make(chan *v1.NetworkPolicy, 100)
-	serviceChan := make(chan *v1.Service, 100)
-	authorizationPolicyChan := make(chan *v1.AuthorizationPolicy, 100)
-	podChan := make(chan *v1.Pod, 2000) // Larger buffer for pods
-	nodeChan := make(chan *v1.Node, 100)
+	// Buffers are sized generously to survive the initial-sync burst when all ingesters
+	// flood simultaneously and the single consumer goroutine can't drain fast enough.
+	workloadChan := make(chan *v1.Workload, 5000)
+	namespaceChan := make(chan *v1.Namespace, 500)
+	networkPolicyChan := make(chan *v1.NetworkPolicy, 500)
+	serviceChan := make(chan *v1.Service, 2000)
+	authorizationPolicyChan := make(chan *v1.AuthorizationPolicy, 500)
+	podChan := make(chan *v1.Pod, 10000)
+	nodeChan := make(chan *v1.Node, 500)
 
 	// Set up incident detection channels
-	eventChan := make(chan *v1.KubernetesEvent, 500)               // Kubernetes events
-	podStatusChan := make(chan *v1.PodStatusChange, 500)           // Pod status changes
-	nodeConditionChan := make(chan *v1.NodeConditionChange, 100)   // Node condition changes
-	rolloutStatusChan := make(chan *v1.WorkloadRolloutStatus, 200) // Workload rollout status
-	podLogsChan := make(chan *v1.PodLogs, 1000)                    // Pod logs (larger buffer for log batches)
+	eventChan := make(chan *v1.KubernetesEvent, 2000)
+	podStatusChan := make(chan *v1.PodStatusChange, 2000)
+	nodeConditionChan := make(chan *v1.NodeConditionChange, 500)
+	rolloutStatusChan := make(chan *v1.WorkloadRolloutStatus, 1000)
+	podLogsChan := make(chan *v1.PodLogs, 2000)
 
 	// Create a new stream service client
 	streamClient := v1.NewStreamServiceClient(s.Client)
@@ -751,11 +753,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			return err
 		}
 
-		podLogStreamer, err := ingestion.NewPodLogStreamer(s.Logger, podLogsChan)
-		if err != nil {
-			s.Logger.Error("Failed to create pod log streamer", zap.Error(err))
-			return err
-		}
+		// Pod log streaming is disabled — kept for future use.
+		// podLogStreamer, err := ingestion.NewPodLogStreamer(s.Logger, podLogsChan)
+		// if err != nil {
+		// 	s.Logger.Error("Failed to create pod log streamer", zap.Error(err))
+		// 	return err
+		// }
+		_ = podLogsChan
 
 		s.Logger.Info("All ingesters created successfully for this connection")
 
@@ -920,15 +924,9 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			}
 		}()
 
-		// Pod log streamer
-		podLogsCtx, podLogsCancel := context.WithCancel(ctx)
-		defer podLogsCancel()
-		go func() {
-			if err := podLogStreamer.StartSync(podLogsCtx, podLogsSyncDone); err != nil {
-				s.Logger.Error("Pod log streamer failed", zap.Error(err))
-				podLogsSyncDone <- err
-			}
-		}()
+		// Pod log streaming is disabled — skip starting the streamer.
+		// Signal sync done immediately so the wait below doesn't block.
+		podLogsSyncDone <- nil
 
 		// Wait for all ingesters to complete their initial sync
 		s.Logger.Info("Waiting for initial inventory sync to complete...")
