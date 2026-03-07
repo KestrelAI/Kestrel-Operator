@@ -1472,14 +1472,17 @@ func (s *StreamClient) exportCiliumFlows(ctx context.Context, flowCollector *cil
 func (s *StreamClient) handleBidirectionalStreams(ctx context.Context, stream v1.StreamService_StreamDataClient, controlStream v1.StreamService_StreamControlClient, flowsStream v1.StreamService_StreamFlowsClient, eventsStream v1.StreamService_StreamEventsClient, logsStream v1.StreamService_StreamLogsClient, sm *StreamManager, flowChan chan smartcache.FlowCount, inventoryDone <-chan error, incidentDone <-chan error, l7FlowChan <-chan smartcache.L7Flow) error {
 	// Clear stale stream references from any previous retry attempt so that
 	// sendEventOrFallback / sendPodLogsOrFallback don't use dead streams.
+	// streamManager is nilled under eventsStreamMu to match the snapshot pattern
+	// in sendEventOrFallback (which reads it under the same lock).
 	defer func() {
 		s.eventsStreamMu.Lock()
 		s.eventsStream = nil
+		s.streamManager = nil // nilled under eventsStreamMu (sendEventOrFallback snapshots here)
 		s.eventsStreamMu.Unlock()
 		s.logsStreamMu.Lock()
 		s.logsStream = nil
+		s.streamManager = nil // also nil under logsStreamMu (sendPodLogsOrFallback snapshots here)
 		s.logsStreamMu.Unlock()
-		s.streamManager = nil
 	}()
 
 	// Fatal errors (data/control stream) trigger full reconnect
@@ -1496,11 +1499,11 @@ func (s *StreamClient) handleBidirectionalStreams(ctx context.Context, stream v1
 
 	// --- Flows stream (independent lifecycle) ---
 	if flowsStream != nil && !sm.IsFallback(StreamTypeFlows) {
-		// Send flows on dedicated stream
-		go s.sendFlowDataOnFlowsStream(ctx, flowsStream, sm, flowChan)
+		// Send flows on dedicated stream (with fallback to data stream if flows stream dies)
+		go s.sendFlowDataOnFlowsStream(ctx, flowsStream, stream, sm, done, flowChan)
 		if l7FlowChan != nil {
 			s.Logger.Info("Starting L7 flow processing goroutine on flows stream")
-			go s.sendL7FlowsOnFlowsStream(ctx, flowsStream, sm, l7FlowChan)
+			go s.sendL7FlowsOnFlowsStream(ctx, flowsStream, stream, sm, done, l7FlowChan)
 		}
 		// Receive heartbeats on flows stream
 		go sm.handleFlowsHeartbeats(ctx, flowsStream)
@@ -1754,14 +1757,14 @@ func (s *StreamClient) handleShellCommandRequest(
 			zap.String("request_id", shellRequest.RequestId),
 			zap.Int("total_bytes", totalSize),
 			zap.Int("max_bytes", maxResponseBytes))
-		// Distribute budget evenly across results (both stdout and stderr)
-		perResultBudget := maxResponseBytes / len(shellResponse.Results)
+		// Distribute budget evenly across results, then split between stdout and stderr
+		perFieldBudget := maxResponseBytes / len(shellResponse.Results) / 2
 		for _, result := range shellResponse.Results {
 			truncateField := func(field *string) {
-				if len(*field) > perResultBudget {
+				if len(*field) > perFieldBudget {
 					truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit. Use more specific queries (e.g., target a single resource by name instead of listing all resources).]",
-						len(*field), perResultBudget)
-					budget := perResultBudget - len(truncatedMsg)
+						len(*field), perFieldBudget)
+					budget := perFieldBudget - len(truncatedMsg)
 					if budget < 0 {
 						budget = 0
 					}
@@ -2455,11 +2458,12 @@ func (s *StreamClient) sendEventOrFallback(
 ) error {
 	s.eventsStreamMu.RLock()
 	es := s.eventsStream
+	sm := s.streamManager // snapshot under lock to avoid race with defer nil-out
 	s.eventsStreamMu.RUnlock()
 
-	if es != nil && s.streamManager != nil && !s.streamManager.IsFallback(StreamTypeEvents) && s.streamManager.IsStreamHealthy(StreamTypeEvents) {
+	if es != nil && sm != nil && !sm.IsFallback(StreamTypeEvents) && sm.IsStreamHealthy(StreamTypeEvents) {
 		if err := sendOnEvents(es); err != nil {
-			s.streamManager.setUnhealthy(StreamTypeEvents, err)
+			sm.setUnhealthy(StreamTypeEvents, err)
 			s.Logger.Warn("Events stream send failed, falling back to data stream", zap.Error(err))
 			// Fall through to data stream
 		} else {
@@ -2475,11 +2479,12 @@ func (s *StreamClient) sendEventOrFallback(
 func (s *StreamClient) sendPodLogsOrFallback(dataStream v1.StreamService_StreamDataClient, podLogs *v1.PodLogs) error {
 	s.logsStreamMu.RLock()
 	ls := s.logsStream
+	sm := s.streamManager // snapshot under lock to avoid race with defer nil-out
 	s.logsStreamMu.RUnlock()
 
-	if ls != nil && s.streamManager != nil && !s.streamManager.IsFallback(StreamTypeLogs) && s.streamManager.IsStreamHealthy(StreamTypeLogs) {
+	if ls != nil && sm != nil && !sm.IsFallback(StreamTypeLogs) && sm.IsStreamHealthy(StreamTypeLogs) {
 		if err := s.sendPodLogsOnLogsStream(ls, podLogs); err != nil {
-			s.streamManager.setUnhealthy(StreamTypeLogs, err)
+			sm.setUnhealthy(StreamTypeLogs, err)
 			s.Logger.Warn("Logs stream send failed, falling back to data stream", zap.Error(err))
 			// Fall through to data stream
 		} else {
@@ -3557,12 +3562,12 @@ func (s *StreamClient) handleShellCommandRequestOnDataStream(ctx context.Context
 		totalSize += len(result.Stdout) + len(result.Stderr)
 	}
 	if totalSize > maxResponseBytes {
-		perResultBudget := maxResponseBytes / len(shellResponse.Results)
+		perFieldBudget := maxResponseBytes / len(shellResponse.Results) / 2
 		for _, result := range shellResponse.Results {
 			truncateField := func(field *string) {
-				if len(*field) > perResultBudget {
-					truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit.]", len(*field), perResultBudget)
-					budget := perResultBudget - len(truncatedMsg)
+				if len(*field) > perFieldBudget {
+					truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit.]", len(*field), perFieldBudget)
+					budget := perFieldBudget - len(truncatedMsg)
 					if budget < 0 {
 						budget = 0
 					}
