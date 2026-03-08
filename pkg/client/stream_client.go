@@ -41,10 +41,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	k8sInformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/apimachinery/pkg/labels"
 
 	"operator/pkg/envoy_als"
 )
@@ -94,11 +94,10 @@ type StreamClient struct {
 	lastError        error // last error encountered (protected by healthMu)
 
 	// Control stream health tracking
-	controlStreamHealthy    int64 // atomic boolean (1 = healthy, 0 = unhealthy)
-	lastControlHealthyTime  int64 // atomic unix timestamp
-	controlEOFErrors        int64 // atomic counter for total control stream EOF errors
-	controlLastEOFTime      int64 // atomic unix timestamp of last control EOF
-
+	controlStreamHealthy   int64 // atomic boolean (1 = healthy, 0 = unhealthy)
+	lastControlHealthyTime int64 // atomic unix timestamp
+	controlEOFErrors       int64 // atomic counter for total control stream EOF errors
+	controlLastEOFTime     int64 // atomic unix timestamp of last control EOF
 
 	// Operator log streaming (set via SetOperatorLogStreaming)
 	operatorLogBatchCh <-chan *v1.PodLogs
@@ -586,11 +585,11 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	}
 
 	return &ServerConfig{
-		Host:           host,
-		Port:           port,
-		Token:          token,
-		ClientCertFile: clientCertFile,
-		ClientKeyFile:  clientKeyFile,
+		Host:               host,
+		Port:               port,
+		Token:              token,
+		ClientCertFile:     clientCertFile,
+		ClientKeyFile:      clientKeyFile,
 		CACertFile:         caCertFile,
 		ServerName:         serverName,
 		InsecureSkipVerify: insecureSkipVerify,
@@ -720,10 +719,12 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	}
 
 	// Set up workload, namespace, network policy, service, and authorization policy ingestion channels
+	// Buffers are sized generously to survive the initial-sync burst when all ingesters
+	// flood simultaneously and the single consumer goroutine can't drain fast enough.
 	workloadChan := make(chan *v1.Workload, 5000)
 	namespaceChan := make(chan *v1.Namespace, 500)
 	networkPolicyChan := make(chan *v1.NetworkPolicy, 500)
-	serviceChan := make(chan *v1.Service, 500)
+	serviceChan := make(chan *v1.Service, 2000)
 	authorizationPolicyChan := make(chan *v1.AuthorizationPolicy, 500)
 	podChan := make(chan *v1.Pod, 10000)
 	nodeChan := make(chan *v1.Node, 500)
@@ -814,7 +815,6 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		nodeConditionMonitor := ingestion.NewNodeConditionMonitor(s.Logger, nodeConditionChan, sharedClientset, sharedFactory)
 		rolloutMonitor := ingestion.NewWorkloadRolloutMonitor(s.Logger, rolloutStatusChan, sharedClientset, sharedFactory)
 		_ = ingestion.NewPodLogStreamer(s.Logger, podLogsChan, sharedClientset, sharedFactory)
-
 
 		s.Logger.Info("All ingesters created successfully for this connection")
 
@@ -3683,4 +3683,3 @@ func (s *StreamClient) monitorInformerHealth(ctx context.Context, factory k8sInf
 		}
 	}
 }
-
