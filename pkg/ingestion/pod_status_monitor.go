@@ -7,12 +7,11 @@ import (
 	"time"
 
 	v1 "operator/api/gen/cloud/v1"
-	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -20,7 +19,7 @@ import (
 
 // PodStatusMonitor monitors pod and container status changes for incident detection
 type PodStatusMonitor struct {
-	clientset        *kubernetes.Clientset
+	clientset        kubernetes.Interface
 	logger           *zap.Logger
 	statusChangeChan chan *v1.PodStatusChange
 	informerFactory  informers.SharedInformerFactory
@@ -31,6 +30,7 @@ type PodStatusMonitor struct {
 	// Track previous pod states to detect meaningful changes
 	previousStates map[string]*podStateSnapshot
 	statesMu       sync.RWMutex
+	dropCounter    *DropCounter
 }
 
 // podStateSnapshot captures the relevant state of a pod for comparison
@@ -41,16 +41,8 @@ type podStateSnapshot struct {
 	conditions        map[string]string // condition type -> status
 }
 
-// NewPodStatusMonitor creates a new pod status monitor for incident detection
-func NewPodStatusMonitor(logger *zap.Logger, statusChangeChan chan *v1.PodStatusChange) (*PodStatusMonitor, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory with shorter resync for incident detection
-	informerFactory := informers.NewSharedInformerFactory(clientset, 10*time.Second)
-
+// NewPodStatusMonitor creates a new pod status monitor using a shared informer factory
+func NewPodStatusMonitor(logger *zap.Logger, statusChangeChan chan *v1.PodStatusChange, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *PodStatusMonitor {
 	return &PodStatusMonitor{
 		clientset:        clientset,
 		logger:           logger,
@@ -58,7 +50,8 @@ func NewPodStatusMonitor(logger *zap.Logger, statusChangeChan chan *v1.PodStatus
 		informerFactory:  informerFactory,
 		stopCh:           make(chan struct{}),
 		previousStates:   make(map[string]*podStateSnapshot),
-	}, nil
+		dropCounter:      NewDropCounter("pod_status", logger, 30*time.Second),
+	}
 }
 
 // StartSync starts the pod status monitor and signals when initial sync is complete
@@ -68,24 +61,16 @@ func (psm *PodStatusMonitor) StartSync(ctx context.Context, syncDone chan<- erro
 	// Set up pod informer - AddFunc will be called for all existing pods during cache sync
 	psm.setupPodInformer()
 
+	// Start periodic reconciliation to clean up stale state map entries
+	go psm.startReconcileLoop(ctx)
+
 	// Signal that setup is complete
 	if syncDone != nil {
 		syncDone <- nil
 	}
 
-	// Start all informers - AddFunc will be called for all existing problematic pods during sync
-	psm.informerFactory.Start(psm.stopCh)
-
-	// Wait for all caches to sync before processing events
-	psm.logger.Info("Waiting for pod status informer cache to sync...")
-	if !cache.WaitForCacheSync(psm.stopCh,
-		psm.informerFactory.Core().V1().Pods().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for pod status informer cache to sync")
-	}
-	psm.logger.Info("Pod status informer cache synced successfully")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	psm.safeClose()
 	psm.logger.Info("Stopped pod status monitor")
@@ -133,6 +118,7 @@ func (psm *PodStatusMonitor) setupPodInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if pod, ok := obj.(*corev1.Pod); ok {
 				// Send deletion if pod was in problematic state
 				if psm.isPodProblematic(pod) {
@@ -396,10 +382,7 @@ func (psm *PodStatusMonitor) sendPodStatus(pod *corev1.Pod, action string) {
 			zap.Int32("totalRestarts", protoPodStatus.TotalRestartCount),
 			zap.String("action", protoPodStatus.Action.String()))
 	default:
-		psm.logger.Warn("Pod status change channel full, dropping event",
-			zap.String("name", protoPodStatus.Name),
-			zap.String("namespace", protoPodStatus.Namespace),
-			zap.String("action", protoPodStatus.Action.String()))
+		psm.dropCounter.RecordDrop()
 	}
 }
 
@@ -504,27 +487,42 @@ func (psm *PodStatusMonitor) extractResourceUsage(pod *corev1.Pod) *v1.ResourceU
 	}
 }
 
-// sendInitialPodStatusInventory sends pods currently in problematic states
-func (psm *PodStatusMonitor) sendInitialPodStatusInventory(ctx context.Context) error {
-	psm.logger.Info("Sending initial pod status inventory (problematic pods only)")
-
-	pods, err := psm.clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
-	}
-
-	problematicCount := 0
-	for _, pod := range pods.Items {
-		if psm.isPodProblematic(&pod) {
-			psm.sendPodStatus(&pod, "CREATE")
-			problematicCount++
+// startReconcileLoop periodically removes stale entries from the state map
+func (psm *PodStatusMonitor) startReconcileLoop(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			psm.reconcileStateMap()
 		}
-		// Store initial state for all pods
-		psm.updatePodStateSnapshot(&pod)
 	}
-
-	psm.logger.Info("Completed sending initial pod status inventory",
-		zap.Int("total_pods", len(pods.Items)),
-		zap.Int("problematic_pods", problematicCount))
-	return nil
 }
+
+// reconcileStateMap removes state map entries for pods that no longer exist in the informer cache
+func (psm *PodStatusMonitor) reconcileStateMap() {
+	pods, err := psm.informerFactory.Core().V1().Pods().Lister().List(labels.Everything())
+	if err != nil {
+		psm.logger.Warn("Failed to list pods for state map reconciliation", zap.Error(err))
+		return
+	}
+	activePods := make(map[string]struct{}, len(pods))
+	for _, pod := range pods {
+		activePods[fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)] = struct{}{}
+	}
+	psm.statesMu.Lock()
+	removed := 0
+	for key := range psm.previousStates {
+		if _, exists := activePods[key]; !exists {
+			delete(psm.previousStates, key)
+			removed++
+		}
+	}
+	psm.statesMu.Unlock()
+	if removed > 0 {
+		psm.logger.Info("Reconciled pod state map", zap.Int("removed", removed))
+	}
+}
+

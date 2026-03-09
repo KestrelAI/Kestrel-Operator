@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	serverv1 "operator/api/gen/server/v1"
@@ -40,11 +41,12 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	k8sInformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	"operator/pkg/envoy_als"
-	"sync/atomic"
 )
 
 var _ = appsv1.Deployment{}
@@ -59,6 +61,9 @@ type ServerConfig struct {
 	ClientKeyFile  string
 	CACertFile     string
 	ServerName     string // For SNI and certificate verification
+	// InsecureSkipVerify skips server certificate verification (for on-prem)
+	// When true, still uses TLS encryption but doesn't verify server cert hostname
+	InsecureSkipVerify bool
 }
 
 // StreamClient is the client for streaming data to and from the server
@@ -66,7 +71,9 @@ type StreamClient struct {
 	Logger        *zap.Logger
 	Client        *grpc.ClientConn
 	Config        ServerConfig
-	sendMu        sync.Mutex // Protects concurrent stream.Send calls
+	sendMu        sync.Mutex   // Protects concurrent data stream Send calls
+	controlSendMu sync.Mutex   // Protects concurrent control stream Send calls
+	tokenMu       sync.RWMutex // Protects Config.Token reads/writes
 	apiExecutor   *k8s_api.APIExecutor
 	shellExecutor *shell_executor.ShellExecutor
 
@@ -75,16 +82,33 @@ type StreamClient struct {
 	podResolver  *metrics_store.PodWorkloadResolver
 	otelReceiver *otel_receiver.OTelReceiverServer
 
-	// Health tracking fields for liveness probe
+	// Data stream health tracking fields for liveness probe
 	streamHealthy   int64 // atomic boolean (1 = healthy, 0 = unhealthy)
 	lastHealthyTime int64 // atomic unix timestamp of last healthy operation
 	eofErrorCount   int64 // atomic counter for consecutive EOF errors
-	// New fields for persistent EOF tracking
+	// Persistent EOF tracking for data stream
 	totalEOFErrors   int64 // atomic counter for total EOF errors in time window
 	eofTrackingStart int64 // atomic unix timestamp when EOF tracking started
 	lastEOFTime      int64 // atomic unix timestamp of last EOF error
 	healthMu         sync.RWMutex
 	lastError        error // last error encountered (protected by healthMu)
+
+	// Control stream health tracking
+	controlStreamHealthy   int64 // atomic boolean (1 = healthy, 0 = unhealthy)
+	lastControlHealthyTime int64 // atomic unix timestamp
+	controlEOFErrors       int64 // atomic counter for total control stream EOF errors
+	controlLastEOFTime     int64 // atomic unix timestamp of last control EOF
+
+	// Operator log streaming (set via SetOperatorLogStreaming)
+	operatorLogBatchCh <-chan *v1.PodLogs
+	operatorLogEnabled *atomic.Bool
+
+	// 4-stream architecture manager (set during StartOperator)
+	streamManager  *StreamManager
+	eventsStream   v1.StreamService_StreamEventsClient // set when events stream is opened
+	eventsStreamMu sync.RWMutex                        // protects eventsStream reads/writes
+	logsStream     v1.StreamService_StreamLogsClient   // set when logs stream is opened
+	logsStreamMu   sync.RWMutex                        // protects logsStream reads/writes
 }
 
 const (
@@ -100,7 +124,15 @@ const (
 	maxHealthyGapForLiveness = 30 * time.Second // Max gap between EOFs for liveness failure
 )
 
-// protectedSend ensures thread-safe sending on the gRPC stream
+// SetOperatorLogStreaming sets the channel from which operator log batches will be read.
+// The enabled flag gates sending (not capture): logs always buffer in channels,
+// but are only sent over gRPC when enabled is true (set after initial sync).
+func (s *StreamClient) SetOperatorLogStreaming(ch <-chan *v1.PodLogs, enabled *atomic.Bool) {
+	s.operatorLogBatchCh = ch
+	s.operatorLogEnabled = enabled
+}
+
+// protectedSend ensures thread-safe sending on the data gRPC stream
 func (s *StreamClient) protectedSend(stream v1.StreamService_StreamDataClient, req *v1.StreamDataRequest) error {
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()
@@ -114,6 +146,44 @@ func (s *StreamClient) protectedSend(stream v1.StreamService_StreamDataClient, r
 	}
 
 	return err
+}
+
+// protectedControlSend ensures thread-safe sending on the control gRPC stream
+func (s *StreamClient) protectedControlSend(stream v1.StreamService_StreamControlClient, req *v1.StreamControlRequest) error {
+	s.controlSendMu.Lock()
+	defer s.controlSendMu.Unlock()
+	err := stream.Send(req)
+
+	if err != nil {
+		s.recordControlStreamError(err)
+	} else {
+		s.recordControlStreamHealthy()
+	}
+
+	return err
+}
+
+// recordControlStreamHealthy marks the control stream as healthy
+func (s *StreamClient) recordControlStreamHealthy() {
+	atomic.StoreInt64(&s.controlStreamHealthy, 1)
+	atomic.StoreInt64(&s.lastControlHealthyTime, time.Now().Unix())
+}
+
+// recordControlStreamError records a control stream error
+func (s *StreamClient) recordControlStreamError(err error) {
+	atomic.StoreInt64(&s.controlStreamHealthy, 0)
+	if err != nil && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection closed")) {
+		atomic.StoreInt64(&s.controlLastEOFTime, time.Now().Unix())
+		atomic.AddInt64(&s.controlEOFErrors, 1)
+		s.Logger.Warn("EOF error detected on control gRPC stream",
+			zap.Error(err),
+			zap.Int64("control_eof_count", atomic.LoadInt64(&s.controlEOFErrors)))
+	}
+}
+
+// IsControlStreamHealthy returns true if the control stream is currently healthy
+func (s *StreamClient) IsControlStreamHealthy() bool {
+	return atomic.LoadInt64(&s.controlStreamHealthy) == 1
 }
 
 // recordStreamHealthy marks the stream as healthy
@@ -340,20 +410,29 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{clientCert},
-		RootCAs:      caCertPool,
-		ServerName:   config.ServerName,
+		Certificates:       []tls.Certificate{clientCert},
+		RootCAs:            caCertPool,
+		ServerName:         config.ServerName,
+		InsecureSkipVerify: config.InsecureSkipVerify,
 	}
 
 	creds = credentials.NewTLS(tlsConfig)
-	logger.Info("Using mTLS with client certificate authentication",
-		zap.String("client_cert", config.ClientCertFile),
-		zap.String("server_name", config.ServerName))
+	if config.InsecureSkipVerify {
+		logger.Info("Using TLS with client certificate (server verification DISABLED - on-prem mode)",
+			zap.String("client_cert", config.ClientCertFile),
+			zap.String("server_name", config.ServerName))
+	} else {
+		logger.Info("Using mTLS with client certificate authentication",
+			zap.String("client_cert", config.ClientCertFile),
+			zap.String("server_name", config.ServerName))
+	}
 	opts = append(opts, grpc.WithTransportCredentials(creds))
 
-	// Add keepalive parameters for long-lived streams (24 hours)
+	// Add keepalive parameters for long-lived gRPC connection.
+	// Note: Stream-level keepalive is handled by server-sent heartbeats on
+	// the control stream (every 30s) to prevent LB idle-stream timeouts.
 	opts = append(opts, grpc.WithKeepaliveParams(keepalive.ClientParameters{
-		Time:                5 * time.Minute,  // Send pings every 5 minutes during idle
+		Time:                5 * time.Minute,  // Send HTTP/2 pings every 5 minutes during idle
 		Timeout:             30 * time.Second, // Wait 30 seconds for ping response
 		PermitWithoutStream: true,             // Send pings even without active streams
 	}))
@@ -483,8 +562,11 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	caCertFile := getEnvOrDefault("CA_CERT_FILE", "/tls/ca.crt")
 	serverName := getEnvOrDefault("SERVER_NAME", host)
 
+	// TLS verification configuration (for on-prem deployments)
+	insecureSkipVerify := getEnvOrDefault("TLS_INSECURE_SKIP_VERIFY", "false") == "true"
+
 	// Log certificate file paths for debugging
-	log.Printf("Certificate file paths: cert=%s, key=%s, ca=%s", clientCertFile, clientKeyFile, caCertFile)
+	log.Printf("Certificate file paths: cert=%s, key=%s, ca=%s, insecureSkipVerify=%v", clientCertFile, clientKeyFile, caCertFile, insecureSkipVerify)
 
 	// Token loading strategy: Check runtime secret first, fallback to Helm-managed secret
 	token, err := loadTokenWithFallback()
@@ -503,13 +585,14 @@ func LoadConfigFromEnv() (*ServerConfig, error) {
 	}
 
 	return &ServerConfig{
-		Host:           host,
-		Port:           port,
-		Token:          token,
-		ClientCertFile: clientCertFile,
-		ClientKeyFile:  clientKeyFile,
-		CACertFile:     caCertFile,
-		ServerName:     serverName,
+		Host:               host,
+		Port:               port,
+		Token:              token,
+		ClientCertFile:     clientCertFile,
+		ClientKeyFile:      clientKeyFile,
+		CACertFile:         caCertFile,
+		ServerName:         serverName,
+		InsecureSkipVerify: insecureSkipVerify,
 	}, nil
 }
 
@@ -651,69 +734,67 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	podStatusChan := make(chan *v1.PodStatusChange, 2000)
 	nodeConditionChan := make(chan *v1.NodeConditionChange, 500)
 	rolloutStatusChan := make(chan *v1.WorkloadRolloutStatus, 1000)
-	podLogsChan := make(chan *v1.PodLogs, 2000)
+	// Pod log streaming disabled.
+	var podLogsChan chan *v1.PodLogs
 
 	// Create a new stream service client
 	streamClient := v1.NewStreamServiceClient(s.Client)
 
 	// Define the stream function that will be retried
 	streamFunc := func(ctx context.Context) error {
-		// Create fresh ingesters for each connection attempt
+		// Disable operator log sending until initial sync completes on this connection.
+		// Without this, reconnections would immediately send buffered logs before the stream is ready.
+		if s.operatorLogEnabled != nil {
+			s.operatorLogEnabled.Store(false)
+		}
+
+		// Create an attempt-scoped context so that all resources (shared informer factory,
+		// ingester goroutines) are cleaned up when this attempt returns — whether due to
+		// error or successful completion. Without this, the factory's watchers would leak
+		// across reconnection attempts because the outer ctx from StreamWithRetry stays alive.
+		attemptCtx, attemptCancel := context.WithCancel(ctx)
+		defer attemptCancel()
+
+		// Create a shared clientset and informer factory for all standard ingesters.
 		// SharedInformerFactories cannot be restarted after stopping,
-		// so we must create new ingesters (with new factories) on each reconnection
-		s.Logger.Info("Creating fresh ingesters for this connection")
+		// so we must create new ones on each reconnection.
+		s.Logger.Info("Creating shared clientset and informer factory for this connection")
+
+		sharedClientset, err := k8s_helper.NewClientSet()
+		if err != nil {
+			s.Logger.Error("Failed to create shared kubernetes clientset", zap.Error(err))
+			return err
+		}
+		sharedFactory := k8sInformers.NewSharedInformerFactory(sharedClientset, 5*time.Minute)
 
 		// Create network policy ingester (only if Cilium flows are enabled)
 		var networkPolicyIngester *ingestion.NetworkPolicyIngester
 		disableCilium := getEnvOrDefault("DISABLE_CILIUM_FLOWS", "false")
 		if disableCilium != "true" {
-			var err error
-			networkPolicyIngester, err = ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan)
-			if err != nil {
-				s.Logger.Error("Failed to create network policy ingester", zap.Error(err))
-				return err
-			}
+			networkPolicyIngester = ingestion.NewNetworkPolicyIngester(s.Logger, networkPolicyChan, sharedClientset, sharedFactory)
 			s.Logger.Info("Network policy ingester created")
 		} else {
 			s.Logger.Info("Network policy ingester disabled (Cilium flows disabled)")
 		}
 
 		// Create workload ingester
-		workloadIngester, err := ingestion.NewWorkloadIngester(s.Logger, workloadChan)
-		if err != nil {
-			s.Logger.Error("Failed to create workload ingester", zap.Error(err))
-			return err
-		}
+		workloadIngester := ingestion.NewWorkloadIngester(s.Logger, workloadChan, sharedClientset, sharedFactory)
 
 		// Create namespace ingester
-		namespaceIngester, err := ingestion.NewNamespaceIngester(s.Logger, namespaceChan)
-		if err != nil {
-			s.Logger.Error("Failed to create namespace ingester", zap.Error(err))
-			return err
-		}
+		namespaceIngester := ingestion.NewNamespaceIngester(s.Logger, namespaceChan, sharedClientset, sharedFactory)
 
 		// Create service ingester
-		serviceIngester, err := ingestion.NewServiceIngester(s.Logger, serviceChan)
-		if err != nil {
-			s.Logger.Error("Failed to create service ingester", zap.Error(err))
-			return err
-		}
+		serviceIngester := ingestion.NewServiceIngester(s.Logger, serviceChan, sharedClientset, sharedFactory)
 
 		// Create pod ingester
-		podIngester, err := ingestion.NewPodIngester(s.Logger, podChan)
-		if err != nil {
-			s.Logger.Error("Failed to create pod ingester", zap.Error(err))
-			return err
-		}
+		podIngester := ingestion.NewPodIngester(s.Logger, podChan, sharedClientset, sharedFactory)
 
 		// Create node ingester (for VPC Flow Logs node IP resolution)
-		nodeIngester, err := ingestion.NewNodeIngester(s.Logger, nodeChan)
-		if err != nil {
-			s.Logger.Error("Failed to create node ingester", zap.Error(err))
-			return err
-		}
+		nodeIngester := ingestion.NewNodeIngester(s.Logger, nodeChan, sharedClientset, sharedFactory)
 
 		// Create authorization policy ingester (only if Istio is enabled)
+		// Note: AuthorizationPolicyIngester uses its own DynamicSharedInformerFactory
+		// for Istio CRDs, so it is NOT included in the shared factory.
 		var authorizationPolicyIngester *ingestion.AuthorizationPolicyIngester
 		enableIstioALS := getEnvOrDefault("ENABLE_ISTIO_ALS", "false")
 		if enableIstioALS == "true" {
@@ -729,42 +810,17 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		}
 
 		// Create incident detection ingesters
-		eventIngester, err := ingestion.NewEventIngester(s.Logger, eventChan)
-		if err != nil {
-			s.Logger.Error("Failed to create event ingester", zap.Error(err))
-			return err
-		}
-
-		podStatusMonitor, err := ingestion.NewPodStatusMonitor(s.Logger, podStatusChan)
-		if err != nil {
-			s.Logger.Error("Failed to create pod status monitor", zap.Error(err))
-			return err
-		}
-
-		nodeConditionMonitor, err := ingestion.NewNodeConditionMonitor(s.Logger, nodeConditionChan)
-		if err != nil {
-			s.Logger.Error("Failed to create node condition monitor", zap.Error(err))
-			return err
-		}
-
-		rolloutMonitor, err := ingestion.NewWorkloadRolloutMonitor(s.Logger, rolloutStatusChan)
-		if err != nil {
-			s.Logger.Error("Failed to create workload rollout monitor", zap.Error(err))
-			return err
-		}
-
-		// Pod log streaming is disabled — kept for future use.
-		// podLogStreamer, err := ingestion.NewPodLogStreamer(s.Logger, podLogsChan)
-		// if err != nil {
-		// 	s.Logger.Error("Failed to create pod log streamer", zap.Error(err))
-		// 	return err
-		// }
-		_ = podLogsChan
+		eventIngester := ingestion.NewEventIngester(s.Logger, eventChan, sharedClientset, sharedFactory)
+		podStatusMonitor := ingestion.NewPodStatusMonitor(s.Logger, podStatusChan, sharedClientset, sharedFactory)
+		nodeConditionMonitor := ingestion.NewNodeConditionMonitor(s.Logger, nodeConditionChan, sharedClientset, sharedFactory)
+		rolloutMonitor := ingestion.NewWorkloadRolloutMonitor(s.Logger, rolloutStatusChan, sharedClientset, sharedFactory)
+		_ = ingestion.NewPodLogStreamer(s.Logger, podLogsChan, sharedClientset, sharedFactory)
 
 		s.Logger.Info("All ingesters created successfully for this connection")
 
-		// Create stream with tenant context
-		stream, ctx, err := s.createStreamWithTenantContext(ctx, streamClient)
+		// Create stream with tenant context (derived from attemptCtx so it's
+		// cancelled when this attempt ends, stopping the shared factory).
+		stream, ctx, err := s.createStreamWithTenantContext(attemptCtx, streamClient)
 		if err != nil {
 			return err
 		}
@@ -775,7 +831,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		// Start sending incident detection data (separate from inventory)
 		incidentDone := make(chan error, 1)
-		go s.sendIncidentData(ctx, stream, eventChan, podStatusChan, nodeConditionChan, rolloutStatusChan, podLogsChan, incidentDone)
+		go s.sendIncidentData(ctx, stream, eventChan, podStatusChan, nodeConditionChan, rolloutStatusChan, podLogsChan, s.operatorLogBatchCh, incidentDone)
 
 		// Create channels to signal when initial inventory sync is complete
 		workloadSyncDone := make(chan error, 1)
@@ -924,8 +980,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			}
 		}()
 
-		// Pod log streaming is disabled — skip starting the streamer.
-		// Signal sync done immediately so the wait below doesn't block.
+		// Pod log streamer disabled — signal sync complete immediately
 		podLogsSyncDone <- nil
 
 		// Wait for all ingesters to complete their initial sync
@@ -1056,6 +1111,46 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		s.Logger.Info("All incident detection ingesters initialized successfully")
 
+		// Start the shared informer factory and wait for all caches to sync.
+		// All ingesters have registered their event handlers at this point
+		// (syncDone signals ensure setupXxxInformer methods completed).
+		s.Logger.Info("Starting shared informer factory")
+		sharedFactory.Start(ctx.Done())
+
+		// Wait for cache sync with timeout — warn and continue, don't crash.
+		// On very large clusters, some informers may not sync within the timeout.
+		// The 5-minute resync period will fill gaps over time.
+		s.Logger.Info("Waiting for shared informer caches to sync...")
+		syncCtx, syncCancel := context.WithTimeout(ctx, 5*time.Minute)
+		defer syncCancel()
+		syncResults := sharedFactory.WaitForCacheSync(syncCtx.Done())
+		allSynced := true
+		for informerType, synced := range syncResults {
+			if !synced {
+				s.Logger.Error("Informer cache sync timed out — continuing with partial data",
+					zap.String("type", informerType.String()))
+				allSynced = false
+			} else {
+				s.Logger.Info("Informer cache synced",
+					zap.String("type", informerType.String()))
+			}
+		}
+		if !allSynced {
+			s.Logger.Warn("Some informer caches did not sync within 5 minutes — operator will continue with partial inventory. Watch events will fill gaps over time.")
+		} else {
+			s.Logger.Info("All shared informer caches synced successfully")
+		}
+
+		// Log resource counts after sync for visibility
+		if pods, err := sharedFactory.Core().V1().Pods().Lister().List(labels.Everything()); err == nil {
+			s.Logger.Info("Informer cache inventory counts after sync",
+				zap.Int("pods", len(pods)),
+				zap.Bool("all_synced", allSynced))
+		}
+
+		// Start periodic informer health monitoring (observability only, no restart)
+		go s.monitorInformerHealth(ctx, sharedFactory)
+
 		// Send inventory commit message to signal that initial inventory is complete
 		s.Logger.Info("Sending inventory commit message to server")
 		commitMsg := &v1.StreamDataRequest{
@@ -1069,6 +1164,60 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		}
 		s.Logger.Info("Successfully sent inventory commit message")
 
+		// Enable operator log streaming now that initial sync is complete and stream is stable.
+		// Startup logs were buffered in channels and will be sent as the backlog is drained.
+		if s.operatorLogEnabled != nil {
+			s.operatorLogEnabled.Store(true)
+			s.Logger.Info("Operator log streaming enabled")
+		}
+
+		// Create stream manager for 4-stream architecture
+		sm := NewStreamManager(s, streamClient, s.Logger)
+		s.streamManager = sm
+		sm.setHealthy(StreamTypeData)
+
+		// Create control stream for tool calls (K8s API, shell, YAML, etc.)
+		// If the server doesn't support StreamControl (old server), fall back to
+		// data-stream-only mode where tool requests arrive on the data stream.
+		s.Logger.Info("Creating control stream for tool calls")
+		controlStream, err := s.createControlStreamWithTenantContext(attemptCtx, streamClient)
+		if err != nil {
+			if isUnimplemented(err) {
+				s.Logger.Warn("Server does not support StreamControl, falling back to data-stream-only mode")
+				sm.setFallback(StreamTypeControl)
+			} else {
+				s.Logger.Warn("Failed to create control stream, falling back to data-stream-only mode", zap.Error(err))
+			}
+			controlStream = nil
+		} else {
+			atomic.StoreInt64(&s.controlStreamHealthy, 1)
+			sm.setHealthy(StreamTypeControl)
+			s.Logger.Info("Control stream established successfully")
+		}
+
+		// Create flows stream (new operators send flows here instead of data stream)
+		s.Logger.Info("Creating flows stream")
+		flowsStream, err := sm.openFlowsStream(attemptCtx)
+		if err != nil {
+			s.Logger.Warn("Failed to create flows stream, falling back to data stream for flows", zap.Error(err))
+			sm.setFallback(StreamTypeFlows)
+		}
+
+		// Create events stream (new operators send events here instead of data stream)
+		s.Logger.Info("Creating events stream")
+		eventsStream, err := sm.openEventsStream(attemptCtx)
+		if err != nil {
+			s.Logger.Warn("Failed to create events stream, falling back to data stream for events", zap.Error(err))
+			sm.setFallback(StreamTypeEvents)
+		}
+
+		// Open logs stream (for pod logs and operator logs)
+		logsStream, err := sm.openLogsStream(attemptCtx)
+		if err != nil {
+			s.Logger.Warn("Failed to create logs stream, falling back to data stream for logs", zap.Error(err))
+			sm.setFallback(StreamTypeLogs)
+		}
+
 		// Start exporting Cilium flows with context (only if Cilium is available)
 		if flowCollector != nil {
 			flowCtx, flowCancel := context.WithCancel(ctx)
@@ -1080,8 +1229,8 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			s.Logger.Info("Cilium flow collection disabled, continuing without network flow data")
 		}
 
-		// Handle bidirectional streaming (inventory and incident data already being sent via earlier goroutines)
-		return s.handleBidirectionalStreamWithFlows(ctx, stream, flowChan, inventoryDone, incidentDone, l7FlowChan)
+		// Handle bidirectional streaming with all 5 streams
+		return s.handleBidirectionalStreams(ctx, stream, controlStream, flowsStream, eventsStream, logsStream, sm, flowChan, inventoryDone, incidentDone, l7FlowChan)
 	}
 
 	// Use the retry logic to handle stream reconnection
@@ -1221,7 +1370,10 @@ func extractTenantFromToken(tokenString string) (string, error) {
 
 // createStreamWithTenantContext creates a new stream with tenant context
 func (s *StreamClient) createStreamWithTenantContext(ctx context.Context, streamClient v1.StreamServiceClient) (v1.StreamService_StreamDataClient, context.Context, error) {
-	tenantID, err := extractTenantFromToken(s.Config.Token)
+	s.tokenMu.RLock()
+	token := s.Config.Token
+	s.tokenMu.RUnlock()
+	tenantID, err := extractTenantFromToken(token)
 	if err != nil {
 		s.Logger.Error("Failed to extract tenant ID from JWT token", zap.Error(err))
 		return nil, nil, fmt.Errorf("failed to extract tenant from token: %w", err)
@@ -1255,6 +1407,55 @@ func (s *StreamClient) createStreamWithTenantContext(ctx context.Context, stream
 	return stream, ctxWithMetadata, nil
 }
 
+// createContextWithTenantMetadata creates a gRPC context with tenant ID metadata.
+// Shared by all stream creation methods.
+func (s *StreamClient) createContextWithTenantMetadata(ctx context.Context) (context.Context, error) {
+	s.tokenMu.RLock()
+	token := s.Config.Token
+	s.tokenMu.RUnlock()
+	tenantID, err := extractTenantFromToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract tenant from token: %w", err)
+	}
+	md := metadata.New(map[string]string{
+		"autonp-tenantid": tenantID,
+	})
+	return metadata.NewOutgoingContext(ctx, md), nil
+}
+
+// createControlStreamWithTenantContext creates a new control stream with tenant context
+func (s *StreamClient) createControlStreamWithTenantContext(ctx context.Context, streamClient v1.StreamServiceClient) (v1.StreamService_StreamControlClient, error) {
+	s.tokenMu.RLock()
+	token := s.Config.Token
+	s.tokenMu.RUnlock()
+	tenantID, err := extractTenantFromToken(token)
+	if err != nil {
+		s.Logger.Error("Failed to extract tenant ID from JWT token for control stream", zap.Error(err))
+		return nil, fmt.Errorf("failed to extract tenant from token: %w", err)
+	}
+
+	md := metadata.New(map[string]string{
+		"autonp-tenantid": tenantID,
+	})
+	ctxWithMetadata := metadata.NewOutgoingContext(ctx, md)
+
+	s.Logger.Info("Establishing control stream with server",
+		zap.String("tenantID", tenantID))
+
+	controlStream, err := streamClient.StreamControl(ctxWithMetadata)
+	if err != nil {
+		s.Logger.Error("Failed to establish control stream",
+			zap.Error(err),
+			zap.String("tenantID", tenantID))
+		return nil, err
+	}
+
+	s.Logger.Info("Successfully established control stream with server",
+		zap.String("tenantID", tenantID))
+
+	return controlStream, nil
+}
+
 // exportCiliumFlows starts the flow collector in a background goroutine
 func (s *StreamClient) exportCiliumFlows(ctx context.Context, flowCollector *cilium.FlowCollector, cancel context.CancelFunc) {
 	// If ExportCiliumFlows returns, consider it an error and cancel the parent context
@@ -1265,24 +1466,72 @@ func (s *StreamClient) exportCiliumFlows(ctx context.Context, flowCollector *cil
 	}
 }
 
-// handleBidirectionalStreamWithFlows manages the bidirectional streaming for flows only
-// (inventory and incident data are already being handled by separate goroutines)
-func (s *StreamClient) handleBidirectionalStreamWithFlows(ctx context.Context, stream v1.StreamService_StreamDataClient, flowChan chan smartcache.FlowCount, inventoryDone <-chan error, incidentDone <-chan error, l7FlowChan <-chan smartcache.L7Flow) error {
-	// Create a channel to handle stream closure
+// handleBidirectionalStreams manages all 5 independent gRPC streams.
+// Data and control stream errors trigger a full reconnect.
+// Flows, events, and logs stream errors only mark those streams as degraded.
+func (s *StreamClient) handleBidirectionalStreams(ctx context.Context, stream v1.StreamService_StreamDataClient, controlStream v1.StreamService_StreamControlClient, flowsStream v1.StreamService_StreamFlowsClient, eventsStream v1.StreamService_StreamEventsClient, logsStream v1.StreamService_StreamLogsClient, sm *StreamManager, flowChan chan smartcache.FlowCount, inventoryDone <-chan error, incidentDone <-chan error, l7FlowChan <-chan smartcache.L7Flow) error {
+	// Clear stale stream references from any previous retry attempt so that
+	// sendEventOrFallback / sendPodLogsOrFallback don't use dead streams.
+	// streamManager is nilled under eventsStreamMu to match the snapshot pattern
+	// in sendEventOrFallback (which reads it under the same lock).
+	defer func() {
+		s.eventsStreamMu.Lock()
+		s.eventsStream = nil
+		s.streamManager = nil // nilled under eventsStreamMu (sendEventOrFallback snapshots here)
+		s.eventsStreamMu.Unlock()
+		s.logsStreamMu.Lock()
+		s.logsStream = nil
+		s.streamManager = nil // also nil under logsStreamMu (sendPodLogsOrFallback snapshots here)
+		s.logsStreamMu.Unlock()
+	}()
+
+	// Fatal errors (data/control stream) trigger full reconnect
 	done := make(chan error, 1)
 
-	// Start goroutine to handle incoming network policies from server
+	// Start goroutine to handle incoming data messages (ACKs, network policies) from server
 	go s.handleServerMessages(ctx, stream, done)
 
-	// Start goroutine to collect flow data and send to server
-	go s.sendFlowData(ctx, stream, flowChan, done)
+	// Start goroutine to handle incoming control messages (tool requests) from server.
+	// Control stream errors are fatal — feeds into `done` to trigger full reconnect.
+	if controlStream != nil {
+		go s.handleControlMessages(ctx, controlStream, done)
+	}
 
-	// Start goroutine to collect L7 flows and send to server
-	if l7FlowChan != nil {
-		s.Logger.Info("Starting L7 flow processing goroutine")
-		go s.sendL7FlowsToStreamWithDone(ctx, stream, l7FlowChan, done)
+	// --- Flows stream (independent lifecycle) ---
+	if flowsStream != nil && !sm.IsFallback(StreamTypeFlows) {
+		// Send flows on dedicated stream (with fallback to data stream if flows stream dies)
+		go s.sendFlowDataOnFlowsStream(ctx, flowsStream, stream, sm, done, flowChan)
+		if l7FlowChan != nil {
+			s.Logger.Info("Starting L7 flow processing goroutine on flows stream")
+			go s.sendL7FlowsOnFlowsStream(ctx, flowsStream, stream, sm, done, l7FlowChan)
+		}
+		// Receive heartbeats on flows stream
+		go sm.handleFlowsHeartbeats(ctx, flowsStream)
 	} else {
-		s.Logger.Info("No L7 flow channel available, skipping L7 log processing")
+		// Fallback: send flows on data stream (old server or stream creation failed)
+		go s.sendFlowData(ctx, stream, flowChan, done)
+		if l7FlowChan != nil {
+			s.Logger.Info("Starting L7 flow processing goroutine on data stream (fallback)")
+			go s.sendL7FlowsToStreamWithDone(ctx, stream, l7FlowChan, done)
+		}
+	}
+
+	// --- Events stream (independent lifecycle) ---
+	// Events (K8s events, pod status, node conditions, rollout status) go on the events stream.
+	if eventsStream != nil && !sm.IsFallback(StreamTypeEvents) {
+		s.eventsStreamMu.Lock()
+		s.eventsStream = eventsStream
+		s.eventsStreamMu.Unlock()
+		go sm.handleEventsHeartbeats(ctx, eventsStream)
+	}
+
+	// --- Logs stream (independent lifecycle) ---
+	// Pod logs and operator logs go on the dedicated logs stream.
+	if logsStream != nil && !sm.IsFallback(StreamTypeLogs) {
+		s.logsStreamMu.Lock()
+		s.logsStream = logsStream
+		s.logsStreamMu.Unlock()
+		go sm.handleLogsHeartbeats(ctx, logsStream)
 	}
 
 	// Start periodic token renewal to ensure tokens are refreshed during long-lived connections
@@ -1366,29 +1615,86 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 			// Log all received messages for debugging
 			s.Logger.Debug("Received message from server", zap.String("message_type", fmt.Sprintf("%T", response.Response)))
 
-			// Handle the response based on its type
+			// Handle the response based on its type.
+			// Tool requests are primarily handled on the control stream, but the
+			// server falls back to the data stream when no control stream exists
+			// (e.g. during startup before the control stream connects). We must
+			// handle them here too for that fallback path.
 			switch resp := response.Response.(type) {
 			case *v1.StreamDataResponse_Ack:
-				// Server ACK is no longer needed for policy application
 				s.Logger.Debug("Received acknowledgment from server")
+			case *v1.StreamDataResponse_Heartbeat:
+				s.Logger.Debug("Received heartbeat from server on data stream")
 			case *v1.StreamDataResponse_NetworkPolicy:
-				s.handleNetworkPolicy(ctx, stream, k8sClient, resp.NetworkPolicy)
+				go s.handleNetworkPolicy(ctx, stream, k8sClient, resp.NetworkPolicy)
 			case *v1.StreamDataResponse_KubernetesApiRequest:
-				s.handleKubernetesAPIRequest(ctx, stream, resp.KubernetesApiRequest)
+				go s.handleKubernetesAPIRequestOnDataStream(ctx, stream, resp.KubernetesApiRequest)
 			case *v1.StreamDataResponse_ShellCommandRequest:
-				s.handleShellCommandRequest(ctx, stream, resp.ShellCommandRequest)
+				go s.handleShellCommandRequestOnDataStream(ctx, stream, resp.ShellCommandRequest)
 			case *v1.StreamDataResponse_YamlDryRunRequest:
-				s.handleYamlDryRunRequest(ctx, stream, resp.YamlDryRunRequest)
+				go s.handleYamlDryRunRequestOnDataStream(ctx, stream, resp.YamlDryRunRequest)
 			case *v1.StreamDataResponse_YamlApplyRequest:
-				s.handleYamlApplyRequest(ctx, stream, resp.YamlApplyRequest)
-			case *v1.StreamDataResponse_CertificateRenewalRequest:
-				s.handleCertificateRenewalRequest(ctx, stream, resp.CertificateRenewalRequest)
-			case *v1.StreamDataResponse_OperatorRestartRequest:
-				s.handleOperatorRestartRequest(ctx, stream, resp.OperatorRestartRequest)
+				go s.handleYamlApplyRequestOnDataStream(ctx, stream, resp.YamlApplyRequest)
 			case *v1.StreamDataResponse_MetricsQueryRequest:
-				s.handleMetricsQueryRequest(ctx, stream, resp.MetricsQueryRequest)
+				go s.handleMetricsQueryRequestOnDataStream(ctx, stream, resp.MetricsQueryRequest)
+			case *v1.StreamDataResponse_CertificateRenewalRequest:
+				s.handleCertificateRenewalRequestOnDataStream(ctx, stream, resp.CertificateRenewalRequest)
+			case *v1.StreamDataResponse_OperatorRestartRequest:
+				s.handleOperatorRestartRequestOnDataStream(ctx, stream, resp.OperatorRestartRequest)
 			default:
-				s.Logger.Warn("Received unhandled message type from server",
+				s.Logger.Warn("Received unhandled message type on data stream",
+					zap.String("message_type", fmt.Sprintf("%T", response.Response)))
+			}
+		}
+	}
+}
+
+// handleControlMessages processes incoming tool requests from the server on the control stream
+func (s *StreamClient) handleControlMessages(ctx context.Context, controlStream v1.StreamService_StreamControlClient, done chan<- error) {
+	for {
+		select {
+		case <-ctx.Done():
+			select {
+			case done <- ctx.Err():
+			default:
+			}
+			return
+		default:
+			response, err := controlStream.Recv()
+			if err != nil {
+				s.recordControlStreamError(err)
+				select {
+				case done <- fmt.Errorf("control stream error: %w", err):
+				default:
+				}
+				return
+			}
+
+			s.recordControlStreamHealthy()
+			s.Logger.Debug("Received message on control stream", zap.String("message_type", fmt.Sprintf("%T", response.Response)))
+
+			// Dispatch tool requests to handler goroutines.
+			// Long-running handlers are spawned as goroutines. Cert renewal and
+			// operator restart are synchronous (blocking) by design.
+			switch resp := response.Response.(type) {
+			case *v1.StreamControlResponse_KubernetesApiRequest:
+				go s.handleKubernetesAPIRequest(ctx, controlStream, resp.KubernetesApiRequest)
+			case *v1.StreamControlResponse_ShellCommandRequest:
+				go s.handleShellCommandRequest(ctx, controlStream, resp.ShellCommandRequest)
+			case *v1.StreamControlResponse_YamlDryRunRequest:
+				go s.handleYamlDryRunRequest(ctx, controlStream, resp.YamlDryRunRequest)
+			case *v1.StreamControlResponse_YamlApplyRequest:
+				go s.handleYamlApplyRequest(ctx, controlStream, resp.YamlApplyRequest)
+			case *v1.StreamControlResponse_CertificateRenewalRequest:
+				s.handleCertificateRenewalRequest(ctx, controlStream, resp.CertificateRenewalRequest)
+			case *v1.StreamControlResponse_OperatorRestartRequest:
+				s.handleOperatorRestartRequest(ctx, controlStream, resp.OperatorRestartRequest)
+			case *v1.StreamControlResponse_MetricsQueryRequest:
+				go s.handleMetricsQueryRequest(ctx, controlStream, resp.MetricsQueryRequest)
+			case *v1.StreamControlResponse_Heartbeat:
+				s.Logger.Debug("Received heartbeat on control stream")
+			default:
+				s.Logger.Warn("Received unhandled message type on control stream",
 					zap.String("message_type", fmt.Sprintf("%T", response.Response)))
 			}
 		}
@@ -1398,7 +1704,7 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 // handleKubernetesAPIRequest processes Kubernetes API requests from the server
 func (s *StreamClient) handleKubernetesAPIRequest(
 	ctx context.Context,
-	stream v1.StreamService_StreamDataClient,
+	stream v1.StreamService_StreamControlClient,
 	apiRequest *v1.KubernetesAPIRequest,
 ) {
 	s.Logger.Info("Received Kubernetes API request from server",
@@ -1408,14 +1714,14 @@ func (s *StreamClient) handleKubernetesAPIRequest(
 	// Execute the API requests using our API executor
 	apiResponse := s.apiExecutor.ExecuteAPIRequests(ctx, apiRequest)
 
-	// Send the response back to the server
-	responseMsg := &v1.StreamDataRequest{
-		Request: &v1.StreamDataRequest_KubernetesApiResponse{
+	// Send the response back to the server on the control stream
+	responseMsg := &v1.StreamControlRequest{
+		Request: &v1.StreamControlRequest_KubernetesApiResponse{
 			KubernetesApiResponse: apiResponse,
 		},
 	}
 
-	if err := s.protectedSend(stream, responseMsg); err != nil {
+	if err := s.protectedControlSend(stream, responseMsg); err != nil {
 		s.Logger.Error("Failed to send Kubernetes API response to server",
 			zap.String("request_id", apiRequest.RequestId),
 			zap.Error(err))
@@ -1429,7 +1735,7 @@ func (s *StreamClient) handleKubernetesAPIRequest(
 // handleShellCommandRequest processes shell command requests from the server
 func (s *StreamClient) handleShellCommandRequest(
 	ctx context.Context,
-	stream v1.StreamService_StreamDataClient,
+	stream v1.StreamService_StreamControlClient,
 	shellRequest *v1.ShellCommandRequest,
 ) {
 	s.Logger.Info("Received shell command request from server",
@@ -1439,14 +1745,45 @@ func (s *StreamClient) handleShellCommandRequest(
 	// Execute the shell commands using our shell executor
 	shellResponse := s.shellExecutor.ExecuteShellCommands(ctx, shellRequest)
 
-	// Send the response back to the server
-	responseMsg := &v1.StreamDataRequest{
-		Request: &v1.StreamDataRequest_ShellCommandResponse{
+	// Truncate results that would exceed gRPC max message size (10MB).
+	// We cap at 8MB total to leave room for protobuf overhead.
+	const maxResponseBytes = 8 * 1024 * 1024
+	totalSize := 0
+	for _, result := range shellResponse.Results {
+		totalSize += len(result.Stdout) + len(result.Stderr)
+	}
+	if totalSize > maxResponseBytes {
+		s.Logger.Warn("Shell command response too large, truncating to avoid gRPC limit",
+			zap.String("request_id", shellRequest.RequestId),
+			zap.Int("total_bytes", totalSize),
+			zap.Int("max_bytes", maxResponseBytes))
+		// Distribute budget evenly across results, then split between stdout and stderr
+		perFieldBudget := maxResponseBytes / len(shellResponse.Results) / 2
+		for _, result := range shellResponse.Results {
+			truncateField := func(field *string) {
+				if len(*field) > perFieldBudget {
+					truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit. Use more specific queries (e.g., target a single resource by name instead of listing all resources).]",
+						len(*field), perFieldBudget)
+					budget := perFieldBudget - len(truncatedMsg)
+					if budget < 0 {
+						budget = 0
+					}
+					*field = (*field)[:budget] + truncatedMsg
+				}
+			}
+			truncateField(&result.Stdout)
+			truncateField(&result.Stderr)
+		}
+	}
+
+	// Send the response back to the server on the control stream
+	responseMsg := &v1.StreamControlRequest{
+		Request: &v1.StreamControlRequest_ShellCommandResponse{
 			ShellCommandResponse: shellResponse,
 		},
 	}
 
-	if err := s.protectedSend(stream, responseMsg); err != nil {
+	if err := s.protectedControlSend(stream, responseMsg); err != nil {
 		s.Logger.Error("Failed to send shell command response to server",
 			zap.String("request_id", shellRequest.RequestId),
 			zap.Error(err))
@@ -1460,7 +1797,7 @@ func (s *StreamClient) handleShellCommandRequest(
 // handleYamlDryRunRequest processes YAML dry-run validation requests from the server
 func (s *StreamClient) handleYamlDryRunRequest(
 	ctx context.Context,
-	stream v1.StreamService_StreamDataClient,
+	stream v1.StreamService_StreamControlClient,
 	yamlRequest *v1.YamlDryRunRequest,
 ) {
 	s.Logger.Info("Received YAML dry-run validation request from server",
@@ -1471,7 +1808,6 @@ func (s *StreamClient) handleYamlDryRunRequest(
 	yamlValidator, err := ingestion.NewYamlValidator(s.Logger)
 	if err != nil {
 		s.Logger.Error("Failed to create YAML validator", zap.Error(err))
-		// Send error response
 		errorResponse := &v1.YamlDryRunResponse{
 			RequestId:          yamlRequest.RequestId,
 			GlobalErrorMessage: fmt.Sprintf("Failed to create YAML validator: %v", err),
@@ -1480,50 +1816,42 @@ func (s *StreamClient) handleYamlDryRunRequest(
 		return
 	}
 
-	// Validate YAML manifests
 	yamlResponse := yamlValidator.ValidateYamlManifests(ctx, yamlRequest)
-
-	// Send the response back to the server
 	s.sendYamlDryRunResponse(stream, yamlResponse)
 }
 
 // handleYamlApplyRequest processes YAML apply requests from the server
 func (s *StreamClient) handleYamlApplyRequest(
 	ctx context.Context,
-	stream v1.StreamService_StreamDataClient,
+	stream v1.StreamService_StreamControlClient,
 	yamlRequest *v1.YamlApplyRequest,
 ) {
 	s.Logger.Info("Received YAML apply request from server",
 		zap.String("request_id", yamlRequest.RequestId),
 		zap.Int("manifests_count", len(yamlRequest.YamlManifests)))
 
-	// Process each manifest
 	results := make([]*v1.YamlApplyResult, 0, len(yamlRequest.YamlManifests))
-
 	for _, manifest := range yamlRequest.YamlManifests {
 		result := s.applyYamlManifest(ctx, manifest)
 		results = append(results, result)
 	}
 
-	// Create response
 	yamlResponse := &v1.YamlApplyResponse{
 		RequestId: yamlRequest.RequestId,
 		Results:   results,
 	}
-
-	// Send the response back to the server
 	s.sendYamlApplyResponse(stream, yamlResponse)
 }
 
-// sendYamlDryRunResponse sends a YAML dry-run validation response to the server
-func (s *StreamClient) sendYamlDryRunResponse(stream v1.StreamService_StreamDataClient, yamlResponse *v1.YamlDryRunResponse) {
-	responseMsg := &v1.StreamDataRequest{
-		Request: &v1.StreamDataRequest_YamlDryRunResponse{
+// sendYamlDryRunResponse sends a YAML dry-run validation response on the control stream
+func (s *StreamClient) sendYamlDryRunResponse(stream v1.StreamService_StreamControlClient, yamlResponse *v1.YamlDryRunResponse) {
+	responseMsg := &v1.StreamControlRequest{
+		Request: &v1.StreamControlRequest_YamlDryRunResponse{
 			YamlDryRunResponse: yamlResponse,
 		},
 	}
 
-	if err := s.protectedSend(stream, responseMsg); err != nil {
+	if err := s.protectedControlSend(stream, responseMsg); err != nil {
 		s.Logger.Error("Failed to send YAML dry-run response to server",
 			zap.String("request_id", yamlResponse.RequestId),
 			zap.Error(err))
@@ -1534,15 +1862,15 @@ func (s *StreamClient) sendYamlDryRunResponse(stream v1.StreamService_StreamData
 	}
 }
 
-// sendYamlApplyResponse sends a YAML apply response to the server
-func (s *StreamClient) sendYamlApplyResponse(stream v1.StreamService_StreamDataClient, yamlResponse *v1.YamlApplyResponse) {
-	responseMsg := &v1.StreamDataRequest{
-		Request: &v1.StreamDataRequest_YamlApplyResponse{
+// sendYamlApplyResponse sends a YAML apply response on the control stream
+func (s *StreamClient) sendYamlApplyResponse(stream v1.StreamService_StreamControlClient, yamlResponse *v1.YamlApplyResponse) {
+	responseMsg := &v1.StreamControlRequest{
+		Request: &v1.StreamControlRequest_YamlApplyResponse{
 			YamlApplyResponse: yamlResponse,
 		},
 	}
 
-	if err := s.protectedSend(stream, responseMsg); err != nil {
+	if err := s.protectedControlSend(stream, responseMsg); err != nil {
 		s.Logger.Error("Failed to send YAML apply response to server",
 			zap.String("request_id", yamlResponse.RequestId),
 			zap.Error(err))
@@ -2121,10 +2449,76 @@ func (s *StreamClient) sendNodeToServer(stream v1.StreamService_StreamDataClient
 	return s.protectedSend(stream, nodeMsg)
 }
 
+// sendEventOrFallback tries to send an event on the events stream. If the events stream
+// is not available or unhealthy, falls back to the data stream.
+func (s *StreamClient) sendEventOrFallback(
+	dataStream v1.StreamService_StreamDataClient,
+	sendOnEvents func(v1.StreamService_StreamEventsClient) error,
+	sendOnData func() error,
+) error {
+	s.eventsStreamMu.RLock()
+	es := s.eventsStream
+	sm := s.streamManager // snapshot under lock to avoid race with defer nil-out
+	s.eventsStreamMu.RUnlock()
+
+	if es != nil && sm != nil && !sm.IsFallback(StreamTypeEvents) && sm.IsStreamHealthy(StreamTypeEvents) {
+		if err := sendOnEvents(es); err != nil {
+			sm.setUnhealthy(StreamTypeEvents, err)
+			s.Logger.Warn("Events stream send failed, falling back to data stream", zap.Error(err))
+			// Fall through to data stream
+		} else {
+			return nil
+		}
+	}
+	// Fallback to data stream
+	return sendOnData()
+}
+
+// sendPodLogsOrFallback routes pod logs to the dedicated logs stream if available,
+// otherwise falls back to the data stream.
+func (s *StreamClient) sendPodLogsOrFallback(dataStream v1.StreamService_StreamDataClient, podLogs *v1.PodLogs) error {
+	s.logsStreamMu.RLock()
+	ls := s.logsStream
+	sm := s.streamManager // snapshot under lock to avoid race with defer nil-out
+	s.logsStreamMu.RUnlock()
+
+	if ls != nil && sm != nil && !sm.IsFallback(StreamTypeLogs) && sm.IsStreamHealthy(StreamTypeLogs) {
+		if err := s.sendPodLogsOnLogsStream(ls, podLogs); err != nil {
+			sm.setUnhealthy(StreamTypeLogs, err)
+			s.Logger.Warn("Logs stream send failed, falling back to data stream", zap.Error(err))
+			// Fall through to data stream
+		} else {
+			return nil
+		}
+	}
+	// Fallback to data stream
+	return s.sendPodLogsToServer(dataStream, podLogs)
+}
+
 // sendIncidentData collects incident detection data and sends it to the server
-func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, done chan<- error) {
+func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, operatorLogsChan <-chan *v1.PodLogs, done chan<- error) {
+	// Operator log send gating: start with nil channel (select ignores nil channels).
+	// When operatorLogEnabled becomes true, activeOperatorLogsChan is set to the real channel.
+	// This prevents consuming buffered logs before the stream is ready.
+	var activeOperatorLogsChan <-chan *v1.PodLogs
+	if s.operatorLogEnabled != nil && s.operatorLogEnabled.Load() {
+		activeOperatorLogsChan = operatorLogsChan
+	}
+
+	// Periodically check if operator log sending should be enabled
+	enableCheckTicker := time.NewTicker(1 * time.Second)
+	defer enableCheckTicker.Stop()
+
 	for {
 		select {
+		case <-enableCheckTicker.C:
+			// Activate operator log channel once sending is enabled
+			if activeOperatorLogsChan == nil && operatorLogsChan != nil &&
+				s.operatorLogEnabled != nil && s.operatorLogEnabled.Load() {
+				activeOperatorLogsChan = operatorLogsChan
+				s.Logger.Info("Operator log sending activated")
+			}
+			continue
 		case <-ctx.Done():
 			// Context is done, exit the goroutine
 			return
@@ -2144,7 +2538,11 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 			case <-ctx.Done():
 				return
 			default:
-				if err := s.sendKubernetesEventToServer(stream, event); err != nil {
+				if err := s.sendEventOrFallback(stream, func(es v1.StreamService_StreamEventsClient) error {
+					return s.sendKubernetesEventOnEventsStream(es, event)
+				}, func() error {
+					return s.sendKubernetesEventToServer(stream, event)
+				}); err != nil {
 					s.Logger.Error("Failed to send Kubernetes event data", zap.Error(err))
 					select {
 					case done <- err:
@@ -2154,7 +2552,6 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 				}
 			}
 		case podStatus, ok := <-podStatusChan:
-			// Check if pod status channel was closed
 			if !ok {
 				s.Logger.Warn("Pod status channel closed unexpectedly")
 				select {
@@ -2163,13 +2560,15 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 				}
 				return
 			}
-
-			// Check context again before sending
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				if err := s.sendPodStatusChangeToServer(stream, podStatus); err != nil {
+				if err := s.sendEventOrFallback(stream, func(es v1.StreamService_StreamEventsClient) error {
+					return s.sendPodStatusChangeOnEventsStream(es, podStatus)
+				}, func() error {
+					return s.sendPodStatusChangeToServer(stream, podStatus)
+				}); err != nil {
 					s.Logger.Error("Failed to send pod status change data", zap.Error(err))
 					select {
 					case done <- err:
@@ -2179,7 +2578,6 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 				}
 			}
 		case nodeCondition, ok := <-nodeConditionChan:
-			// Check if node condition channel was closed
 			if !ok {
 				s.Logger.Warn("Node condition channel closed unexpectedly")
 				select {
@@ -2188,13 +2586,15 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 				}
 				return
 			}
-
-			// Check context again before sending
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				if err := s.sendNodeConditionChangeToServer(stream, nodeCondition); err != nil {
+				if err := s.sendEventOrFallback(stream, func(es v1.StreamService_StreamEventsClient) error {
+					return s.sendNodeConditionChangeOnEventsStream(es, nodeCondition)
+				}, func() error {
+					return s.sendNodeConditionChangeToServer(stream, nodeCondition)
+				}); err != nil {
 					s.Logger.Error("Failed to send node condition change data", zap.Error(err))
 					select {
 					case done <- err:
@@ -2204,7 +2604,6 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 				}
 			}
 		case rolloutStatus, ok := <-rolloutStatusChan:
-			// Check if rollout status channel was closed
 			if !ok {
 				s.Logger.Warn("Rollout status channel closed unexpectedly")
 				select {
@@ -2213,13 +2612,15 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 				}
 				return
 			}
-
-			// Check context again before sending
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				if err := s.sendWorkloadRolloutStatusToServer(stream, rolloutStatus); err != nil {
+				if err := s.sendEventOrFallback(stream, func(es v1.StreamService_StreamEventsClient) error {
+					return s.sendWorkloadRolloutStatusOnEventsStream(es, rolloutStatus)
+				}, func() error {
+					return s.sendWorkloadRolloutStatusToServer(stream, rolloutStatus)
+				}); err != nil {
 					s.Logger.Error("Failed to send workload rollout status data", zap.Error(err))
 					select {
 					case done <- err:
@@ -2244,13 +2645,31 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 			case <-ctx.Done():
 				return
 			default:
-				if err := s.sendPodLogsToServer(stream, podLogs); err != nil {
+				if err := s.sendPodLogsOrFallback(stream, podLogs); err != nil {
 					s.Logger.Error("Failed to send pod logs data", zap.Error(err))
 					select {
 					case done <- err:
 					default:
 					}
 					return
+				}
+			}
+		case operatorLogs, ok := <-activeOperatorLogsChan:
+			// Check if operator logs channel was closed
+			if !ok {
+				s.Logger.Warn("Operator logs channel closed; disabling operator log forwarding")
+				activeOperatorLogsChan = nil
+				operatorLogsChan = nil
+				continue
+			}
+
+			// Check context again before sending
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendPodLogsOrFallback(stream, operatorLogs); err != nil {
+					s.Logger.Warn("Failed to send operator logs data (best-effort, continuing)", zap.Error(err))
 				}
 			}
 		}
@@ -2382,7 +2801,9 @@ func (s *StreamClient) periodicTokenRenewal(ctx context.Context) {
 		case <-ticker.C:
 			s.Logger.Info("Performing periodic token renewal")
 
+			s.tokenMu.RLock()
 			currentToken := s.Config.Token
+			s.tokenMu.RUnlock()
 			serverClient := serverv1.NewAutonpServerServiceClient(s.Client)
 
 			// Call RenewClusterToken directly
@@ -2407,7 +2828,9 @@ func (s *StreamClient) periodicTokenRenewal(ctx context.Context) {
 				s.Logger.Info("Successfully updated runtime token secret")
 
 				// Update config token for the next renewal cycle
+				s.tokenMu.Lock()
 				s.Config.Token = resp.AccessToken
+				s.tokenMu.Unlock()
 			}
 		}
 	}
@@ -2606,7 +3029,7 @@ func (s *StreamClient) sendL7FlowsToStreamWithDone(ctx context.Context, stream v
 // handleCertificateRenewalRequest processes certificate renewal requests from the server
 func (s *StreamClient) handleCertificateRenewalRequest(
 	ctx context.Context,
-	stream v1.StreamService_StreamDataClient,
+	stream v1.StreamService_StreamControlClient,
 	renewalRequest *v1.CertificateRenewalRequest,
 ) {
 	s.Logger.Info("Received certificate renewal request from server",
@@ -2617,7 +3040,7 @@ func (s *StreamClient) handleCertificateRenewalRequest(
 	// Apply the new certificates
 	success, errorMessage := s.applyCertificateRenewal(ctx, renewalRequest)
 
-	// Send response back to server
+	// Send response back to server on the control stream
 	response := &v1.CertificateRenewalResponse{
 		RequestId:    renewalRequest.RequestId,
 		Success:      success,
@@ -2625,13 +3048,13 @@ func (s *StreamClient) handleCertificateRenewalRequest(
 		AppliedAt:    timestamppb.Now(),
 	}
 
-	responseMsg := &v1.StreamDataRequest{
-		Request: &v1.StreamDataRequest_CertificateRenewalResponse{
+	responseMsg := &v1.StreamControlRequest{
+		Request: &v1.StreamControlRequest_CertificateRenewalResponse{
 			CertificateRenewalResponse: response,
 		},
 	}
 
-	if err := s.protectedSend(stream, responseMsg); err != nil {
+	if err := s.protectedControlSend(stream, responseMsg); err != nil {
 		s.Logger.Error("Failed to send certificate renewal response to server",
 			zap.String("request_id", renewalRequest.RequestId),
 			zap.Error(err))
@@ -2789,7 +3212,7 @@ func (s *StreamClient) triggerPodRestart(ctx context.Context, clientset *kuberne
 // handleOperatorRestartRequest processes operator restart requests from the server
 func (s *StreamClient) handleOperatorRestartRequest(
 	ctx context.Context,
-	stream v1.StreamService_StreamDataClient,
+	stream v1.StreamService_StreamControlClient,
 	restartRequest *v1.OperatorRestartRequest,
 ) {
 	s.Logger.Info("Received operator restart request from server",
@@ -2801,7 +3224,7 @@ func (s *StreamClient) handleOperatorRestartRequest(
 	// Apply the operator restart
 	success, errorMessage := s.applyOperatorRestart(ctx, restartRequest)
 
-	// Send response back to server
+	// Send response back to server on the control stream
 	response := &v1.OperatorRestartResponse{
 		RequestId:    restartRequest.RequestId,
 		Success:      success,
@@ -2809,13 +3232,13 @@ func (s *StreamClient) handleOperatorRestartRequest(
 		InitiatedAt:  timestamppb.Now(),
 	}
 
-	responseMsg := &v1.StreamDataRequest{
-		Request: &v1.StreamDataRequest_OperatorRestartResponse{
+	responseMsg := &v1.StreamControlRequest{
+		Request: &v1.StreamControlRequest_OperatorRestartResponse{
 			OperatorRestartResponse: response,
 		},
 	}
 
-	if err := s.protectedSend(stream, responseMsg); err != nil {
+	if err := s.protectedControlSend(stream, responseMsg); err != nil {
 		s.Logger.Error("Failed to send operator restart response to server",
 			zap.String("request_id", restartRequest.RequestId),
 			zap.Error(err))
@@ -2954,47 +3377,39 @@ func (s *StreamClient) performImmediateRestart(ctx context.Context, clientset *k
 // stored locally on the operator for incident verification and RCA.
 func (s *StreamClient) handleMetricsQueryRequest(
 	ctx context.Context,
-	stream v1.StreamService_StreamDataClient,
+	stream v1.StreamService_StreamControlClient,
 	queryRequest *v1.MetricsQueryRequest,
 ) {
-	// Validate that queryRequest is not nil
-	if queryRequest == nil {
-		s.Logger.Warn("Received nil metrics query request from server")
+	// sendMetricsError is a helper to send an error response on the control stream
+	sendMetricsError := func(requestID, errMsg string) {
 		response := &v1.MetricsQueryResponse{
-			RequestId:    "",
-			ErrorMessage: "invalid request: query request is nil",
+			RequestId:    requestID,
+			ErrorMessage: errMsg,
 		}
-		responseMsg := &v1.StreamDataRequest{
-			Request: &v1.StreamDataRequest_MetricsQueryResponse{
+		responseMsg := &v1.StreamControlRequest{
+			Request: &v1.StreamControlRequest_MetricsQueryResponse{
 				MetricsQueryResponse: response,
 			},
 		}
-		if err := s.protectedSend(stream, responseMsg); err != nil {
-			s.Logger.Error("Failed to send error response for nil metrics query request", zap.Error(err))
+		if err := s.protectedControlSend(stream, responseMsg); err != nil {
+			s.Logger.Error("Failed to send metrics query error response",
+				zap.String("request_id", requestID),
+				zap.Error(err))
 		}
+	}
+
+	if queryRequest == nil {
+		s.Logger.Warn("Received nil metrics query request from server")
+		sendMetricsError("", "invalid request: query request is nil")
 		return
 	}
 
 	reqID := queryRequest.RequestId
 
-	// Validate time range fields
 	if queryRequest.StartTime == nil || queryRequest.EndTime == nil {
 		s.Logger.Warn("Metrics query request missing required time range fields",
 			zap.String("request_id", reqID))
-		response := &v1.MetricsQueryResponse{
-			RequestId:    reqID,
-			ErrorMessage: "invalid request: start_time and end_time are required",
-		}
-		responseMsg := &v1.StreamDataRequest{
-			Request: &v1.StreamDataRequest_MetricsQueryResponse{
-				MetricsQueryResponse: response,
-			},
-		}
-		if err := s.protectedSend(stream, responseMsg); err != nil {
-			s.Logger.Error("Failed to send error response for invalid metrics query request",
-				zap.String("request_id", reqID),
-				zap.Error(err))
-		}
+		sendMetricsError(reqID, "invalid request: start_time and end_time are required")
 		return
 	}
 
@@ -3005,24 +3420,10 @@ func (s *StreamClient) handleMetricsQueryRequest(
 			zap.String("request_id", reqID),
 			zap.Time("start_time", startTime),
 			zap.Time("end_time", endTime))
-		response := &v1.MetricsQueryResponse{
-			RequestId:    reqID,
-			ErrorMessage: "invalid request: start_time must be <= end_time",
-		}
-		responseMsg := &v1.StreamDataRequest{
-			Request: &v1.StreamDataRequest_MetricsQueryResponse{
-				MetricsQueryResponse: response,
-			},
-		}
-		if err := s.protectedSend(stream, responseMsg); err != nil {
-			s.Logger.Error("Failed to send error response for invalid time range",
-				zap.String("request_id", reqID),
-				zap.Error(err))
-		}
+		sendMetricsError(reqID, "invalid request: start_time must be <= end_time")
 		return
 	}
 
-	// Log after successful validation
 	s.Logger.Info("Received metrics query request from server",
 		zap.String("request_id", reqID),
 		zap.String("namespace", queryRequest.Namespace),
@@ -3060,14 +3461,13 @@ func (s *StreamClient) handleMetricsQueryRequest(
 		zap.Int32("series_returned", response.TotalSeriesReturned),
 		zap.Bool("truncated", response.Truncated))
 
-	// Send the response back to the server
-	responseMsg := &v1.StreamDataRequest{
-		Request: &v1.StreamDataRequest_MetricsQueryResponse{
+	responseMsg := &v1.StreamControlRequest{
+		Request: &v1.StreamControlRequest_MetricsQueryResponse{
 			MetricsQueryResponse: response,
 		},
 	}
 
-	if err := s.protectedSend(stream, responseMsg); err != nil {
+	if err := s.protectedControlSend(stream, responseMsg); err != nil {
 		s.Logger.Error("Failed to send metrics query response to server",
 			zap.String("request_id", queryRequest.RequestId),
 			zap.Error(err))
@@ -3133,4 +3533,153 @@ func (s *StreamClient) StartOTelReceiver(ctx context.Context) error {
 // GetOTelReceiver returns the OTEL receiver instance (for testing or monitoring).
 func (s *StreamClient) GetOTelReceiver() *otel_receiver.OTelReceiverServer {
 	return s.otelReceiver
+}
+
+// monitorInformerHealth periodically checks informer sync status (observability only, no restart)
+// --- Data stream fallback handlers ---
+// These handle tool requests that arrive on the data stream (server fallback
+// when no control stream is registered). They call the same execution logic
+// as the control stream handlers but send responses on the data stream.
+
+func (s *StreamClient) handleKubernetesAPIRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, apiRequest *v1.KubernetesAPIRequest) {
+	s.Logger.Info("Handling Kubernetes API request on data stream (fallback)", zap.String("request_id", apiRequest.RequestId))
+	apiResponse := s.apiExecutor.ExecuteAPIRequests(ctx, apiRequest)
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_KubernetesApiResponse{KubernetesApiResponse: apiResponse},
+	}); err != nil {
+		s.Logger.Error("Failed to send Kubernetes API response on data stream", zap.String("request_id", apiRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleShellCommandRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, shellRequest *v1.ShellCommandRequest) {
+	s.Logger.Info("Handling shell command request on data stream (fallback)", zap.String("request_id", shellRequest.RequestId))
+	shellResponse := s.shellExecutor.ExecuteShellCommands(ctx, shellRequest)
+
+	// Truncate oversized responses (same logic as control stream handler)
+	const maxResponseBytes = 8 * 1024 * 1024
+	totalSize := 0
+	for _, result := range shellResponse.Results {
+		totalSize += len(result.Stdout) + len(result.Stderr)
+	}
+	if totalSize > maxResponseBytes {
+		perFieldBudget := maxResponseBytes / len(shellResponse.Results) / 2
+		for _, result := range shellResponse.Results {
+			truncateField := func(field *string) {
+				if len(*field) > perFieldBudget {
+					truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit.]", len(*field), perFieldBudget)
+					budget := perFieldBudget - len(truncatedMsg)
+					if budget < 0 {
+						budget = 0
+					}
+					*field = (*field)[:budget] + truncatedMsg
+				}
+			}
+			truncateField(&result.Stdout)
+			truncateField(&result.Stderr)
+		}
+	}
+
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_ShellCommandResponse{ShellCommandResponse: shellResponse},
+	}); err != nil {
+		s.Logger.Error("Failed to send shell command response on data stream", zap.String("request_id", shellRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleYamlDryRunRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, yamlRequest *v1.YamlDryRunRequest) {
+	s.Logger.Info("Handling YAML dry-run request on data stream (fallback)", zap.String("request_id", yamlRequest.RequestId))
+	yamlValidator, err := ingestion.NewYamlValidator(s.Logger)
+	if err != nil {
+		s.Logger.Error("Failed to create YAML validator", zap.Error(err))
+		yamlResponse := &v1.YamlDryRunResponse{RequestId: yamlRequest.RequestId, GlobalErrorMessage: fmt.Sprintf("Failed to create YAML validator: %v", err)}
+		s.protectedSend(stream, &v1.StreamDataRequest{Request: &v1.StreamDataRequest_YamlDryRunResponse{YamlDryRunResponse: yamlResponse}})
+		return
+	}
+	yamlResponse := yamlValidator.ValidateYamlManifests(ctx, yamlRequest)
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_YamlDryRunResponse{YamlDryRunResponse: yamlResponse},
+	}); err != nil {
+		s.Logger.Error("Failed to send YAML dry-run response on data stream", zap.String("request_id", yamlRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleYamlApplyRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, yamlRequest *v1.YamlApplyRequest) {
+	s.Logger.Info("Handling YAML apply request on data stream (fallback)", zap.String("request_id", yamlRequest.RequestId))
+	results := make([]*v1.YamlApplyResult, 0, len(yamlRequest.YamlManifests))
+	for _, manifest := range yamlRequest.YamlManifests {
+		results = append(results, s.applyYamlManifest(ctx, manifest))
+	}
+	yamlResponse := &v1.YamlApplyResponse{RequestId: yamlRequest.RequestId, Results: results}
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_YamlApplyResponse{YamlApplyResponse: yamlResponse},
+	}); err != nil {
+		s.Logger.Error("Failed to send YAML apply response on data stream", zap.String("request_id", yamlRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleMetricsQueryRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, queryRequest *v1.MetricsQueryRequest) {
+	s.Logger.Info("Handling metrics query request on data stream (fallback)", zap.String("request_id", queryRequest.RequestId))
+	var response *v1.MetricsQueryResponse
+	if s.metricsStore == nil {
+		response = &v1.MetricsQueryResponse{RequestId: queryRequest.RequestId, ErrorMessage: "metrics store not enabled on this operator"}
+	} else {
+		var err error
+		response, err = s.metricsStore.Query(queryRequest)
+		if err != nil {
+			response = &v1.MetricsQueryResponse{RequestId: queryRequest.RequestId, ErrorMessage: err.Error()}
+		}
+	}
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_MetricsQueryResponse{MetricsQueryResponse: response},
+	}); err != nil {
+		s.Logger.Error("Failed to send metrics query response on data stream", zap.String("request_id", queryRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleCertificateRenewalRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, renewalRequest *v1.CertificateRenewalRequest) {
+	s.Logger.Info("Handling certificate renewal request on data stream (fallback)", zap.String("request_id", renewalRequest.RequestId))
+	success, errorMessage := s.applyCertificateRenewal(ctx, renewalRequest)
+	response := &v1.CertificateRenewalResponse{
+		RequestId: renewalRequest.RequestId, Success: success, ErrorMessage: errorMessage, AppliedAt: timestamppb.Now(),
+	}
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_CertificateRenewalResponse{CertificateRenewalResponse: response},
+	}); err != nil {
+		s.Logger.Error("Failed to send certificate renewal response on data stream", zap.String("request_id", renewalRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleOperatorRestartRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, restartRequest *v1.OperatorRestartRequest) {
+	s.Logger.Info("Handling operator restart request on data stream (fallback)", zap.String("request_id", restartRequest.RequestId))
+	success, errorMessage := s.applyOperatorRestart(ctx, restartRequest)
+	response := &v1.OperatorRestartResponse{
+		RequestId: restartRequest.RequestId, Success: success, ErrorMessage: errorMessage, InitiatedAt: timestamppb.Now(),
+	}
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_OperatorRestartResponse{OperatorRestartResponse: response},
+	}); err != nil {
+		s.Logger.Error("Failed to send operator restart response on data stream", zap.String("request_id", restartRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) monitorInformerHealth(ctx context.Context, factory k8sInformers.SharedInformerFactory) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Pass a closed channel for non-blocking check
+			closedCh := make(chan struct{})
+			close(closedCh)
+			syncStatus := factory.WaitForCacheSync(closedCh)
+			for informerType, synced := range syncStatus {
+				if !synced {
+					s.Logger.Warn("Informer cache not synced",
+						zap.String("type", informerType.String()))
+				}
+			}
+		}
+	}
 }

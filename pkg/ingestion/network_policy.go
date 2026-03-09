@@ -27,32 +27,26 @@ import (
 
 // NetworkPolicyIngester handles the ingestion of network policies from a Kubernetes cluster
 type NetworkPolicyIngester struct {
-	clientset         *kubernetes.Clientset
+	clientset         kubernetes.Interface
 	logger            *zap.Logger
 	networkPolicyChan chan *v1.NetworkPolicy
 	informerFactory   informers.SharedInformerFactory
 	stopCh            chan struct{}
 	stopped           bool
 	mu                sync.Mutex
+	dropCounter       *DropCounter
 }
 
-// NewNetworkPolicyIngester creates a new NetworkPolicyIngester instance with channel support
-func NewNetworkPolicyIngester(logger *zap.Logger, networkPolicyChan chan *v1.NetworkPolicy) (*NetworkPolicyIngester, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory
-	informerFactory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
-
+// NewNetworkPolicyIngester creates a new NetworkPolicyIngester using a shared informer factory
+func NewNetworkPolicyIngester(logger *zap.Logger, networkPolicyChan chan *v1.NetworkPolicy, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *NetworkPolicyIngester {
 	return &NetworkPolicyIngester{
 		clientset:         clientset,
 		logger:            logger,
 		networkPolicyChan: networkPolicyChan,
 		informerFactory:   informerFactory,
 		stopCh:            make(chan struct{}),
-	}, nil
+		dropCounter:       NewDropCounter("network_policy", logger, 30*time.Second),
+	}
 }
 
 // IngestNetworkPolicies fetches all network policies from the cluster
@@ -81,8 +75,8 @@ func (npi *NetworkPolicyIngester) StartSync(ctx context.Context, syncDone chan<-
 
 	npi.logger.Info("Starting network policy ingester with modern informer factory")
 
-	// Set up network policy informer
-	npi.setupNetworkPolicyInformer()
+	// Set up network policy informer (ctx captured in event handler closures)
+	npi.setupNetworkPolicyInformer(ctx)
 
 	// Send initial inventory before starting informers
 	if err := npi.sendInitialNetworkPolicyInventory(ctx); err != nil {
@@ -98,19 +92,8 @@ func (npi *NetworkPolicyIngester) StartSync(ctx context.Context, syncDone chan<-
 		syncDone <- nil
 	}
 
-	// Start all informers
-	npi.informerFactory.Start(npi.stopCh)
-
-	// Wait for all caches to sync before processing events
-	npi.logger.Info("Waiting for network policy informer cache to sync...")
-	if !cache.WaitForCacheSync(npi.stopCh,
-		npi.informerFactory.Networking().V1().NetworkPolicies().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for network policy informer cache to sync")
-	}
-	npi.logger.Info("Network policy informer cache synced successfully")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	npi.safeClose()
 	npi.logger.Info("Stopped network policy ingester")
@@ -133,23 +116,24 @@ func (npi *NetworkPolicyIngester) safeClose() {
 }
 
 // setupNetworkPolicyInformer sets up the modern network policy informer
-func (npi *NetworkPolicyIngester) setupNetworkPolicyInformer() {
+func (npi *NetworkPolicyIngester) setupNetworkPolicyInformer(ctx context.Context) {
 	networkPolicyInformer := npi.informerFactory.Networking().V1().NetworkPolicies().Informer()
 
 	_, err := networkPolicyInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if np, ok := obj.(*networkingv1.NetworkPolicy); ok {
-				npi.sendNetworkPolicy(np, "CREATE")
+				npi.sendNetworkPolicy(ctx, np, "CREATE")
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if np, ok := newObj.(*networkingv1.NetworkPolicy); ok {
-				npi.sendNetworkPolicy(np, "UPDATE")
+				npi.sendNetworkPolicy(ctx, np, "UPDATE")
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if np, ok := obj.(*networkingv1.NetworkPolicy); ok {
-				npi.sendNetworkPolicy(np, "DELETE")
+				npi.sendNetworkPolicy(ctx, np, "DELETE")
 			}
 		},
 	})
@@ -168,7 +152,7 @@ func (npi *NetworkPolicyIngester) sendInitialNetworkPolicyInventory(ctx context.
 	}
 
 	for _, policy := range policies.Items {
-		npi.sendNetworkPolicy(&policy, "CREATE")
+		npi.sendNetworkPolicy(ctx, &policy, "CREATE")
 	}
 
 	npi.logger.Info("Completed sending initial network policy inventory")
@@ -176,9 +160,9 @@ func (npi *NetworkPolicyIngester) sendInitialNetworkPolicyInventory(ctx context.
 }
 
 // sendNetworkPolicy converts a Kubernetes NetworkPolicy to protobuf and sends it to the stream
-func (npi *NetworkPolicyIngester) sendNetworkPolicy(np *networkingv1.NetworkPolicy, action string) {
+func (npi *NetworkPolicyIngester) sendNetworkPolicy(ctx context.Context, np *networkingv1.NetworkPolicy, action string) {
 	// Resolve target workloads for this policy
-	targetWorkloads := npi.ResolveTargetWorkloads(context.Background(), *np)
+	targetWorkloads := npi.ResolveTargetWorkloads(ctx, *np)
 
 	kind := np.Kind
 	if kind == "" {
@@ -215,10 +199,7 @@ func (npi *NetworkPolicyIngester) sendNetworkPolicy(np *networkingv1.NetworkPoli
 			zap.String("action", protoNP.Action.String()),
 			zap.Int("target_workloads", len(targetWorkloads)))
 	default:
-		npi.logger.Warn("Network policy channel full, dropping event",
-			zap.String("name", protoNP.Metadata.Name),
-			zap.String("namespace", protoNP.Metadata.Namespace),
-			zap.String("action", protoNP.Action.String()))
+		npi.dropCounter.RecordDrop()
 	}
 }
 
@@ -375,7 +356,7 @@ func (npi *NetworkPolicyIngester) ResolveTargetWorkloads(ctx context.Context, np
 }
 
 // ApplyNetworkPolicy applies a network policy received from the server to the cluster
-func ApplyNetworkPolicy(ctx context.Context, k8sClient *kubernetes.Clientset, policy *networkingv1.NetworkPolicy) error {
+func ApplyNetworkPolicy(ctx context.Context, k8sClient kubernetes.Interface, policy *networkingv1.NetworkPolicy) error {
 	// Check for nil policy or client
 	if policy == nil {
 		return fmt.Errorf("policy cannot be nil")

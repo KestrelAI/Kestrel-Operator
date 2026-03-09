@@ -7,7 +7,6 @@ import (
 	"time"
 
 	v1 "operator/api/gen/cloud/v1"
-	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -21,33 +20,26 @@ import (
 )
 
 type WorkloadIngester struct {
-	clientset       *kubernetes.Clientset
+	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	workloadChan    chan *v1.Workload
 	informerFactory informers.SharedInformerFactory
 	stopCh          chan struct{}
+	dropCounter     *DropCounter
 	stopped         bool
 	mu              sync.Mutex
 }
 
-// NewWorkloadIngester creates a new workload ingester using modern informer factory
-func NewWorkloadIngester(logger *zap.Logger, workloadChan chan *v1.Workload) (*WorkloadIngester, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory - this is the modern way
-	// It automatically handles caching, reconnections, and resource management
-	informerFactory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
-
+// NewWorkloadIngester creates a new workload ingester using a shared informer factory
+func NewWorkloadIngester(logger *zap.Logger, workloadChan chan *v1.Workload, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *WorkloadIngester {
 	return &WorkloadIngester{
 		clientset:       clientset,
 		logger:          logger,
 		workloadChan:    workloadChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
-	}, nil
+		dropCounter:     NewDropCounter("workload", logger, 30*time.Second),
+	}
 }
 
 // StartSync starts the workload ingester and signals when initial sync is complete
@@ -77,25 +69,8 @@ func (wi *WorkloadIngester) StartSync(ctx context.Context, syncDone chan<- error
 		syncDone <- nil
 	}
 
-	// Start all informers - this replaces the manual controller.Run calls
-	wi.informerFactory.Start(wi.stopCh)
-
-	// Wait for all caches to sync before processing events
-	wi.logger.Info("Waiting for workload informer caches to sync...")
-	if !cache.WaitForCacheSync(wi.stopCh,
-		wi.informerFactory.Apps().V1().Deployments().Informer().HasSynced,
-		wi.informerFactory.Apps().V1().StatefulSets().Informer().HasSynced,
-		wi.informerFactory.Apps().V1().DaemonSets().Informer().HasSynced,
-		wi.informerFactory.Apps().V1().ReplicaSets().Informer().HasSynced,
-		wi.informerFactory.Batch().V1().Jobs().Informer().HasSynced,
-		wi.informerFactory.Batch().V1().CronJobs().Informer().HasSynced,
-		wi.informerFactory.Core().V1().Pods().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for workload informer caches to sync")
-	}
-	wi.logger.Info("All workload informer caches synced successfully")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	wi.safeClose()
 	wi.logger.Info("Stopped workload ingester")
@@ -117,6 +92,27 @@ func (wi *WorkloadIngester) safeClose() {
 	}
 }
 
+// unwrapDeletedObject handles informer tombstones (cache.DeletedFinalStateUnknown)
+// that may be delivered instead of the actual object on delete events.
+func unwrapDeletedObject(obj interface{}) interface{} {
+	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		if tombstone.Obj == nil {
+			return obj // return the tombstone itself; caller's type assertion will skip it
+		}
+		return tombstone.Obj
+	}
+	return obj
+}
+
+// serviceAccountOrDefault returns the service account name, defaulting to "default"
+// if empty (matching Kubernetes behavior).
+func serviceAccountOrDefault(sa string) string {
+	if sa == "" {
+		return "default"
+	}
+	return sa
+}
+
 // Modern informer setup methods - much cleaner than the old cache.NewInformer approach
 func (wi *WorkloadIngester) setupDeploymentInformer() {
 	deploymentInformer := wi.informerFactory.Apps().V1().Deployments().Informer()
@@ -124,29 +120,18 @@ func (wi *WorkloadIngester) setupDeploymentInformer() {
 	_, err := deploymentInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if deployment, ok := obj.(*appsv1.Deployment); ok {
-				serviceAccount := deployment.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default" // Kubernetes defaults to "default" if not specified
-				}
-				wi.sendWorkload(deployment.ObjectMeta, "Deployment", "CREATE", serviceAccount)
+				wi.sendWorkload(deployment.ObjectMeta, "Deployment", "CREATE", serviceAccountOrDefault(deployment.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if deployment, ok := newObj.(*appsv1.Deployment); ok {
-				serviceAccount := deployment.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(deployment.ObjectMeta, "Deployment", "UPDATE", serviceAccount)
+				wi.sendWorkload(deployment.ObjectMeta, "Deployment", "UPDATE", serviceAccountOrDefault(deployment.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if deployment, ok := obj.(*appsv1.Deployment); ok {
-				serviceAccount := deployment.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(deployment.ObjectMeta, "Deployment", "DELETE", serviceAccount)
+				wi.sendWorkload(deployment.ObjectMeta, "Deployment", "DELETE", serviceAccountOrDefault(deployment.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 	})
@@ -161,29 +146,18 @@ func (wi *WorkloadIngester) setupStatefulSetInformer() {
 	_, err := statefulSetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if statefulSet, ok := obj.(*appsv1.StatefulSet); ok {
-				serviceAccount := statefulSet.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(statefulSet.ObjectMeta, "StatefulSet", "CREATE", serviceAccount)
+				wi.sendWorkload(statefulSet.ObjectMeta, "StatefulSet", "CREATE", serviceAccountOrDefault(statefulSet.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if statefulSet, ok := newObj.(*appsv1.StatefulSet); ok {
-				serviceAccount := statefulSet.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(statefulSet.ObjectMeta, "StatefulSet", "UPDATE", serviceAccount)
+				wi.sendWorkload(statefulSet.ObjectMeta, "StatefulSet", "UPDATE", serviceAccountOrDefault(statefulSet.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if statefulSet, ok := obj.(*appsv1.StatefulSet); ok {
-				serviceAccount := statefulSet.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(statefulSet.ObjectMeta, "StatefulSet", "DELETE", serviceAccount)
+				wi.sendWorkload(statefulSet.ObjectMeta, "StatefulSet", "DELETE", serviceAccountOrDefault(statefulSet.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 	})
@@ -198,29 +172,18 @@ func (wi *WorkloadIngester) setupDaemonSetInformer() {
 	_, err := daemonSetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if daemonSet, ok := obj.(*appsv1.DaemonSet); ok {
-				serviceAccount := daemonSet.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(daemonSet.ObjectMeta, "DaemonSet", "CREATE", serviceAccount)
+				wi.sendWorkload(daemonSet.ObjectMeta, "DaemonSet", "CREATE", serviceAccountOrDefault(daemonSet.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if daemonSet, ok := newObj.(*appsv1.DaemonSet); ok {
-				serviceAccount := daemonSet.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(daemonSet.ObjectMeta, "DaemonSet", "UPDATE", serviceAccount)
+				wi.sendWorkload(daemonSet.ObjectMeta, "DaemonSet", "UPDATE", serviceAccountOrDefault(daemonSet.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if daemonSet, ok := obj.(*appsv1.DaemonSet); ok {
-				serviceAccount := daemonSet.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(daemonSet.ObjectMeta, "DaemonSet", "DELETE", serviceAccount)
+				wi.sendWorkload(daemonSet.ObjectMeta, "DaemonSet", "DELETE", serviceAccountOrDefault(daemonSet.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 	})
@@ -235,29 +198,18 @@ func (wi *WorkloadIngester) setupReplicaSetInformer() {
 	_, err := replicaSetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if replicaSet, ok := obj.(*appsv1.ReplicaSet); ok {
-				serviceAccount := replicaSet.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(replicaSet.ObjectMeta, "ReplicaSet", "CREATE", serviceAccount)
+				wi.sendWorkload(replicaSet.ObjectMeta, "ReplicaSet", "CREATE", serviceAccountOrDefault(replicaSet.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if replicaSet, ok := newObj.(*appsv1.ReplicaSet); ok {
-				serviceAccount := replicaSet.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(replicaSet.ObjectMeta, "ReplicaSet", "UPDATE", serviceAccount)
+				wi.sendWorkload(replicaSet.ObjectMeta, "ReplicaSet", "UPDATE", serviceAccountOrDefault(replicaSet.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if replicaSet, ok := obj.(*appsv1.ReplicaSet); ok {
-				serviceAccount := replicaSet.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(replicaSet.ObjectMeta, "ReplicaSet", "DELETE", serviceAccount)
+				wi.sendWorkload(replicaSet.ObjectMeta, "ReplicaSet", "DELETE", serviceAccountOrDefault(replicaSet.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 	})
@@ -272,29 +224,18 @@ func (wi *WorkloadIngester) setupJobInformer() {
 	_, err := jobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if job, ok := obj.(*batchv1.Job); ok {
-				serviceAccount := job.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(job.ObjectMeta, "Job", "CREATE", serviceAccount)
+				wi.sendWorkload(job.ObjectMeta, "Job", "CREATE", serviceAccountOrDefault(job.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if job, ok := newObj.(*batchv1.Job); ok {
-				serviceAccount := job.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(job.ObjectMeta, "Job", "UPDATE", serviceAccount)
+				wi.sendWorkload(job.ObjectMeta, "Job", "UPDATE", serviceAccountOrDefault(job.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if job, ok := obj.(*batchv1.Job); ok {
-				serviceAccount := job.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(job.ObjectMeta, "Job", "DELETE", serviceAccount)
+				wi.sendWorkload(job.ObjectMeta, "Job", "DELETE", serviceAccountOrDefault(job.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 	})
@@ -309,29 +250,18 @@ func (wi *WorkloadIngester) setupCronJobInformer() {
 	_, err := cronJobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if cronJob, ok := obj.(*batchv1.CronJob); ok {
-				serviceAccount := cronJob.Spec.JobTemplate.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(cronJob.ObjectMeta, "CronJob", "CREATE", serviceAccount)
+				wi.sendWorkload(cronJob.ObjectMeta, "CronJob", "CREATE", serviceAccountOrDefault(cronJob.Spec.JobTemplate.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if cronJob, ok := newObj.(*batchv1.CronJob); ok {
-				serviceAccount := cronJob.Spec.JobTemplate.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(cronJob.ObjectMeta, "CronJob", "UPDATE", serviceAccount)
+				wi.sendWorkload(cronJob.ObjectMeta, "CronJob", "UPDATE", serviceAccountOrDefault(cronJob.Spec.JobTemplate.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if cronJob, ok := obj.(*batchv1.CronJob); ok {
-				serviceAccount := cronJob.Spec.JobTemplate.Spec.Template.Spec.ServiceAccountName
-				if serviceAccount == "" {
-					serviceAccount = "default"
-				}
-				wi.sendWorkload(cronJob.ObjectMeta, "CronJob", "DELETE", serviceAccount)
+				wi.sendWorkload(cronJob.ObjectMeta, "CronJob", "DELETE", serviceAccountOrDefault(cronJob.Spec.JobTemplate.Spec.Template.Spec.ServiceAccountName))
 			}
 		},
 	})
@@ -348,33 +278,22 @@ func (wi *WorkloadIngester) setupPodInformer() {
 			if pod, ok := obj.(*corev1.Pod); ok {
 				// Only track standalone pods (no owner references)
 				if len(pod.OwnerReferences) == 0 {
-					serviceAccount := pod.Spec.ServiceAccountName
-					if serviceAccount == "" {
-						serviceAccount = "default"
-					}
-					wi.sendWorkload(pod.ObjectMeta, "Pod", "CREATE", serviceAccount)
+					wi.sendWorkload(pod.ObjectMeta, "Pod", "CREATE", serviceAccountOrDefault(pod.Spec.ServiceAccountName))
 				}
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			if pod, ok := newObj.(*corev1.Pod); ok {
 				if len(pod.OwnerReferences) == 0 {
-					serviceAccount := pod.Spec.ServiceAccountName
-					if serviceAccount == "" {
-						serviceAccount = "default"
-					}
-					wi.sendWorkload(pod.ObjectMeta, "Pod", "UPDATE", serviceAccount)
+					wi.sendWorkload(pod.ObjectMeta, "Pod", "UPDATE", serviceAccountOrDefault(pod.Spec.ServiceAccountName))
 				}
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if pod, ok := obj.(*corev1.Pod); ok {
 				if len(pod.OwnerReferences) == 0 {
-					serviceAccount := pod.Spec.ServiceAccountName
-					if serviceAccount == "" {
-						serviceAccount = "default"
-					}
-					wi.sendWorkload(pod.ObjectMeta, "Pod", "DELETE", serviceAccount)
+					wi.sendWorkload(pod.ObjectMeta, "Pod", "DELETE", serviceAccountOrDefault(pod.Spec.ServiceAccountName))
 				}
 			}
 		},
@@ -406,12 +325,7 @@ func (wi *WorkloadIngester) sendWorkload(meta metav1.ObjectMeta, kind, action, s
 			zap.String("serviceAccount", workload.ServiceAccount),
 			zap.String("action", workload.Action.String()))
 	default:
-		wi.logger.Warn("Workload channel full, dropping event",
-			zap.String("name", workload.Name),
-			zap.String("namespace", workload.Namespace),
-			zap.String("kind", workload.Kind),
-			zap.String("serviceAccount", workload.ServiceAccount),
-			zap.String("action", workload.Action.String()))
+		wi.dropCounter.RecordDrop()
 	}
 }
 
@@ -454,11 +368,7 @@ func (wi *WorkloadIngester) sendExistingDeployments(ctx context.Context) error {
 	}
 
 	for _, deployment := range deployments.Items {
-		serviceAccount := deployment.Spec.Template.Spec.ServiceAccountName
-		if serviceAccount == "" {
-			serviceAccount = "default"
-		}
-		wi.sendWorkload(deployment.ObjectMeta, "Deployment", "CREATE", serviceAccount)
+		wi.sendWorkload(deployment.ObjectMeta, "Deployment", "CREATE", serviceAccountOrDefault(deployment.Spec.Template.Spec.ServiceAccountName))
 	}
 	return nil
 }
@@ -470,11 +380,7 @@ func (wi *WorkloadIngester) sendExistingStatefulSets(ctx context.Context) error 
 	}
 
 	for _, statefulSet := range statefulSets.Items {
-		serviceAccount := statefulSet.Spec.Template.Spec.ServiceAccountName
-		if serviceAccount == "" {
-			serviceAccount = "default"
-		}
-		wi.sendWorkload(statefulSet.ObjectMeta, "StatefulSet", "CREATE", serviceAccount)
+		wi.sendWorkload(statefulSet.ObjectMeta, "StatefulSet", "CREATE", serviceAccountOrDefault(statefulSet.Spec.Template.Spec.ServiceAccountName))
 	}
 	return nil
 }
@@ -486,11 +392,7 @@ func (wi *WorkloadIngester) sendExistingDaemonSets(ctx context.Context) error {
 	}
 
 	for _, daemonSet := range daemonSets.Items {
-		serviceAccount := daemonSet.Spec.Template.Spec.ServiceAccountName
-		if serviceAccount == "" {
-			serviceAccount = "default"
-		}
-		wi.sendWorkload(daemonSet.ObjectMeta, "DaemonSet", "CREATE", serviceAccount)
+		wi.sendWorkload(daemonSet.ObjectMeta, "DaemonSet", "CREATE", serviceAccountOrDefault(daemonSet.Spec.Template.Spec.ServiceAccountName))
 	}
 	return nil
 }
@@ -502,11 +404,7 @@ func (wi *WorkloadIngester) sendExistingReplicaSets(ctx context.Context) error {
 	}
 
 	for _, replicaSet := range replicaSets.Items {
-		serviceAccount := replicaSet.Spec.Template.Spec.ServiceAccountName
-		if serviceAccount == "" {
-			serviceAccount = "default"
-		}
-		wi.sendWorkload(replicaSet.ObjectMeta, "ReplicaSet", "CREATE", serviceAccount)
+		wi.sendWorkload(replicaSet.ObjectMeta, "ReplicaSet", "CREATE", serviceAccountOrDefault(replicaSet.Spec.Template.Spec.ServiceAccountName))
 	}
 	return nil
 }
@@ -518,11 +416,7 @@ func (wi *WorkloadIngester) sendExistingJobs(ctx context.Context) error {
 	}
 
 	for _, job := range jobs.Items {
-		serviceAccount := job.Spec.Template.Spec.ServiceAccountName
-		if serviceAccount == "" {
-			serviceAccount = "default"
-		}
-		wi.sendWorkload(job.ObjectMeta, "Job", "CREATE", serviceAccount)
+		wi.sendWorkload(job.ObjectMeta, "Job", "CREATE", serviceAccountOrDefault(job.Spec.Template.Spec.ServiceAccountName))
 	}
 	return nil
 }
@@ -534,11 +428,7 @@ func (wi *WorkloadIngester) sendExistingCronJobs(ctx context.Context) error {
 	}
 
 	for _, cronJob := range cronJobs.Items {
-		serviceAccount := cronJob.Spec.JobTemplate.Spec.Template.Spec.ServiceAccountName
-		if serviceAccount == "" {
-			serviceAccount = "default"
-		}
-		wi.sendWorkload(cronJob.ObjectMeta, "CronJob", "CREATE", serviceAccount)
+		wi.sendWorkload(cronJob.ObjectMeta, "CronJob", "CREATE", serviceAccountOrDefault(cronJob.Spec.JobTemplate.Spec.Template.Spec.ServiceAccountName))
 	}
 	return nil
 }
@@ -552,11 +442,7 @@ func (wi *WorkloadIngester) sendExistingPods(ctx context.Context) error {
 	for _, pod := range pods.Items {
 		// Only send standalone pods (no owner references)
 		if len(pod.OwnerReferences) == 0 {
-			serviceAccount := pod.Spec.ServiceAccountName
-			if serviceAccount == "" {
-				serviceAccount = "default"
-			}
-			wi.sendWorkload(pod.ObjectMeta, "Pod", "CREATE", serviceAccount)
+			wi.sendWorkload(pod.ObjectMeta, "Pod", "CREATE", serviceAccountOrDefault(pod.Spec.ServiceAccountName))
 		}
 	}
 	return nil

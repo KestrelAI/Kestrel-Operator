@@ -18,16 +18,17 @@ type HealthServer struct {
 
 // HealthResponse represents the JSON response for health checks
 type HealthResponse struct {
-	Status           string    `json:"status"`
-	StreamHealthy    bool      `json:"stream_healthy"`
-	LastHealthyTime  time.Time `json:"last_healthy_time,omitempty"`
-	EOFErrorCount    int64     `json:"eof_error_count"`
-	TotalEOFErrors   int64     `json:"total_eof_errors"`
-	EOFTrackingStart time.Time `json:"eof_tracking_start,omitempty"`
-	LastEOFTime      time.Time `json:"last_eof_time,omitempty"`
-	LastError        string    `json:"last_error,omitempty"`
-	InEOFLoop        bool      `json:"in_eof_loop"`
-	Timestamp        time.Time `json:"timestamp"`
+	Status               string    `json:"status"`
+	StreamHealthy        bool      `json:"stream_healthy"`
+	ControlStreamHealthy bool      `json:"control_stream_healthy"`
+	LastHealthyTime      time.Time `json:"last_healthy_time,omitempty"`
+	EOFErrorCount        int64     `json:"eof_error_count"`
+	TotalEOFErrors       int64     `json:"total_eof_errors"`
+	EOFTrackingStart     time.Time `json:"eof_tracking_start,omitempty"`
+	LastEOFTime          time.Time `json:"last_eof_time,omitempty"`
+	LastError            string    `json:"last_error,omitempty"`
+	InEOFLoop            bool      `json:"in_eof_loop"`
+	Timestamp            time.Time `json:"timestamp"`
 }
 
 // NewHealthServer creates a new health server
@@ -101,17 +102,18 @@ func (hs *HealthServer) statusHandler(w http.ResponseWriter, r *http.Request) {
 	inEOFLoop := hs.streamClient.IsStreamUnhealthyForLiveness()
 
 	response := HealthResponse{
-		StreamHealthy:    healthy,
-		LastHealthyTime:  lastHealthyTime,
-		EOFErrorCount:    eofCount,
-		TotalEOFErrors:   totalEOFCount,
-		EOFTrackingStart: eofTrackingStart,
-		LastEOFTime:      lastEOFTime,
-		InEOFLoop:        inEOFLoop,
-		Timestamp:        time.Now(),
+		StreamHealthy:        healthy,
+		ControlStreamHealthy: hs.streamClient.IsControlStreamHealthy(),
+		LastHealthyTime:      lastHealthyTime,
+		EOFErrorCount:        eofCount,
+		TotalEOFErrors:       totalEOFCount,
+		EOFTrackingStart:     eofTrackingStart,
+		LastEOFTime:          lastEOFTime,
+		InEOFLoop:            inEOFLoop,
+		Timestamp:            time.Now(),
 	}
 
-	if healthy {
+	if healthy && hs.streamClient.IsControlStreamHealthy() {
 		response.Status = "healthy"
 	} else if inEOFLoop {
 		response.Status = "eof_loop"
@@ -143,15 +145,16 @@ func (hs *HealthServer) writeHealthResponse(w http.ResponseWriter, statusCode in
 	healthy, lastHealthyTime, eofCount, totalEOFCount, eofTrackingStart, lastEOFTime, lastErr := hs.streamClient.GetDetailedStreamHealthInfo()
 
 	response := HealthResponse{
-		Status:           status,
-		StreamHealthy:    healthy,
-		LastHealthyTime:  lastHealthyTime,
-		EOFErrorCount:    eofCount,
-		TotalEOFErrors:   totalEOFCount,
-		EOFTrackingStart: eofTrackingStart,
-		LastEOFTime:      lastEOFTime,
-		InEOFLoop:        hs.streamClient.IsStreamUnhealthyForLiveness(),
-		Timestamp:        time.Now(),
+		Status:               status,
+		StreamHealthy:        healthy,
+		ControlStreamHealthy: hs.streamClient.IsControlStreamHealthy(),
+		LastHealthyTime:      lastHealthyTime,
+		EOFErrorCount:        eofCount,
+		TotalEOFErrors:       totalEOFCount,
+		EOFTrackingStart:     eofTrackingStart,
+		LastEOFTime:          lastEOFTime,
+		InEOFLoop:            hs.streamClient.IsStreamUnhealthyForLiveness(),
+		Timestamp:            time.Now(),
 	}
 
 	if lastErr != nil {

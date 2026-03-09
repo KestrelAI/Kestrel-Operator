@@ -7,7 +7,6 @@ import (
 	"time"
 
 	v1 "operator/api/gen/cloud/v1"
-	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -19,32 +18,26 @@ import (
 )
 
 type NodeIngester struct {
-	clientset       *kubernetes.Clientset
+	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	nodeChan        chan *v1.Node
 	informerFactory informers.SharedInformerFactory
 	stopCh          chan struct{}
 	stopped         bool
 	mu              sync.Mutex
+	dropCounter     *DropCounter
 }
 
-// NewNodeIngester creates a new node ingester for streaming nodes to the server
-func NewNodeIngester(logger *zap.Logger, nodeChan chan *v1.Node) (*NodeIngester, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory
-	informerFactory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
-
+// NewNodeIngester creates a new node ingester using a shared informer factory
+func NewNodeIngester(logger *zap.Logger, nodeChan chan *v1.Node, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *NodeIngester {
 	return &NodeIngester{
 		clientset:       clientset,
 		logger:          logger,
 		nodeChan:        nodeChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
-	}, nil
+		dropCounter:     NewDropCounter("node", logger, 30*time.Second),
+	}
 }
 
 // StartSync starts the node ingester and signals when initial sync is complete
@@ -68,19 +61,8 @@ func (ni *NodeIngester) StartSync(ctx context.Context, syncDone chan<- error) er
 		syncDone <- nil
 	}
 
-	// Start all informers
-	ni.informerFactory.Start(ni.stopCh)
-
-	// Wait for all caches to sync before processing events
-	ni.logger.Info("Waiting for node informer cache to sync...")
-	if !cache.WaitForCacheSync(ni.stopCh,
-		ni.informerFactory.Core().V1().Nodes().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for node informer cache to sync")
-	}
-	ni.logger.Info("Node informer cache synced successfully")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	ni.safeClose()
 	ni.logger.Info("Stopped node ingester")
@@ -118,6 +100,7 @@ func (ni *NodeIngester) setupNodeInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if node, ok := obj.(*corev1.Node); ok {
 				ni.sendNode(node, "DELETE")
 			}
@@ -181,9 +164,7 @@ func (ni *NodeIngester) sendNode(node *corev1.Node, action string) {
 			zap.Bool("ready", protoNode.Ready),
 			zap.String("action", protoNode.Action.String()))
 	default:
-		ni.logger.Warn("Node channel full, dropping event",
-			zap.String("name", protoNode.Name),
-			zap.String("action", protoNode.Action.String()))
+		ni.dropCounter.RecordDrop()
 	}
 }
 

@@ -39,10 +39,11 @@ message StreamDataRequest {
     NodeConditionChange node_condition_change = 20;
     WorkloadRolloutStatus workload_rollout_status = 21;
     PodLogs pod_logs = 22;
-    // OTEL metrics (for future cloud forwarding if needed)
-    OTelMetricBatch otel_metric_batch = 23;
+    // Field 23 removed (was OTelMetricBatch — dead code, never sent on wire)
     // Response to server's metrics query
     MetricsQueryResponse metrics_query_response = 24;
+    // Operator resource usage stats for Grafana dashboards
+    OperatorStats operator_stats = 25;
   }
 }
 
@@ -136,6 +137,8 @@ message StreamDataResponse {
     OperatorRestartRequest operator_restart_request = 8;
     // Server queries operator for metrics
     MetricsQueryRequest metrics_query_request = 9;
+    // Heartbeat keepalive to prevent LB idle-stream timeouts
+    Heartbeat heartbeat = 10;
   }
 }
 
@@ -1278,8 +1281,125 @@ message OTelMetricBatch {
 }
 
 
-// Service definition with bi-directional streaming RPC
+// StreamControlRequest carries tool responses from operator to server on the control stream.
+// New operators send tool responses here instead of on the data stream.
+message StreamControlRequest {
+  oneof request {
+    KubernetesAPIResponse kubernetes_api_response = 1;
+    ShellCommandResponse shell_command_response = 2;
+    YamlDryRunResponse yaml_dry_run_response = 3;
+    YamlApplyResponse yaml_apply_response = 4;
+    CertificateRenewalResponse certificate_renewal_response = 5;
+    OperatorRestartResponse operator_restart_response = 6;
+    MetricsQueryResponse metrics_query_response = 7;
+  }
+}
+
+// StreamControlResponse carries tool requests from server to operator on the control stream.
+// New operators receive tool requests here instead of on the data stream.
+message StreamControlResponse {
+  oneof response {
+    KubernetesAPIRequest kubernetes_api_request = 1;
+    ShellCommandRequest shell_command_request = 2;
+    YamlDryRunRequest yaml_dry_run_request = 3;
+    YamlApplyRequest yaml_apply_request = 4;
+    CertificateRenewalRequest certificate_renewal_request = 5;
+    OperatorRestartRequest operator_restart_request = 6;
+    MetricsQueryRequest metrics_query_request = 7;
+    Heartbeat heartbeat = 8;
+    // AI-generated network policies pushed to operator for application (moved from data stream)
+    NetworkPolicyWithError network_policy = 9;
+  }
+}
+
+// Heartbeat is a lightweight keepalive message sent by the server on all
+// streams to prevent load balancer idle-stream timeouts.
+message Heartbeat {
+  google.protobuf.Timestamp timestamp = 1;
+}
+
+// OperatorStats reports the operator's resource usage to the server for Grafana dashboards.
+// Sent periodically on the data stream. No database storage — purely for OTEL metrics.
+message OperatorStats {
+  google.protobuf.Timestamp timestamp = 1;
+  // Go runtime
+  int64 memory_alloc_bytes = 2;       // runtime.MemStats.Alloc
+  int64 memory_sys_bytes = 3;         // runtime.MemStats.Sys
+  int64 memory_heap_inuse_bytes = 4;  // runtime.MemStats.HeapInuse
+  uint32 num_goroutines = 5;          // runtime.NumGoroutine()
+  uint32 num_gc_cycles = 6;           // runtime.MemStats.NumGC
+  // Container-level (cgroup)
+  int64 cpu_usage_nano_cores = 7;
+  int64 memory_usage_bytes = 8;       // container RSS
+  int64 cpu_limit_nano_cores = 9;
+  int64 memory_limit_bytes = 10;
+  // Stream health
+  bool data_stream_healthy = 11;
+  bool control_stream_healthy = 12;
+  int64 total_messages_sent = 13;
+  int64 total_messages_dropped = 14;
+  // Informer sync status
+  uint32 informers_synced = 15;       // count of synced informers
+  uint32 informers_total = 16;        // total informer count
+}
+
+// StreamFlowsRequest carries network flow data from operator to server.
+message StreamFlowsRequest {
+  oneof request {
+    Flow flow = 1;
+    L7AccessLog l7_access_log = 2;
+  }
+}
+
+// StreamFlowsResponse carries server messages back to operator on the flows stream.
+message StreamFlowsResponse {
+  oneof response {
+    Heartbeat heartbeat = 1;
+  }
+}
+
+// StreamEventsRequest carries event/status/condition data from operator to server.
+message StreamEventsRequest {
+  oneof request {
+    KubernetesEvent kubernetes_event = 1;
+    PodStatusChange pod_status_change = 2;
+    NodeConditionChange node_condition_change = 3;
+    WorkloadRolloutStatus workload_rollout_status = 4;
+  }
+}
+
+// StreamEventsResponse carries server messages back to operator on the events stream.
+message StreamEventsResponse {
+  oneof response {
+    Heartbeat heartbeat = 1;
+  }
+}
+
+// StreamLogsRequest carries pod logs and operator logs on the dedicated logs stream.
+message StreamLogsRequest {
+  oneof request {
+    PodLogs pod_logs = 1;
+  }
+}
+
+// StreamLogsResponse carries server messages back to operator on the logs stream.
+message StreamLogsResponse {
+  oneof response {
+    Heartbeat heartbeat = 1;
+  }
+}
+
+// Service definition with bi-directional streaming RPCs.
+// The operator opens up to 5 streams on a single gRPC connection:
+//   - StreamData:    K8s resource inventory (workloads, pods, services, etc.)
+//   - StreamFlows:   Network flow data (Cilium L3/L4 + Envoy L7)
+//   - StreamControl: Tool calls (K8s API, shell, YAML, certs, etc.)
+//   - StreamEvents:  K8s events, pod status changes, node conditions, rollout status
+//   - StreamLogs:    Pod logs and operator logs
 service StreamService {
-  // Bi-directional streaming RPC
   rpc StreamData(stream StreamDataRequest) returns (stream StreamDataResponse) {}
+  rpc StreamControl(stream StreamControlRequest) returns (stream StreamControlResponse) {}
+  rpc StreamFlows(stream StreamFlowsRequest) returns (stream StreamFlowsResponse) {}
+  rpc StreamEvents(stream StreamEventsRequest) returns (stream StreamEventsResponse) {}
+  rpc StreamLogs(stream StreamLogsRequest) returns (stream StreamLogsResponse) {}
 }

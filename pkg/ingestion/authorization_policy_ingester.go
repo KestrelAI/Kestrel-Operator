@@ -35,6 +35,7 @@ type AuthorizationPolicyIngester struct {
 	stopped                 bool
 	mu                      sync.Mutex
 	istioEnabled            bool
+	dropCounter             *DropCounter
 }
 
 // AuthorizationPolicyResource defines the Istio AuthorizationPolicy resource
@@ -75,6 +76,7 @@ func NewAuthorizationPolicyIngester(logger *zap.Logger, authorizationPolicyChan 
 		informerFactory:         informerFactory,
 		stopCh:                  make(chan struct{}),
 		istioEnabled:            istioEnabled,
+		dropCounter:             NewDropCounter("authorization_policy", logger, 30*time.Second),
 	}, nil
 }
 
@@ -220,10 +222,7 @@ func (api *AuthorizationPolicyIngester) sendAuthorizationPolicy(obj interface{},
 			zap.String("action", protoAuthzPolicy.Action.String()),
 			zap.Int("target_workloads", len(protoAuthzPolicy.TargetWorkloads)))
 	default:
-		api.logger.Warn("Authorization policy channel full, dropping event",
-			zap.String("name", protoAuthzPolicy.Metadata.Name),
-			zap.String("namespace", protoAuthzPolicy.Metadata.Namespace),
-			zap.String("action", protoAuthzPolicy.Action.String()))
+		api.dropCounter.RecordDrop()
 	}
 }
 

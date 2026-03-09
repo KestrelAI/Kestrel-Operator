@@ -7,7 +7,6 @@ import (
 	"time"
 
 	v1 "operator/api/gen/cloud/v1"
-	"operator/pkg/k8s_helper"
 
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -33,33 +32,26 @@ func stringToAction(action string) v1.Action {
 }
 
 type NamespaceIngester struct {
-	clientset       *kubernetes.Clientset
+	clientset       kubernetes.Interface
 	logger          *zap.Logger
 	namespaceChan   chan *v1.Namespace
 	informerFactory informers.SharedInformerFactory
 	stopCh          chan struct{}
 	stopped         bool
 	mu              sync.Mutex
+	dropCounter     *DropCounter
 }
 
-// NewNamespaceIngester creates a new namespace ingester using modern informer factory
-func NewNamespaceIngester(logger *zap.Logger, namespaceChan chan *v1.Namespace) (*NamespaceIngester, error) {
-	clientset, err := k8s_helper.NewClientSet()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	// Create shared informer factory - this is the modern way
-	// It automatically handles caching, reconnections, and resource management
-	informerFactory := informers.NewSharedInformerFactory(clientset, 30*time.Second)
-
+// NewNamespaceIngester creates a new namespace ingester using a shared informer factory
+func NewNamespaceIngester(logger *zap.Logger, namespaceChan chan *v1.Namespace, clientset kubernetes.Interface, informerFactory informers.SharedInformerFactory) *NamespaceIngester {
 	return &NamespaceIngester{
 		clientset:       clientset,
 		logger:          logger,
 		namespaceChan:   namespaceChan,
 		informerFactory: informerFactory,
 		stopCh:          make(chan struct{}),
-	}, nil
+		dropCounter:     NewDropCounter("namespace", logger, 30*time.Second),
+	}
 }
 
 // StartSync starts the namespace ingester and signals when initial sync is complete
@@ -83,19 +75,8 @@ func (ni *NamespaceIngester) StartSync(ctx context.Context, syncDone chan<- erro
 		syncDone <- nil
 	}
 
-	// Start all informers - this replaces the manual controller.Run calls
-	ni.informerFactory.Start(ni.stopCh)
-
-	// Wait for all caches to sync before processing events
-	ni.logger.Info("Waiting for namespace informer cache to sync...")
-	if !cache.WaitForCacheSync(ni.stopCh,
-		ni.informerFactory.Core().V1().Namespaces().Informer().HasSynced,
-	) {
-		return fmt.Errorf("failed to wait for namespace informer cache to sync")
-	}
-	ni.logger.Info("Namespace informer cache synced successfully")
-
 	// Wait for context cancellation
+	// Note: factory.Start() and WaitForCacheSync() are handled centrally by stream_client
 	<-ctx.Done()
 	ni.safeClose()
 	ni.logger.Info("Stopped namespace ingester")
@@ -133,6 +114,7 @@ func (ni *NamespaceIngester) setupNamespaceInformer() {
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
+			obj = unwrapDeletedObject(obj)
 			if namespace, ok := obj.(*corev1.Namespace); ok {
 				ni.sendNamespace(namespace.ObjectMeta, "DELETE")
 			}
@@ -176,8 +158,6 @@ func (ni *NamespaceIngester) sendNamespace(meta metav1.ObjectMeta, action string
 			zap.String("name", namespace.Name),
 			zap.String("action", namespace.Action.String()))
 	default:
-		ni.logger.Warn("Namespace channel full, dropping event",
-			zap.String("name", namespace.Name),
-			zap.String("action", namespace.Action.String()))
+		ni.dropCounter.RecordDrop()
 	}
 }
