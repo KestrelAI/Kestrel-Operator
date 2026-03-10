@@ -1701,6 +1701,41 @@ func (s *StreamClient) handleControlMessages(ctx context.Context, controlStream 
 	}
 }
 
+// truncateKubernetesAPIResponse ensures the total response fits within the
+// gRPC max message size (10MB) by truncating oversized ResponseData fields.
+// Uses the same 8MB budget as shell command responses, leaving room for
+// protobuf overhead.
+func (s *StreamClient) truncateKubernetesAPIResponse(apiResponse *v1.KubernetesAPIResponse) {
+	const maxResponseBytes = 8 * 1024 * 1024
+
+	totalSize := 0
+	for _, result := range apiResponse.Results {
+		totalSize += len(result.ResponseData)
+	}
+	if totalSize <= maxResponseBytes {
+		return
+	}
+
+	s.Logger.Warn("Kubernetes API response too large, truncating to avoid gRPC limit",
+		zap.String("request_id", apiResponse.RequestId),
+		zap.Int("total_bytes", totalSize),
+		zap.Int("max_bytes", maxResponseBytes),
+		zap.Int("results_count", len(apiResponse.Results)))
+
+	perResultBudget := maxResponseBytes / len(apiResponse.Results)
+	for _, result := range apiResponse.Results {
+		if len(result.ResponseData) > perResultBudget {
+			truncatedMsg := fmt.Sprintf("\n\n[RESPONSE TRUNCATED: %d bytes exceeded %d byte gRPC limit. Use more specific queries (e.g., target a single namespace or resource by name instead of listing all resources cluster-wide).]",
+				len(result.ResponseData), perResultBudget)
+			budget := perResultBudget - len(truncatedMsg)
+			if budget < 0 {
+				budget = 0
+			}
+			result.ResponseData = result.ResponseData[:budget] + truncatedMsg
+		}
+	}
+}
+
 // handleKubernetesAPIRequest processes Kubernetes API requests from the server
 func (s *StreamClient) handleKubernetesAPIRequest(
 	ctx context.Context,
@@ -1713,6 +1748,9 @@ func (s *StreamClient) handleKubernetesAPIRequest(
 
 	// Execute the API requests using our API executor
 	apiResponse := s.apiExecutor.ExecuteAPIRequests(ctx, apiRequest)
+
+	// Truncate oversized responses to fit within gRPC max message size
+	s.truncateKubernetesAPIResponse(apiResponse)
 
 	// Send the response back to the server on the control stream
 	responseMsg := &v1.StreamControlRequest{
@@ -3544,6 +3582,7 @@ func (s *StreamClient) GetOTelReceiver() *otel_receiver.OTelReceiverServer {
 func (s *StreamClient) handleKubernetesAPIRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, apiRequest *v1.KubernetesAPIRequest) {
 	s.Logger.Info("Handling Kubernetes API request on data stream (fallback)", zap.String("request_id", apiRequest.RequestId))
 	apiResponse := s.apiExecutor.ExecuteAPIRequests(ctx, apiRequest)
+	s.truncateKubernetesAPIResponse(apiResponse)
 	if err := s.protectedSend(stream, &v1.StreamDataRequest{
 		Request: &v1.StreamDataRequest_KubernetesApiResponse{KubernetesApiResponse: apiResponse},
 	}); err != nil {
