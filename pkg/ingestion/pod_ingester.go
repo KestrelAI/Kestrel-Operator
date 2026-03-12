@@ -126,6 +126,14 @@ func (pi *PodIngester) sendPod(pod *corev1.Pod, action string) {
 		})
 	}
 
+	ready := false
+	for _, cond := range pod.Status.Conditions {
+		if cond.Type == corev1.PodReady {
+			ready = cond.Status == corev1.ConditionTrue
+			break
+		}
+	}
+
 	protoPod := &v1.Pod{
 		Name:            pod.Name,
 		Namespace:       pod.Namespace,
@@ -136,6 +144,7 @@ func (pi *PodIngester) sendPod(pod *corev1.Pod, action string) {
 		OwnerReferences: protoOwnerRefs,
 		CreatedAt:       timestamppb.New(pod.CreationTimestamp.Time),
 		Action:          stringToAction(action),
+		Ready:           ready,
 	}
 
 	select {
