@@ -177,6 +177,7 @@ message Pod {
   repeated OwnerReference owner_references = 7;
   google.protobuf.Timestamp created_at = 8;
   Action action = 9; // CREATE, UPDATE, DELETE
+  bool ready = 10; // Pod Ready condition (from status.conditions type=Ready)
 }
 
 // Node definition for streaming node inventory (for VPC Flow Logs IP resolution)
