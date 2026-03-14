@@ -96,15 +96,20 @@ When querying through the Kestrel chat, the AI agent automatically selects the a
 Check the operator logs for discovery status:
 
 ```bash
-kubectl logs -n kestrel-ai -l app=kestrel-operator | grep "\[Datadog\]"
+kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "Datadog"
 ```
 
-A successful discovery shows:
+A successful discovery shows lines like:
 
 ```
 [Datadog] Discovery complete  namespace=datadog  secret=datadog  site=datadoghq.com  has_api_key=true  has_app_key=true
 [Datadog] Probe: Datadog available  namespace=datadog  site=datadoghq.com  has_app_key=true
+Sending inventory commit message to server  has_datadog=true
 ```
+
+<Info>
+  Datadog discovery runs at operator startup. If the pod has been running for a long time, the discovery logs may have rotated out of the default buffer. Restart the operator (`kubectl rollout restart deployment -n kestrel-ai kestrel-operator`) to see fresh discovery logs.
+</Info>
 
 ### Common Issues
 
