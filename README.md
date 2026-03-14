@@ -185,7 +185,7 @@ The operator's Helm chart will automatically create the necessary `Telemetry` re
 
 ## OpenTelemetry Metrics Integration
 
-The Kestrel Operator can receive and store OTEL metrics locally for incident root cause analysis (RCA). When enabled, the operator exposes an OTLP gRPC receiver (default port 4317) that accepts metrics from customer OpenTelemetry Collectors.
+The Kestrel Operator can receive and store OTEL metrics locally for incident root cause analysis (RCA). When enabled, the operator exposes an OTLP gRPC receiver (default port 4317) that accepts metrics from your OpenTelemetry Collectors.
 
 ### Configuration
 
@@ -201,9 +201,9 @@ operator:
     ringSize: 60          # Data points per series
 ```
 
-### Customer OTEL Collector Requirements
+### OTEL Collector Requirements
 
-**IMPORTANT**: For metrics to include Kubernetes context (namespace, workload, pod names), the customer's OpenTelemetry Collector **MUST** have the `k8sattributes` processor configured.
+**IMPORTANT**: For metrics to include Kubernetes context (namespace, workload, pod names), your OpenTelemetry Collector **MUST** have the `k8sattributes` processor configured.
 
 **Required k8sattributes processor configuration:**
 
