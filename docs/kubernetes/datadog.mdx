@@ -1,0 +1,122 @@
+---
+title: "Datadog Integration"
+description: "Enable the Kestrel Operator to query metrics, events, hosts, and logs from your in-cluster Datadog installation"
+---
+
+## Overview
+
+If your Kubernetes cluster has Datadog deployed, the Kestrel Operator can query historical metrics, events, host information, and logs directly from the Datadog API. This enables the Kestrel AI chat agent to answer questions about performance trends, resource utilization, and historical behavior using your existing Datadog data.
+
+The operator auto-discovers the Datadog installation in your cluster and authenticates using the API credentials already stored in your Datadog Kubernetes secrets. No manual key configuration is required.
+
+## How It Works
+
+1. **Discovery** — The operator scans the cluster for Datadog workloads (Agent DaemonSet, Cluster Agent, or Datadog Operator) across all namespaces
+2. **Authentication** — The operator reads the Datadog API key and Application key from the existing Kubernetes secrets created by the Datadog Helm chart or Datadog Operator
+3. **Querying** — When a user asks about metrics or performance in the Kestrel chat, the AI agent generates Datadog queries that the operator executes against the Datadog cloud API and returns the results
+
+All queries are executed from within your cluster. The API credentials never leave the cluster or pass through Kestrel's infrastructure.
+
+## Configuration
+
+Select **Datadog** as the Metrics Source when onboarding your cluster through the Kestrel Dashboard. You will be asked for the namespace where Datadog is deployed (defaults to `datadog`).
+
+Alternatively, configure it directly via Helm values:
+
+```yaml
+operator:
+  datadog:
+    enabled: true
+    namespace: "datadog"  # Namespace where Datadog is deployed
+```
+
+<Note>
+  The `namespace` value is used for scoped RBAC permissions. The operator also performs cluster-wide discovery as a fallback, so it will find Datadog even if the namespace differs from what is configured.
+</Note>
+
+### Optional Overrides
+
+For non-standard Datadog deployments, you can override the auto-discovery with explicit configuration:
+
+```yaml
+operator:
+  datadog:
+    enabled: true
+    namespace: "custom-monitoring"   # Non-standard namespace
+    secretName: "my-datadog-secret"  # Non-standard secret name
+    site: "datadoghq.eu"            # Non-default Datadog site
+```
+
+These overrides are rarely needed — the operator handles standard Datadog Helm chart and Datadog Operator deployments automatically.
+
+## Prerequisites
+
+### Datadog Installation
+
+The operator supports both common Datadog deployment patterns:
+
+- **Datadog Helm Chart** — DaemonSet named `datadog` with labels `app.kubernetes.io/name=datadog`
+- **Datadog Operator** — DatadogAgent custom resource managing agent DaemonSet and Cluster Agent
+
+### API Credentials
+
+The operator reads credentials from the Kubernetes secrets created by your Datadog installation:
+
+- **API Key** (required) — Stored under the `api-key` field in the Datadog secret
+- **Application Key** (required) — Stored under the `app-key` field in the same secret
+
+<Warning>
+  An Application Key is required for all Datadog API queries, including metrics. If your Datadog installation does not include an Application Key, you can generate one from the [Datadog Application Keys page](https://app.datadoghq.com/organization-settings/application-keys) and add it to your Datadog secret.
+</Warning>
+
+### RBAC Permissions
+
+When `operator.datadog.enabled` is set to `true`, the Helm chart automatically creates namespace-scoped RBAC resources (Role + RoleBinding) in the Datadog namespace, granting the operator:
+
+- **Read access** to the Datadog secrets (for API key discovery)
+- **List access** to DaemonSets and Deployments (for Datadog workload discovery)
+
+No cluster-wide secret access is granted — permissions are scoped to the specific Datadog namespace and secret names.
+
+## Supported Query Types
+
+| Query Type | Description | Datadog API Endpoint |
+|---|---|---|
+| **Metrics** | Historical time series data (CPU, memory, network, custom metrics) | `GET /api/v1/query` |
+| **Events** | Infrastructure events, alerts, and deployments | `GET /api/v1/events` |
+| **Hosts** | Monitored infrastructure hosts with metadata | `GET /api/v1/hosts` |
+| **Logs** | Application and infrastructure log search | `POST /api/v2/logs/events/search` |
+
+When querying through the Kestrel chat, the AI agent automatically selects the appropriate query type and constructs the Datadog query based on your question.
+
+## Troubleshooting
+
+### Verifying Datadog Discovery
+
+Check the operator logs for discovery status:
+
+```bash
+kubectl logs -n kestrel-ai -l app=kestrel-operator | grep "\[Datadog\]"
+```
+
+A successful discovery shows:
+
+```
+[Datadog] Discovery complete  namespace=datadog  secret=datadog  site=datadoghq.com  has_api_key=true  has_app_key=true
+[Datadog] Probe: Datadog available  namespace=datadog  site=datadoghq.com  has_app_key=true
+```
+
+### Common Issues
+
+**"No Datadog workloads found in the cluster"**
+- Verify Datadog is deployed: `kubectl get daemonset -A | grep datadog`
+- Check the namespace is correct in the Helm values
+
+**"Datadog secret missing 'api-key' field"**
+- Check the secret exists: `kubectl get secret -n <datadog-namespace>`
+- Verify the key name: `kubectl get secret <secret-name> -n <datadog-namespace> -o jsonpath='{.data}' | python3 -c "import sys,json; print(list(json.load(sys.stdin).keys()))"`
+
+**Queries return no data**
+- Verify the Datadog site matches your account region (e.g., `us5.datadoghq.com` for US5)
+- Check that the Application Key has the correct scopes (API Access should be enabled)
+- Confirm metrics are being collected by checking the Datadog dashboard

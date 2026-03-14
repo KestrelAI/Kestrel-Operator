@@ -67,6 +67,8 @@
         "kubernetes/overview",
         "kubernetes/onboarding",
         "kubernetes/configuration",
+        "kubernetes/opentelemetry",
+        "kubernetes/datadog",
         "kubernetes/troubleshooting"
       ]
     },
