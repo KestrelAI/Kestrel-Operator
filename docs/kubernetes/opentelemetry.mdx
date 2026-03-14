@@ -5,7 +5,7 @@ description: "Configure the Kestrel Operator to receive and store OpenTelemetry 
 
 ## Overview
 
-The Kestrel Operator can receive and store OTEL metrics locally for incident root cause analysis (RCA). When enabled, the operator exposes an OTLP gRPC receiver (default port 4317) that accepts metrics from your OpenTelemetry Collectors.
+The Kestrel Operator can receive and store OTEL metrics locally for incident root cause analysis (RCA). When enabled, the Kestrel Operator exposes an OTLP gRPC receiver (default port 4317) that accepts metrics from your OpenTelemetry Collectors.
 
 ## Configuration
 
@@ -76,7 +76,7 @@ service:
 ```
 
 <Note>
-  The operator supports gzip compression. The OpenTelemetry Collector enables gzip by default, but if using the Go SDK directly, enable it via `OTEL_EXPORTER_OTLP_COMPRESSION=gzip` or the `compression: gzip` exporter option.
+  The Kestrel Operator supports gzip compression. The OpenTelemetry Collector enables gzip by default, but if using the Go SDK directly, enable it via `OTEL_EXPORTER_OTLP_COMPRESSION=gzip` or the `compression: gzip` exporter option.
 </Note>
 
 ## Why k8sattributes is Required
@@ -84,6 +84,6 @@ service:
 Without the `k8sattributes` processor:
 
 - Metrics will only have basic labels (no Kubernetes context)
-- The operator cannot map metrics to workloads
+- The Kestrel Operator cannot map metrics to workloads
 - Queries by namespace/workload/pod will return no results
 - RCA agents cannot correlate metrics with Kubernetes resources

@@ -7,13 +7,13 @@ description: "Enable the Kestrel Operator to query metrics, events, hosts, and l
 
 If your Kubernetes cluster has Datadog deployed, the Kestrel Operator can query historical metrics, events, host information, and logs directly from the Datadog API. This enables the Kestrel AI chat agent to answer questions about performance trends, resource utilization, and historical behavior using your existing Datadog data.
 
-The operator auto-discovers the Datadog installation in your cluster and authenticates using the API credentials already stored in your Datadog Kubernetes secrets. No manual key configuration is required.
+The Kestrel Operator auto-discovers the Datadog installation in your cluster and authenticates using the API credentials already stored in your Datadog Kubernetes secrets. No manual key configuration is required.
 
 ## How It Works
 
-1. **Discovery** — The operator scans the cluster for Datadog workloads (Agent DaemonSet, Cluster Agent, or Datadog Operator) across all namespaces
-2. **Authentication** — The operator reads the Datadog API key and Application key from the existing Kubernetes secrets created by the Datadog Helm chart or Datadog Operator
-3. **Querying** — When a user asks about metrics or performance in the Kestrel chat, the AI agent generates Datadog queries that the operator executes against the Datadog cloud API and returns the results
+1. **Discovery** — The Kestrel Operator scans the cluster for Datadog workloads (Agent DaemonSet, Cluster Agent, or Datadog Operator) across all namespaces
+2. **Authentication** — The Kestrel Operator reads the Datadog API key and Application key from the existing Kubernetes secrets created by the Datadog Helm chart or Datadog Operator
+3. **Querying** — When a user asks about metrics or performance in the Kestrel chat, the AI agent generates Datadog queries that the Kestrel Operator executes against the Datadog cloud API and returns the results
 
 All queries are executed from within your cluster. The API credentials never leave the cluster or pass through Kestrel's infrastructure.
 
@@ -31,7 +31,7 @@ operator:
 ```
 
 <Note>
-  The `namespace` value is used for scoped RBAC permissions. The operator also performs cluster-wide discovery as a fallback, so it will find Datadog even if the namespace differs from what is configured.
+  The `namespace` value is used for scoped RBAC permissions. The Kestrel Operator also performs cluster-wide discovery as a fallback, so it will find Datadog even if the namespace differs from what is configured.
 </Note>
 
 ### Optional Overrides
@@ -47,20 +47,20 @@ operator:
     site: "datadoghq.eu"            # Non-default Datadog site
 ```
 
-These overrides are rarely needed — the operator handles standard Datadog Helm chart and Datadog Operator deployments automatically.
+These overrides are rarely needed — the Kestrel Operator handles standard Datadog Helm chart and Datadog Operator deployments automatically.
 
 ## Prerequisites
 
 ### Datadog Installation
 
-The operator supports both common Datadog deployment patterns:
+The Kestrel Operator supports both common Datadog deployment patterns:
 
 - **Datadog Helm Chart** — DaemonSet named `datadog` with labels `app.kubernetes.io/name=datadog`
 - **Datadog Operator** — DatadogAgent custom resource managing agent DaemonSet and Cluster Agent
 
 ### API Credentials
 
-The operator reads credentials from the Kubernetes secrets created by your Datadog installation:
+The Kestrel Operator reads credentials from the Kubernetes secrets created by your Datadog installation:
 
 - **API Key** (required) — Stored under the `api-key` field in the Datadog secret
 - **Application Key** (required) — Stored under the `app-key` field in the same secret
@@ -71,7 +71,7 @@ The operator reads credentials from the Kubernetes secrets created by your Datad
 
 ### RBAC Permissions
 
-When `operator.datadog.enabled` is set to `true`, the Helm chart automatically creates namespace-scoped RBAC resources (Role + RoleBinding) in the Datadog namespace, granting the operator:
+When `operator.datadog.enabled` is set to `true`, the Helm chart automatically creates namespace-scoped RBAC resources (Role + RoleBinding) in the Datadog namespace, granting the Kestrel Operator:
 
 - **Read access** to the Datadog secrets (for API key discovery)
 - **List access** to DaemonSets and Deployments (for Datadog workload discovery)
@@ -93,7 +93,7 @@ When querying through the Kestrel chat, the AI agent automatically selects the a
 
 ### Verifying Datadog Discovery
 
-Check the operator logs for discovery status:
+Check the Kestrel Operator logs for discovery status:
 
 ```bash
 kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "Datadog"
