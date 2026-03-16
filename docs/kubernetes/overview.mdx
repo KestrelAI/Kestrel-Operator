@@ -1,5 +1,5 @@
 ---
-title: "Kestrel Operator Overview"
+title: "Operator Overview"
 description: "Understanding the Kestrel Operator and its role in your Kubernetes security architecture"
 ---
 
@@ -39,10 +39,6 @@ Maintains a secure gRPC connection to Kestrel Cloud using mTLS authentication. H
 - **Cilium Integration**: Collects L3/L4 network flows from Hubble Relay
 - **Istio Integration**: Receives L7 access logs via Envoy Access Log Service
 
-### Metrics Integrations
-- **OpenTelemetry**: Receives metrics from an OTEL Collector via OTLP gRPC
-- **Datadog**: Queries metrics from in-cluster Datadog agents
-
 ## Security Model
 
 ### Authentication
@@ -61,11 +57,9 @@ Maintains a secure gRPC connection to Kestrel Cloud using mTLS authentication. H
 - Cluster admin permissions for installation
 - Network connectivity to `grpc.platform.usekestrel.ai:443`
 
-### Optional Integrations
+### Optional Components
 - **Cilium** (for L3/L4 network flow collection)
 - **Istio** (for L7 access log collection and authorization policies)
-- **OpenTelemetry Collector** (for receiving Kubernetes and application metrics via OTLP gRPC)
-- **Datadog** (for querying historical metrics, events, and logs from in-cluster Datadog agents)
 
 ## Next Steps
 

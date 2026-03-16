@@ -59,50 +59,6 @@ Choose how the operator will collect network traffic data:
   </Tab>
 </Tabs>
 
-### Metrics Source
-
-Choose how the Kestrel Operator will collect infrastructure and workload metrics for incident analysis and root cause investigation:
-
-<Tabs>
-  <Tab title="Kubernetes Metrics Server">
-    **Kubernetes Metrics Server** (Default)
-    - Uses the built-in K8s Metrics API if available
-    - No additional configuration required
-    - Provides basic CPU and memory usage data for pods and nodes
-
-    Use this option if:
-    - You have the Kubernetes Metrics Server installed (most clusters do by default)
-    - You don't need historical metrics or advanced monitoring
-  </Tab>
-
-  <Tab title="OpenTelemetry">
-    **OpenTelemetry Collector**
-    - Receives metrics from an OTEL Collector via OTLP gRPC
-    - Requires an OpenTelemetry Collector deployed in your cluster
-    - Provides rich Kubernetes and application-level metrics
-
-    Use this option if:
-    - You already have an OpenTelemetry Collector deployed
-    - You want granular, standardized metrics with flexible pipelines
-    - You need application-level metrics alongside infrastructure metrics
-
-    The Kestrel Operator will automatically receive metrics pushed by your OTEL Collector. See the [OpenTelemetry configuration guide](/kubernetes/configuration) for collector setup details.
-  </Tab>
-
-  <Tab title="Datadog">
-    **Datadog**
-    - Queries metrics from in-cluster Datadog agents
-    - Requires Datadog Agent and/or Cluster Agent deployed in your cluster
-    - Provides historical metrics, events, hosts, and logs from Datadog
-
-    Use this option if:
-    - You already have Datadog deployed in your cluster
-    - You want the Kestrel Operator to leverage your existing Datadog metrics for incident analysis
-
-    When selected, you'll need to specify the **Datadog namespace** — the Kubernetes namespace where your Datadog agents are deployed (commonly `datadog` or `default`). The Kestrel Operator will auto-discover the API key, application key, and Datadog site from your existing Datadog secrets.
-  </Tab>
-</Tabs>
-
 ### Safe-Apply Permissions
 
 <Warning>
@@ -169,16 +125,6 @@ operator:
   #   disableFlows: true
   # istio:
   #   enabled: true
-
-  # Metrics source (uncomment one)
-  # For OpenTelemetry:
-  # otel:
-  #   enabled: true
-
-  # For Datadog:
-  # datadog:
-  #   enabled: true
-  #   namespace: "datadog"  # Namespace where Datadog agents are deployed
 
   # Enable safe-apply if granted permissions
   safeApply:
