@@ -1321,6 +1321,7 @@ enum DatadogQueryType {
   DATADOG_QUERY_EVENTS = 2;     // GET /api/v1/events
   DATADOG_QUERY_HOSTS = 3;      // GET /api/v1/hosts
   DATADOG_QUERY_LOGS = 4;       // POST /api/v2/logs/events/search
+  DATADOG_QUERY_LIST_METRICS = 5; // GET /api/v1/metrics — list available metric names
 }
 
 // Datadog query response from operator to server.

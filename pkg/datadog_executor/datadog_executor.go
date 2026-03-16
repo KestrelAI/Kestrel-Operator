@@ -117,6 +117,8 @@ func (e *DatadogExecutor) ExecuteQuery(ctx context.Context, req *v1.DatadogQuery
 		result = e.queryHosts(ctxTimeout, req)
 	case v1.DatadogQueryType_DATADOG_QUERY_LOGS:
 		result = e.queryLogs(ctxTimeout, req)
+	case v1.DatadogQueryType_DATADOG_QUERY_LIST_METRICS:
+		result = e.queryListMetrics(ctxTimeout, req)
 	default:
 		resp.Success = false
 		resp.ErrorMessage = fmt.Sprintf("unsupported query type: %s", req.QueryType.String())
@@ -675,6 +677,27 @@ func (e *DatadogExecutor) queryLogs(ctx context.Context, req *v1.DatadogQueryReq
 
 	body, code, errHTTP := e.doPost(ctx, "/api/v2/logs/events/search", jsonBody, true)
 	return e.makeResponse(req.RequestId, body, code, errHTTP)
+}
+
+// queryListMetrics calls GET /api/v1/metrics to list available metric names.
+func (e *DatadogExecutor) queryListMetrics(ctx context.Context, req *v1.DatadogQueryRequest) *v1.DatadogQueryResponse {
+	params := url.Values{}
+	// from_ts is required — list metrics active since this timestamp
+	from := req.FromTs
+	if from == 0 {
+		from = time.Now().Add(-1 * time.Hour).Unix()
+	}
+	params.Set("from", strconv.FormatInt(from, 10))
+	if req.Filter != "" {
+		params.Set("host", req.Filter)
+	}
+
+	e.Logger.Info("[Datadog] Listing available metrics",
+		zap.String("request_id", req.RequestId),
+		zap.Int64("from", from))
+
+	body, code, err := e.doGet(ctx, "/api/v1/metrics", params, true)
+	return e.makeResponse(req.RequestId, body, code, err)
 }
 
 // ---------------------------------------------------------------------------
