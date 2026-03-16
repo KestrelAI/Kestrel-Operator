@@ -495,15 +495,26 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	// Initialize shell executor
 	shellExecutor := shell_executor.NewShellExecutor(logger)
 
-	// Initialize Datadog executor for in-cluster Datadog API proxying
-	ddExecutor := datadog_executor.NewDatadogExecutor(
-		logger, k8sClient,
-		os.Getenv("DD_NAMESPACE"),
-		os.Getenv("DD_SECRET_NAME"),
-		os.Getenv("DD_API_KEY"),
-		os.Getenv("DD_APP_KEY"),
-		os.Getenv("DD_SITE"),
-	)
+	// Initialize Datadog executor only when Datadog integration is enabled.
+	// The Helm chart sets DD_NAMESPACE (or DD_API_KEY for direct override) when
+	// operator.datadog.enabled=true. Without these, skip executor creation to
+	// avoid noisy RBAC 403 errors from discovery probes.
+	var ddExecutor *datadog_executor.DatadogExecutor
+	if os.Getenv("DD_NAMESPACE") != "" || os.Getenv("DD_API_KEY") != "" {
+		ddExecutor = datadog_executor.NewDatadogExecutor(
+			logger, k8sClient,
+			os.Getenv("DD_NAMESPACE"),
+			os.Getenv("DD_SECRET_NAME"),
+			os.Getenv("DD_API_KEY"),
+			os.Getenv("DD_APP_KEY"),
+			os.Getenv("DD_SITE"),
+		)
+		logger.Info("Datadog executor initialized",
+			zap.String("namespace", os.Getenv("DD_NAMESPACE")),
+			zap.Bool("has_api_key_override", os.Getenv("DD_API_KEY") != ""))
+	} else {
+		logger.Info("Datadog integration not configured (DD_NAMESPACE and DD_API_KEY not set)")
+	}
 
 	// Initialize metrics store, pod resolver, and OTEL receiver if enabled
 	var metricsStoreInstance *metrics_store.MetricsStore
@@ -1870,6 +1881,26 @@ func (s *StreamClient) handleDatadogQueryRequest(
 	s.Logger.Info("Received Datadog query request from server",
 		zap.String("request_id", ddRequest.RequestId),
 		zap.String("query_type", ddRequest.QueryType.String()))
+
+	if s.datadogExecutor == nil {
+		s.Logger.Warn("Datadog query received but Datadog integration is not configured",
+			zap.String("request_id", ddRequest.RequestId))
+		ddResponse := &v1.DatadogQueryResponse{
+			RequestId:    ddRequest.RequestId,
+			Success:      false,
+			ErrorMessage: "Datadog integration is not enabled on this operator",
+		}
+		responseMsg := &v1.StreamControlRequest{
+			Request: &v1.StreamControlRequest_DatadogQueryResponse{
+				DatadogQueryResponse: ddResponse,
+			},
+		}
+		if err := s.protectedControlSend(stream, responseMsg); err != nil {
+			s.Logger.Error("Failed to send Datadog not-configured response",
+				zap.String("request_id", ddRequest.RequestId), zap.Error(err))
+		}
+		return
+	}
 
 	ddResponse := s.datadogExecutor.ExecuteQuery(ctx, ddRequest)
 
