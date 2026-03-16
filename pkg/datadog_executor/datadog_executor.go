@@ -62,9 +62,7 @@ func NewDatadogExecutor(
 		OverrideAPIKey:     overrideAPIKey,
 		OverrideAppKey:     overrideAppKey,
 		OverrideSite:       overrideSite,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		httpClient: &http.Client{},
 	}
 }
 
@@ -88,7 +86,10 @@ func (e *DatadogExecutor) ExecuteQuery(ctx context.Context, req *v1.DatadogQuery
 		return resp
 	}
 
-	if e.appKey == "" {
+	e.mu.RLock()
+	hasAppKey := e.appKey != ""
+	e.mu.RUnlock()
+	if !hasAppKey {
 		e.Logger.Warn("Datadog query requires app key but none available",
 			zap.String("request_id", req.RequestId),
 			zap.String("query_type", req.QueryType.String()))
@@ -459,27 +460,36 @@ func (e *DatadogExecutor) discoverSite(ctx context.Context, namespace string) st
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
+// credentials returns a consistent snapshot of the discovered credentials
+// under the read lock, safe from concurrent ResetDiscovery calls.
+func (e *DatadogExecutor) credentials() (site, apiKey, appKey string) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.site, e.apiKey, e.appKey
+}
+
 func (e *DatadogExecutor) apiURL(path string) string {
 	return fmt.Sprintf("https://api.%s%s", e.site, path)
 }
 
 func (e *DatadogExecutor) doGet(ctx context.Context, apiPath string, params url.Values, needsAppKey bool) ([]byte, int, error) {
-	fullURL := e.apiURL(apiPath)
+	site, apiKey, appKey := e.credentials()
+	fullURL := fmt.Sprintf("https://api.%s%s", site, apiPath)
 	if len(params) > 0 {
 		fullURL += "?" + params.Encode()
 	}
 
 	e.Logger.Debug("[Datadog] HTTP GET request",
 		zap.String("url", truncate(fullURL, 300)),
-		zap.Bool("with_app_key", needsAppKey && e.appKey != ""))
+		zap.Bool("with_app_key", needsAppKey && appKey != ""))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
 		return nil, 0, err
 	}
-	req.Header.Set("DD-API-KEY", e.apiKey)
-	if needsAppKey && e.appKey != "" {
-		req.Header.Set("DD-APPLICATION-KEY", e.appKey)
+	req.Header.Set("DD-API-KEY", apiKey)
+	if needsAppKey && appKey != "" {
+		req.Header.Set("DD-APPLICATION-KEY", appKey)
 	}
 	req.Header.Set("Accept", "application/json")
 
@@ -510,20 +520,21 @@ func (e *DatadogExecutor) doGet(ctx context.Context, apiPath string, params url.
 }
 
 func (e *DatadogExecutor) doPost(ctx context.Context, apiPath string, jsonBody []byte, needsAppKey bool) ([]byte, int, error) {
-	fullURL := e.apiURL(apiPath)
+	site, apiKey, appKey := e.credentials()
+	fullURL := fmt.Sprintf("https://api.%s%s", site, apiPath)
 
 	e.Logger.Debug("[Datadog] HTTP POST request",
 		zap.String("url", fullURL),
 		zap.Int("body_bytes", len(jsonBody)),
-		zap.Bool("with_app_key", needsAppKey && e.appKey != ""))
+		zap.Bool("with_app_key", needsAppKey && appKey != ""))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, strings.NewReader(string(jsonBody)))
 	if err != nil {
 		return nil, 0, err
 	}
-	req.Header.Set("DD-API-KEY", e.apiKey)
-	if needsAppKey && e.appKey != "" {
-		req.Header.Set("DD-APPLICATION-KEY", e.appKey)
+	req.Header.Set("DD-API-KEY", apiKey)
+	if needsAppKey && appKey != "" {
+		req.Header.Set("DD-APPLICATION-KEY", appKey)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -716,10 +727,13 @@ func (e *DatadogExecutor) Probe(ctx context.Context) bool {
 			zap.Error(err))
 		return false
 	}
+	e.mu.RLock()
+	ns, site, appKey := e.namespace, e.site, e.appKey
+	e.mu.RUnlock()
 	e.Logger.Info("[Datadog] Probe: Datadog available",
-		zap.String("namespace", e.namespace),
-		zap.String("site", e.site),
-		zap.Bool("has_app_key", e.appKey != ""))
+		zap.String("namespace", ns),
+		zap.String("site", site),
+		zap.Bool("has_app_key", appKey != ""))
 	return true
 }
 

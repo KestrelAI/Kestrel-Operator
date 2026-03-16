@@ -1873,20 +1873,18 @@ func (s *StreamClient) handleDatadogQueryRequest(
 
 	ddResponse := s.datadogExecutor.ExecuteQuery(ctx, ddRequest)
 
-	// Truncate oversized responses to fit within gRPC max message size
+	// Reject oversized responses rather than truncating mid-JSON, which would
+	// break downstream JSON parsers.
 	const maxResponseBytes = 8 * 1024 * 1024
 	if len(ddResponse.ResponseData) > maxResponseBytes {
-		s.Logger.Warn("Datadog response too large, truncating",
+		s.Logger.Warn("Datadog response too large, returning error instead of broken JSON",
 			zap.String("request_id", ddRequest.RequestId),
 			zap.Int("bytes", len(ddResponse.ResponseData)),
 			zap.Int("max_bytes", maxResponseBytes))
-		truncMsg := fmt.Sprintf("\n\n[RESPONSE TRUNCATED: %d bytes exceeded %d byte gRPC limit.]",
+		ddResponse.Success = false
+		ddResponse.ErrorMessage = fmt.Sprintf("Response too large (%d bytes, max %d). Try a narrower query with fewer series or a shorter time range.",
 			len(ddResponse.ResponseData), maxResponseBytes)
-		budget := maxResponseBytes - len(truncMsg)
-		if budget < 0 {
-			budget = 0
-		}
-		ddResponse.ResponseData = ddResponse.ResponseData[:budget] + truncMsg
+		ddResponse.ResponseData = ""
 	}
 
 	responseMsg := &v1.StreamControlRequest{
