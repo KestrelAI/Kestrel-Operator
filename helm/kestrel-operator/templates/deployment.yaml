@@ -32,6 +32,10 @@ spec:
             - name: SERVER_NAME
               value: "{{ .Values.server.host }}"
             
+            # TLS configuration
+            - name: TLS_INSECURE_SKIP_VERIFY
+              value: "{{ if and .Values.server .Values.server.tls }}{{ .Values.server.tls.insecureSkipVerify | default false }}{{ else }}false{{ end }}"
+            
             # Pod namespace for self-identification
             - name: POD_NAMESPACE
               valueFrom:
@@ -76,6 +80,30 @@ spec:
               value: "{{ .Release.Name }}-client-tls"
             - name: DEPLOYMENT_NAME
               value: "{{ .Release.Name }}"
+
+            # Datadog integration configuration
+            {{- if .Values.operator.datadog.enabled }}
+            {{- if .Values.operator.datadog.namespace }}
+            - name: DD_NAMESPACE
+              value: "{{ .Values.operator.datadog.namespace }}"
+            {{- end }}
+            {{- if .Values.operator.datadog.secretName }}
+            - name: DD_SECRET_NAME
+              value: "{{ .Values.operator.datadog.secretName }}"
+            {{- end }}
+            {{- if .Values.operator.datadog.apiKey }}
+            - name: DD_API_KEY
+              value: "{{ .Values.operator.datadog.apiKey }}"
+            {{- end }}
+            {{- if .Values.operator.datadog.appKey }}
+            - name: DD_APP_KEY
+              value: "{{ .Values.operator.datadog.appKey }}"
+            {{- end }}
+            {{- if .Values.operator.datadog.site }}
+            - name: DD_SITE
+              value: "{{ .Values.operator.datadog.site }}"
+            {{- end }}
+            {{- end }}
 
             # OTEL Metrics Store configuration
             {{- if .Values.operator.otel.enabled }}

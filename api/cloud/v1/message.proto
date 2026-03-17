@@ -231,8 +231,11 @@ message ServicePort {
 }
 
 // InventoryCommit signals that the operator has finished sending initial inventory
-// and the server can now commit the staged changes and start processing incremental updates
+// and the server can now commit the staged changes and start processing incremental updates.
 message InventoryCommit {
+  // True if the operator detected a Datadog installation in the cluster.
+  // Old operators send false (default) — the server treats it as "no Datadog".
+  bool has_datadog = 1;
 }
 
 // Network policy definition matching Kubernetes NetworkPolicy format
@@ -1282,6 +1285,57 @@ message OTelMetricBatch {
 }
 
 
+// ============================================================================
+// Datadog Query Messages
+// ============================================================================
+
+// Datadog query request from server to operator.
+// The operator discovers the Datadog setup in the cluster (API key from K8s
+// secrets, DD_SITE from Cluster Agent env), then proxies the query to the
+// Datadog cloud API and returns the JSON result.
+message DatadogQueryRequest {
+  string request_id = 1;
+
+  // Query type determines which Datadog API endpoint to call.
+  DatadogQueryType query_type = 2;
+
+  // Metric query string (for DATADOG_QUERY_METRICS), e.g.
+  // "avg:system.cpu.user{cluster_name:ops-33} by {host}"
+  string query = 3;
+
+  // Time range (unix epoch seconds). Required for metrics and events.
+  int64 from_ts = 4;
+  int64 to_ts = 5;
+
+  // Optional filters for events/logs
+  string filter = 6;          // e.g. "source:kubernetes" for events
+  string sort = 7;            // e.g. "timestamp" for logs
+  int32 max_results = 8;      // limit returned items (0 = API default)
+
+  int32 timeout_seconds = 9;
+}
+
+enum DatadogQueryType {
+  DATADOG_QUERY_UNSPECIFIED = 0;
+  DATADOG_QUERY_METRICS = 1;    // GET /api/v1/query
+  DATADOG_QUERY_EVENTS = 2;     // GET /api/v1/events
+  DATADOG_QUERY_HOSTS = 3;      // GET /api/v1/hosts
+  DATADOG_QUERY_LOGS = 4;       // POST /api/v2/logs/events/search
+  DATADOG_QUERY_LIST_METRICS = 5; // GET /api/v1/metrics — list available metric names
+}
+
+// Datadog query response from operator to server.
+message DatadogQueryResponse {
+  string request_id = 1;
+  bool success = 2;
+
+  // Raw JSON response body from the Datadog API
+  string response_data = 3;
+
+  string error_message = 4;
+  int32 status_code = 5;
+}
+
 // StreamControlRequest carries tool responses from operator to server on the control stream.
 // New operators send tool responses here instead of on the data stream.
 message StreamControlRequest {
@@ -1293,6 +1347,7 @@ message StreamControlRequest {
     CertificateRenewalResponse certificate_renewal_response = 5;
     OperatorRestartResponse operator_restart_response = 6;
     MetricsQueryResponse metrics_query_response = 7;
+    DatadogQueryResponse datadog_query_response = 8;
   }
 }
 
@@ -1310,6 +1365,7 @@ message StreamControlResponse {
     Heartbeat heartbeat = 8;
     // AI-generated network policies pushed to operator for application (moved from data stream)
     NetworkPolicyWithError network_policy = 9;
+    DatadogQueryRequest datadog_query_request = 10;
   }
 }
 

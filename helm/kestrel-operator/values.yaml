@@ -28,6 +28,8 @@ securityContext:
 server:
   host: grpc.platform.usekestrel.ai
   port: 443
+  tls:
+    insecureSkipVerify: false
 
 # JWT Authentication configuration
 auth:
@@ -56,6 +58,20 @@ operator:
     enabled: false
     # Port for the ALS gRPC server
     alsPort: 8080
+
+  # Datadog integration settings
+  # When enabled, the operator discovers the in-cluster Datadog installation
+  # and can proxy metric/event/host/log queries to the Datadog cloud API.
+  datadog:
+    enabled: false
+    # Namespace where Datadog is deployed (auto-discovered if empty)
+    namespace: ""
+    # Secret name containing the API key (default: "datadog")
+    secretName: ""
+    # Direct overrides (skip auto-discovery entirely)
+    apiKey: ""
+    appKey: ""
+    site: ""
 
   # Safe-apply configuration for Chat YAML changes
   safeApply:

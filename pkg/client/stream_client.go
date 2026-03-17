@@ -14,6 +14,7 @@ import (
 	"operator/pkg/k8s_helper"
 	"operator/pkg/metrics_store"
 	"operator/pkg/otel_receiver"
+	"operator/pkg/datadog_executor"
 	"operator/pkg/shell_executor"
 	smartcache "operator/pkg/smart_cache"
 	"os"
@@ -73,9 +74,10 @@ type StreamClient struct {
 	Config        ServerConfig
 	sendMu        sync.Mutex   // Protects concurrent data stream Send calls
 	controlSendMu sync.Mutex   // Protects concurrent control stream Send calls
-	tokenMu       sync.RWMutex // Protects Config.Token reads/writes
-	apiExecutor   *k8s_api.APIExecutor
-	shellExecutor *shell_executor.ShellExecutor
+	tokenMu          sync.RWMutex // Protects Config.Token reads/writes
+	apiExecutor      *k8s_api.APIExecutor
+	shellExecutor    *shell_executor.ShellExecutor
+	datadogExecutor  *datadog_executor.DatadogExecutor
 
 	// OTEL Metrics Store for local metrics storage and querying
 	metricsStore *metrics_store.MetricsStore
@@ -493,6 +495,27 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	// Initialize shell executor
 	shellExecutor := shell_executor.NewShellExecutor(logger)
 
+	// Initialize Datadog executor only when Datadog integration is enabled.
+	// The Helm chart sets DD_NAMESPACE (or DD_API_KEY for direct override) when
+	// operator.datadog.enabled=true. Without these, skip executor creation to
+	// avoid noisy RBAC 403 errors from discovery probes.
+	var ddExecutor *datadog_executor.DatadogExecutor
+	if os.Getenv("DD_NAMESPACE") != "" || os.Getenv("DD_API_KEY") != "" {
+		ddExecutor = datadog_executor.NewDatadogExecutor(
+			logger, k8sClient,
+			os.Getenv("DD_NAMESPACE"),
+			os.Getenv("DD_SECRET_NAME"),
+			os.Getenv("DD_API_KEY"),
+			os.Getenv("DD_APP_KEY"),
+			os.Getenv("DD_SITE"),
+		)
+		logger.Info("Datadog executor initialized",
+			zap.String("namespace", os.Getenv("DD_NAMESPACE")),
+			zap.Bool("has_api_key_override", os.Getenv("DD_API_KEY") != ""))
+	} else {
+		logger.Info("Datadog integration not configured (DD_NAMESPACE and DD_API_KEY not set)")
+	}
+
 	// Initialize metrics store, pod resolver, and OTEL receiver if enabled
 	var metricsStoreInstance *metrics_store.MetricsStore
 	var otelReceiverInstance *otel_receiver.OTelReceiverServer
@@ -532,11 +555,12 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	}
 
 	return &StreamClient{
-		Logger:        logger,
-		Client:        conn,
-		Config:        config,
-		apiExecutor:   apiExecutor,
-		shellExecutor: shellExecutor,
+		Logger:          logger,
+		Client:          conn,
+		Config:          config,
+		apiExecutor:     apiExecutor,
+		shellExecutor:   shellExecutor,
+		datadogExecutor: ddExecutor,
 		metricsStore:  metricsStoreInstance,
 		podResolver:   podResolver,
 		otelReceiver:  otelReceiverInstance,
@@ -1151,11 +1175,22 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		// Start periodic informer health monitoring (observability only, no restart)
 		go s.monitorInformerHealth(ctx, sharedFactory)
 
+		// Probe for Datadog before sending inventory commit
+		hasDatadog := false
+		if s.datadogExecutor != nil {
+			probeCtx, probeCancel := context.WithTimeout(ctx, 10*time.Second)
+			hasDatadog = s.datadogExecutor.Probe(probeCtx)
+			probeCancel()
+		}
+
 		// Send inventory commit message to signal that initial inventory is complete
-		s.Logger.Info("Sending inventory commit message to server")
+		s.Logger.Info("Sending inventory commit message to server",
+			zap.Bool("has_datadog", hasDatadog))
 		commitMsg := &v1.StreamDataRequest{
 			Request: &v1.StreamDataRequest_InventoryCommit{
-				InventoryCommit: &v1.InventoryCommit{},
+				InventoryCommit: &v1.InventoryCommit{
+					HasDatadog: hasDatadog,
+				},
 			},
 		}
 		if err := s.protectedSend(stream, commitMsg); err != nil {
@@ -1691,6 +1726,8 @@ func (s *StreamClient) handleControlMessages(ctx context.Context, controlStream 
 				s.handleOperatorRestartRequest(ctx, controlStream, resp.OperatorRestartRequest)
 			case *v1.StreamControlResponse_MetricsQueryRequest:
 				go s.handleMetricsQueryRequest(ctx, controlStream, resp.MetricsQueryRequest)
+			case *v1.StreamControlResponse_DatadogQueryRequest:
+				go s.handleDatadogQueryRequest(ctx, controlStream, resp.DatadogQueryRequest)
 			case *v1.StreamControlResponse_Heartbeat:
 				s.Logger.Debug("Received heartbeat on control stream")
 			default:
@@ -1829,6 +1866,72 @@ func (s *StreamClient) handleShellCommandRequest(
 		s.Logger.Info("Successfully sent shell command response to server",
 			zap.String("request_id", shellRequest.RequestId),
 			zap.Int("results_count", len(shellResponse.Results)))
+	}
+}
+
+// handleDatadogQueryRequest processes Datadog query requests from the server.
+// The executor auto-discovers the Datadog installation in the cluster on first
+// use (API key from K8s secret, DD_SITE from Cluster Agent env vars) and
+// proxies the query to the Datadog cloud API.
+func (s *StreamClient) handleDatadogQueryRequest(
+	ctx context.Context,
+	stream v1.StreamService_StreamControlClient,
+	ddRequest *v1.DatadogQueryRequest,
+) {
+	s.Logger.Info("Received Datadog query request from server",
+		zap.String("request_id", ddRequest.RequestId),
+		zap.String("query_type", ddRequest.QueryType.String()))
+
+	if s.datadogExecutor == nil {
+		s.Logger.Warn("Datadog query received but Datadog integration is not configured",
+			zap.String("request_id", ddRequest.RequestId))
+		ddResponse := &v1.DatadogQueryResponse{
+			RequestId:    ddRequest.RequestId,
+			Success:      false,
+			ErrorMessage: "Datadog integration is not enabled on this operator",
+		}
+		responseMsg := &v1.StreamControlRequest{
+			Request: &v1.StreamControlRequest_DatadogQueryResponse{
+				DatadogQueryResponse: ddResponse,
+			},
+		}
+		if err := s.protectedControlSend(stream, responseMsg); err != nil {
+			s.Logger.Error("Failed to send Datadog not-configured response",
+				zap.String("request_id", ddRequest.RequestId), zap.Error(err))
+		}
+		return
+	}
+
+	ddResponse := s.datadogExecutor.ExecuteQuery(ctx, ddRequest)
+
+	// Reject oversized responses rather than truncating mid-JSON, which would
+	// break downstream JSON parsers.
+	const maxResponseBytes = 8 * 1024 * 1024
+	if len(ddResponse.ResponseData) > maxResponseBytes {
+		s.Logger.Warn("Datadog response too large, returning error instead of broken JSON",
+			zap.String("request_id", ddRequest.RequestId),
+			zap.Int("bytes", len(ddResponse.ResponseData)),
+			zap.Int("max_bytes", maxResponseBytes))
+		ddResponse.Success = false
+		ddResponse.ErrorMessage = fmt.Sprintf("Response too large (%d bytes, max %d). Try a narrower query with fewer series or a shorter time range.",
+			len(ddResponse.ResponseData), maxResponseBytes)
+		ddResponse.ResponseData = ""
+	}
+
+	responseMsg := &v1.StreamControlRequest{
+		Request: &v1.StreamControlRequest_DatadogQueryResponse{
+			DatadogQueryResponse: ddResponse,
+		},
+	}
+
+	if err := s.protectedControlSend(stream, responseMsg); err != nil {
+		s.Logger.Error("Failed to send Datadog query response to server",
+			zap.String("request_id", ddRequest.RequestId),
+			zap.Error(err))
+	} else {
+		s.Logger.Info("Successfully sent Datadog query response to server",
+			zap.String("request_id", ddRequest.RequestId),
+			zap.Bool("success", ddResponse.Success))
 	}
 }
 
