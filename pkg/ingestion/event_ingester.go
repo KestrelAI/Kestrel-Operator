@@ -98,7 +98,7 @@ func (ei *EventIngester) setupEventInformer() {
 			// if the ResourceVersion is unchanged, it's a no-op re-sync, not a real update.
 			if oldEvent, ok := oldObj.(*corev1.Event); ok {
 				if oldEvent.ResourceVersion == newEvent.ResourceVersion {
-					ei.logger.Debug("Skipping re-synced event (unchanged ResourceVersion)",
+					ei.logger.Info("Skipping re-synced event (unchanged ResourceVersion)",
 						zap.String("reason", newEvent.Reason),
 						zap.String("involvedObject", fmt.Sprintf("%s/%s", newEvent.InvolvedObject.Kind, newEvent.InvolvedObject.Name)),
 						zap.String("namespace", newEvent.InvolvedObject.Namespace),
