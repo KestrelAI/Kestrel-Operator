@@ -83,29 +83,34 @@ func (ei *EventIngester) setupEventInformer() {
 	_, err := eventInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if event, ok := obj.(*corev1.Event); ok {
-				// Send Warning events for incident detection
 				if event.Type == corev1.EventTypeWarning {
 					ei.sendEvent(event, "CREATE")
 				}
 			}
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			if event, ok := newObj.(*corev1.Event); ok {
-				// Send updates for Warning events (count increases indicate repeated issues)
-				if event.Type == corev1.EventTypeWarning {
-					ei.sendEvent(event, "UPDATE")
+			newEvent, ok := newObj.(*corev1.Event)
+			if !ok || newEvent.Type != corev1.EventTypeWarning {
+				return
+			}
+			// The informer re-sync (every 5 min) fires UpdateFunc for ALL cached objects,
+			// including stale K8s events that haven't changed. Detect and skip these:
+			// if the ResourceVersion is unchanged, it's a no-op re-sync, not a real update.
+			if oldEvent, ok := oldObj.(*corev1.Event); ok {
+				if oldEvent.ResourceVersion == newEvent.ResourceVersion {
+					ei.logger.Debug("Skipping re-synced event (unchanged ResourceVersion)",
+						zap.String("reason", newEvent.Reason),
+						zap.String("involvedObject", fmt.Sprintf("%s/%s", newEvent.InvolvedObject.Kind, newEvent.InvolvedObject.Name)),
+						zap.String("namespace", newEvent.InvolvedObject.Namespace),
+						zap.String("resourceVersion", newEvent.ResourceVersion))
+					return
 				}
 			}
+			ei.sendEvent(newEvent, "UPDATE")
 		},
-		DeleteFunc: func(obj interface{}) {
-			obj = unwrapDeletedObject(obj)
-			if event, ok := obj.(*corev1.Event); ok {
-				// Track deletion of warning events
-				if event.Type == corev1.EventTypeWarning {
-					ei.sendEvent(event, "DELETE")
-				}
-			}
-		},
+		// DeleteFunc intentionally omitted: K8s event deletion is garbage collection
+		// (default 1-hour TTL), not an incident signal. Sending deleted events would
+		// inject stale signals into the server's incident detection pipeline.
 	})
 	if err != nil {
 		ei.logger.Error("Failed to add event event handler", zap.Error(err))
