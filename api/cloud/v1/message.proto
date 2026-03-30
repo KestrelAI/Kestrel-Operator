@@ -44,6 +44,8 @@ message StreamDataRequest {
     MetricsQueryResponse metrics_query_response = 24;
     // Operator resource usage stats for Grafana dashboards
     OperatorStats operator_stats = 25;
+    // Datadog query response (fallback when sent on data stream)
+    DatadogQueryResponse datadog_query_response = 26;
   }
 }
 
@@ -139,6 +141,8 @@ message StreamDataResponse {
     MetricsQueryRequest metrics_query_request = 9;
     // Heartbeat keepalive to prevent LB idle-stream timeouts
     Heartbeat heartbeat = 10;
+    // Datadog query request (fallback for operators without control stream)
+    DatadogQueryRequest datadog_query_request = 11;
   }
 }
 

@@ -1676,6 +1676,8 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 				s.handleCertificateRenewalRequestOnDataStream(ctx, stream, resp.CertificateRenewalRequest)
 			case *v1.StreamDataResponse_OperatorRestartRequest:
 				s.handleOperatorRestartRequestOnDataStream(ctx, stream, resp.OperatorRestartRequest)
+			case *v1.StreamDataResponse_DatadogQueryRequest:
+				go s.handleDatadogQueryRequestOnDataStream(ctx, stream, resp.DatadogQueryRequest)
 			default:
 				s.Logger.Warn("Received unhandled message type on data stream",
 					zap.String("message_type", fmt.Sprintf("%T", response.Response)))
@@ -3775,6 +3777,45 @@ func (s *StreamClient) handleMetricsQueryRequestOnDataStream(ctx context.Context
 		Request: &v1.StreamDataRequest_MetricsQueryResponse{MetricsQueryResponse: response},
 	}); err != nil {
 		s.Logger.Error("Failed to send metrics query response on data stream", zap.String("request_id", queryRequest.RequestId), zap.Error(err))
+	}
+}
+
+// handleDatadogQueryRequestOnDataStream handles Datadog queries on the data stream
+// for operators that don't have a separate control stream.
+func (s *StreamClient) handleDatadogQueryRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, ddRequest *v1.DatadogQueryRequest) {
+	s.Logger.Info("Handling Datadog query on data stream (fallback)",
+		zap.String("request_id", ddRequest.RequestId),
+		zap.String("query_type", ddRequest.QueryType.String()))
+
+	if s.datadogExecutor == nil {
+		resp := &v1.DatadogQueryResponse{
+			RequestId:    ddRequest.RequestId,
+			Success:      false,
+			ErrorMessage: "Datadog executor not configured on this operator",
+			StatusCode:   503,
+		}
+		if err := s.protectedSend(stream, &v1.StreamDataRequest{
+			Request: &v1.StreamDataRequest_DatadogQueryResponse{DatadogQueryResponse: resp},
+		}); err != nil {
+			s.Logger.Error("Failed to send Datadog error response on data stream", zap.String("request_id", ddRequest.RequestId), zap.Error(err))
+		}
+		return
+	}
+
+	ddResponse := s.datadogExecutor.ExecuteQuery(ctx, ddRequest)
+
+	const maxResponseBytes = 8 * 1024 * 1024
+	if len(ddResponse.ResponseData) > maxResponseBytes {
+		ddResponse.ResponseData = ""
+		ddResponse.Success = false
+		ddResponse.ErrorMessage = "Response too large (>8MB)"
+		ddResponse.StatusCode = 413
+	}
+
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_DatadogQueryResponse{DatadogQueryResponse: ddResponse},
+	}); err != nil {
+		s.Logger.Error("Failed to send Datadog response on data stream", zap.String("request_id", ddRequest.RequestId), zap.Error(err))
 	}
 }
 
