@@ -1,0 +1,74 @@
+{{- if .Values.operator.trivy.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "kestrel-operator.fullname" . }}-trivy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kestrel-operator.labels" . | nindent 4 }}
+    component: trivy-scanner
+spec:
+  selector:
+    matchLabels:
+      {{- include "kestrel-operator.selectorLabels" . | nindent 6 }}
+      component: trivy-scanner
+  template:
+    metadata:
+      labels:
+        {{- include "kestrel-operator.selectorLabels" . | nindent 8 }}
+        component: trivy-scanner
+    spec:
+      # Trivy pods only run the scanner — they don't need K8s API access.
+      # Use the default SA to avoid inheriting the operator's broad RBAC.
+      serviceAccountName: default
+      containers:
+        - name: trivy-server
+          image: "{{ .Values.operator.trivy.image.repository }}:{{ .Values.operator.trivy.image.tag }}"
+          imagePullPolicy: {{ .Values.operator.trivy.image.pullPolicy }}
+          args:
+            - server
+            - --listen
+            - "0.0.0.0:{{ .Values.operator.trivy.serverPort }}"
+            - --cache-dir
+            - /var/trivy-cache
+          ports:
+            - name: trivy-http
+              containerPort: {{ .Values.operator.trivy.serverPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: trivy-http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: trivy-http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: container-runtime-socket
+              mountPath: {{ .Values.operator.trivy.runtimeSocket }}
+              readOnly: true
+            - name: trivy-cache
+              mountPath: /var/trivy-cache
+          resources:
+            {{- toYaml .Values.operator.trivy.resources | nindent 12 }}
+          securityContext:
+            readOnlyRootFilesystem: false
+            runAsNonRoot: false
+            runAsUser: 0
+      volumes:
+        - name: container-runtime-socket
+          hostPath:
+            path: {{ .Values.operator.trivy.runtimeSocket }}
+            type: Socket
+        - name: trivy-cache
+          emptyDir:
+            sizeLimit: 2Gi
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

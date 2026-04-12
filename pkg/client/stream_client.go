@@ -16,6 +16,7 @@ import (
 	"operator/pkg/otel_receiver"
 	"operator/pkg/datadog_executor"
 	"operator/pkg/shell_executor"
+	"operator/pkg/trivy_executor"
 	smartcache "operator/pkg/smart_cache"
 	"os"
 	"os/exec"
@@ -78,6 +79,7 @@ type StreamClient struct {
 	apiExecutor      *k8s_api.APIExecutor
 	shellExecutor    *shell_executor.ShellExecutor
 	datadogExecutor  *datadog_executor.DatadogExecutor
+	trivyExecutor    *trivy_executor.TrivyExecutor
 
 	// OTEL Metrics Store for local metrics storage and querying
 	metricsStore *metrics_store.MetricsStore
@@ -516,6 +518,23 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		logger.Info("Datadog integration not configured (DD_NAMESPACE and DD_API_KEY not set)")
 	}
 
+	// Initialize Trivy executor when Trivy DaemonSet integration is enabled.
+	// The Helm chart sets ENABLE_TRIVY=true when operator.trivy.enabled=true.
+	var trivyExec *trivy_executor.TrivyExecutor
+	if getEnvOrDefault("ENABLE_TRIVY", "false") == "true" {
+		podNamespace := os.Getenv("POD_NAMESPACE")
+		if podNamespace == "" {
+			podNamespace = "default"
+		}
+		trivyExec = trivy_executor.NewTrivyExecutor(
+			logger, k8sClient, k8sConfig, podNamespace,
+		)
+		logger.Info("Trivy executor initialized (DaemonSet mode)",
+			zap.String("namespace", podNamespace))
+	} else {
+		logger.Info("Trivy DaemonSet integration not enabled")
+	}
+
 	// Initialize metrics store, pod resolver, and OTEL receiver if enabled
 	var metricsStoreInstance *metrics_store.MetricsStore
 	var otelReceiverInstance *otel_receiver.OTelReceiverServer
@@ -561,6 +580,7 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		apiExecutor:     apiExecutor,
 		shellExecutor:   shellExecutor,
 		datadogExecutor: ddExecutor,
+		trivyExecutor:   trivyExec,
 		metricsStore:  metricsStoreInstance,
 		podResolver:   podResolver,
 		otelReceiver:  otelReceiverInstance,
@@ -1817,39 +1837,12 @@ func (s *StreamClient) handleShellCommandRequest(
 		zap.String("request_id", shellRequest.RequestId),
 		zap.Int("commands_count", len(shellRequest.Commands)))
 
-	// Execute the shell commands using our shell executor
-	shellResponse := s.shellExecutor.ExecuteShellCommands(ctx, shellRequest)
+	// Execute shell commands, routing trivy commands to the DaemonSet when available
+	shellResponse := s.executeShellCommandsWithTrivy(ctx, shellRequest)
 
 	// Truncate results that would exceed gRPC max message size (10MB).
 	// We cap at 8MB total to leave room for protobuf overhead.
-	const maxResponseBytes = 8 * 1024 * 1024
-	totalSize := 0
-	for _, result := range shellResponse.Results {
-		totalSize += len(result.Stdout) + len(result.Stderr)
-	}
-	if totalSize > maxResponseBytes {
-		s.Logger.Warn("Shell command response too large, truncating to avoid gRPC limit",
-			zap.String("request_id", shellRequest.RequestId),
-			zap.Int("total_bytes", totalSize),
-			zap.Int("max_bytes", maxResponseBytes))
-		// Distribute budget evenly across results, then split between stdout and stderr
-		perFieldBudget := maxResponseBytes / len(shellResponse.Results) / 2
-		for _, result := range shellResponse.Results {
-			truncateField := func(field *string) {
-				if len(*field) > perFieldBudget {
-					truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit. Use more specific queries (e.g., target a single resource by name instead of listing all resources).]",
-						len(*field), perFieldBudget)
-					budget := perFieldBudget - len(truncatedMsg)
-					if budget < 0 {
-						budget = 0
-					}
-					*field = (*field)[:budget] + truncatedMsg
-				}
-			}
-			truncateField(&result.Stdout)
-			truncateField(&result.Stderr)
-		}
-	}
+	s.truncateShellResponse(shellRequest.RequestId, shellResponse)
 
 	// Send the response back to the server on the control stream
 	responseMsg := &v1.StreamControlRequest{
@@ -3682,6 +3675,91 @@ func (s *StreamClient) GetOTelReceiver() *otel_receiver.OTelReceiverServer {
 // when no control stream is registered). They call the same execution logic
 // as the control stream handlers but send responses on the data stream.
 
+// executeShellCommandsWithTrivy executes shell commands, routing trivy commands
+// to the Trivy DaemonSet when the executor is available. Non-trivy commands
+// fall through to the standard shell executor.
+func (s *StreamClient) executeShellCommandsWithTrivy(ctx context.Context, request *v1.ShellCommandRequest) *v1.ShellCommandResponse {
+	// Fast path: no trivy commands in the batch — skip per-command checking
+	hasTrivyCmd := false
+	for _, cmd := range request.Commands {
+		if trivy_executor.IsTrivyCommand(cmd) {
+			hasTrivyCmd = true
+			break
+		}
+	}
+	if !hasTrivyCmd {
+		return s.shellExecutor.ExecuteShellCommands(ctx, request)
+	}
+
+	response := &v1.ShellCommandResponse{
+		RequestId: request.RequestId,
+		Results:   make([]*v1.ShellCommandResult, 0, len(request.Commands)),
+	}
+
+	for _, command := range request.Commands {
+		if trivy_executor.IsTrivyCommand(command) {
+			if s.trivyExecutor == nil {
+				// Trivy DaemonSet not enabled — return a clear error instead of
+				// failing with "command not found" (trivy is not in the operator image).
+				response.Results = append(response.Results, &v1.ShellCommandResult{
+					Command:  command,
+					Success:  false,
+					Stderr:   "Trivy scanning is not enabled. Enable it by setting operator.trivy.enabled=true in the Helm values and upgrading the release.",
+					ExitCode: 1,
+				})
+			} else {
+				result := s.trivyExecutor.ExecuteTrivyCommand(ctx, command)
+				response.Results = append(response.Results, result)
+			}
+		} else {
+			// Build a single-command request for the shell executor
+			singleReq := &v1.ShellCommandRequest{
+				RequestId:      request.RequestId,
+				Commands:       []string{command},
+				TimeoutSeconds: request.TimeoutSeconds,
+			}
+			singleResp := s.shellExecutor.ExecuteShellCommands(ctx, singleReq)
+			response.Results = append(response.Results, singleResp.Results...)
+		}
+	}
+
+	return response
+}
+
+// truncateShellResponse caps shell command results to fit within gRPC message limits.
+func (s *StreamClient) truncateShellResponse(requestID string, shellResponse *v1.ShellCommandResponse) {
+	const maxResponseBytes = 8 * 1024 * 1024
+	totalSize := 0
+	for _, result := range shellResponse.Results {
+		totalSize += len(result.Stdout) + len(result.Stderr)
+	}
+	if totalSize <= maxResponseBytes || len(shellResponse.Results) == 0 {
+		return
+	}
+
+	s.Logger.Warn("Shell command response too large, truncating to avoid gRPC limit",
+		zap.String("request_id", requestID),
+		zap.Int("total_bytes", totalSize),
+		zap.Int("max_bytes", maxResponseBytes))
+
+	perFieldBudget := maxResponseBytes / len(shellResponse.Results) / 2
+	for _, result := range shellResponse.Results {
+		truncateField := func(field *string) {
+			if len(*field) > perFieldBudget {
+				truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit. Use more specific queries (e.g., target a single resource by name instead of listing all resources).]",
+					len(*field), perFieldBudget)
+				budget := perFieldBudget - len(truncatedMsg)
+				if budget < 0 {
+					budget = 0
+				}
+				*field = (*field)[:budget] + truncatedMsg
+			}
+		}
+		truncateField(&result.Stdout)
+		truncateField(&result.Stderr)
+	}
+}
+
 func (s *StreamClient) handleKubernetesAPIRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, apiRequest *v1.KubernetesAPIRequest) {
 	s.Logger.Info("Handling Kubernetes API request on data stream (fallback)", zap.String("request_id", apiRequest.RequestId))
 	apiResponse := s.apiExecutor.ExecuteAPIRequests(ctx, apiRequest)
@@ -3695,31 +3773,10 @@ func (s *StreamClient) handleKubernetesAPIRequestOnDataStream(ctx context.Contex
 
 func (s *StreamClient) handleShellCommandRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, shellRequest *v1.ShellCommandRequest) {
 	s.Logger.Info("Handling shell command request on data stream (fallback)", zap.String("request_id", shellRequest.RequestId))
-	shellResponse := s.shellExecutor.ExecuteShellCommands(ctx, shellRequest)
+	shellResponse := s.executeShellCommandsWithTrivy(ctx, shellRequest)
 
 	// Truncate oversized responses (same logic as control stream handler)
-	const maxResponseBytes = 8 * 1024 * 1024
-	totalSize := 0
-	for _, result := range shellResponse.Results {
-		totalSize += len(result.Stdout) + len(result.Stderr)
-	}
-	if totalSize > maxResponseBytes {
-		perFieldBudget := maxResponseBytes / len(shellResponse.Results) / 2
-		for _, result := range shellResponse.Results {
-			truncateField := func(field *string) {
-				if len(*field) > perFieldBudget {
-					truncatedMsg := fmt.Sprintf("\n\n[OUTPUT TRUNCATED: %d bytes exceeded %d byte limit.]", len(*field), perFieldBudget)
-					budget := perFieldBudget - len(truncatedMsg)
-					if budget < 0 {
-						budget = 0
-					}
-					*field = (*field)[:budget] + truncatedMsg
-				}
-			}
-			truncateField(&result.Stdout)
-			truncateField(&result.Stderr)
-		}
-	}
+	s.truncateShellResponse(shellRequest.RequestId, shellResponse)
 
 	if err := s.protectedSend(stream, &v1.StreamDataRequest{
 		Request: &v1.StreamDataRequest_ShellCommandResponse{ShellCommandResponse: shellResponse},
