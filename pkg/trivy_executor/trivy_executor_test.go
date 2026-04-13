@@ -122,6 +122,16 @@ func TestParseImageFromCommand(t *testing.T) {
 			command: "trivy image --template /etc/trivy/html.tpl gcr.io/project/app:v1",
 			want:    "gcr.io/project/app:v1",
 		},
+		{
+			name:    "template flag with @ prefix",
+			command: "trivy image --template @contrib/html.tpl nginx:latest",
+			want:    "nginx:latest",
+		},
+		{
+			name:    "server flag with URI",
+			command: "trivy image --server http://localhost:4954 nginx:latest",
+			want:    "nginx:latest",
+		},
 	}
 
 	for _, tt := range tests {
@@ -383,10 +393,6 @@ func TestInjectCacheDir_ContainsExpectedFlags(t *testing.T) {
 // --- Integration-style tests using fake clientset ---
 
 func newTestExecutor(pods ...corev1.Pod) *TrivyExecutor {
-	objs := make([]interface{}, 0, len(pods))
-	for i := range pods {
-		objs = append(objs, &pods[i])
-	}
 	clientset := fake.NewSimpleClientset()
 	for i := range pods {
 		clientset.CoreV1().Pods(pods[i].Namespace).Create(context.Background(), &pods[i], metav1.CreateOptions{})

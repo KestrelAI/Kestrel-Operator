@@ -382,11 +382,13 @@ func parseImageFromCommand(command string) string {
 		// Non-flag token
 		if prevWasFlag {
 			prevWasFlag = false
-			if !strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "./") && !strings.HasPrefix(p, "../") && strings.ContainsAny(p, "/:@") {
-				// Strong image ref chars AND not a file path — not a flag value
+			if !strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "./") && !strings.HasPrefix(p, "../") &&
+				!strings.HasPrefix(p, "@") && !strings.Contains(p, "://") &&
+				strings.ContainsAny(p, "/:@") {
+				// Strong image ref chars AND not a file path, template ref, or URI — not a flag value
 				positional = append(positional, p)
 			}
-			// else: likely a flag value (HIGH, json, 1, result.json, /tmp/out.json) — skip
+			// else: likely a flag value (HIGH, json, 1, result.json, /tmp/out.json, @contrib/html.tpl) — skip
 			continue
 		}
 		positional = append(positional, p)

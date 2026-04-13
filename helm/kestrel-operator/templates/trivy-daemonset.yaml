@@ -21,6 +21,7 @@ spec:
       # Trivy pods only run the scanner — they don't need K8s API access.
       # Use the default SA to avoid inheriting the operator's broad RBAC.
       serviceAccountName: default
+      automountServiceAccountToken: false
       containers:
         - name: trivy-server
           image: "{{ .Values.operator.trivy.image.repository }}:{{ .Values.operator.trivy.image.tag }}"
@@ -28,23 +29,17 @@ spec:
           args:
             - server
             - --listen
-            - "0.0.0.0:{{ .Values.operator.trivy.serverPort }}"
+            - "127.0.0.1:{{ .Values.operator.trivy.serverPort }}"
             - --cache-dir
             - /var/trivy-cache
-          ports:
-            - name: trivy-http
-              containerPort: {{ .Values.operator.trivy.serverPort }}
-              protocol: TCP
           livenessProbe:
-            httpGet:
-              path: /healthz
-              port: trivy-http
+            exec:
+              command: ["trivy", "--version"]
             initialDelaySeconds: 15
             periodSeconds: 30
           readinessProbe:
-            httpGet:
-              path: /healthz
-              port: trivy-http
+            exec:
+              command: ["trivy", "--version"]
             initialDelaySeconds: 5
             periodSeconds: 10
           volumeMounts:

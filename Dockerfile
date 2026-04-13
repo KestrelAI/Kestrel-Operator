@@ -40,8 +40,12 @@ RUN ARCH=$(uname -m) && \
 
 WORKDIR /app
 
+# Create a non-root user for running the operator
+RUN addgroup -S app && adduser -S app -G app
+
 # Copy the binary from the builder stage
 COPY --from=builder /app/bin/client .
+RUN chown app:app /app/client
 
 # Verify tools are installed
 RUN kubectl version --client=true && \
@@ -49,5 +53,7 @@ RUN kubectl version --client=true && \
     jq --version && \
     bash --version
 
+USER app
+
 # Run the client
-CMD ["/app/client"] 
+CMD ["/app/client"]
