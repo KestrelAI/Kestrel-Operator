@@ -17,4 +17,13 @@ rules:
   # Allow managing deployments in the {{ .Release.Namespace }} namespace for certificate renewal (self-restart)
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["get", "update", "patch"] 
+    verbs: ["get", "update", "patch"]
+  {{- if .Values.operator.trivy.enabled }}
+  # Allow exec into Trivy DaemonSet pods for image scanning
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  {{- end }}

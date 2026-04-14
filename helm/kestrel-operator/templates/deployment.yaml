@@ -105,6 +105,12 @@ spec:
             {{- end }}
             {{- end }}
 
+            # Trivy DaemonSet configuration
+            {{- if .Values.operator.trivy.enabled }}
+            - name: ENABLE_TRIVY
+              value: "true"
+            {{- end }}
+
             # OTEL Metrics Store configuration
             {{- if .Values.operator.otel.enabled }}
             - name: ENABLE_OTEL_METRICS_STORE

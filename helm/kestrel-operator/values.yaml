@@ -87,6 +87,32 @@ operator:
     # Port for the OTLP gRPC receiver (receives metrics from customer OTEL Collectors)
     receiverPort: 4317
 
+  # Trivy container image scanning
+  # When enabled, deploys a Trivy server DaemonSet on each node for local image scanning
+  # via the node's container runtime socket.
+  trivy:
+    enabled: false
+    image:
+      repository: ghcr.io/aquasecurity/trivy
+      tag: "0.69.3"
+      pullPolicy: IfNotPresent
+    # Port for the Trivy HTTP server running on each node
+    serverPort: 4954
+    # Path to the container runtime socket on the host
+    # Common values:
+    #   containerd: /run/containerd/containerd.sock (GKE, EKS, AKS, most modern clusters)
+    #   Docker:     /var/run/docker.sock
+    #   CRI-O:      /var/run/crio/crio.sock (OpenShift)
+    runtimeSocket: /run/containerd/containerd.sock
+    # Resources for each Trivy DaemonSet pod
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
   # Metrics store configuration (used when otel.enabled is true)
   metricsStore:
     # How long to keep metrics data (e.g., "30m", "1h")
