@@ -30,9 +30,18 @@ spec:
           args:
             - |
               echo "Downloading Trivy vulnerability DB..."
-              trivy image --download-db-only --cache-dir /var/trivy-cache
+              retries=0
+              until trivy image --download-db-only --cache-dir /var/trivy-cache; do
+                retries=$((retries + 1))
+                if [ "$retries" -ge 3 ]; then
+                  echo "ERROR: Failed to download Trivy DB after $retries attempts" >&2
+                  exit 1
+                fi
+                echo "DB download failed (attempt $retries/3), retrying in 30s..." >&2
+                sleep 30
+              done
               echo "DB download complete. Refreshing DB every 12 hours..."
-              while true; do sleep 43200; trivy image --download-db-only --cache-dir /var/trivy-cache; done
+              while true; do sleep 43200; trivy image --download-db-only --cache-dir /var/trivy-cache || echo "WARNING: DB refresh failed, will retry next cycle" >&2; done
           livenessProbe:
             exec:
               command: ["trivy", "--version"]
@@ -40,7 +49,7 @@ spec:
             periodSeconds: 30
           readinessProbe:
             exec:
-              command: ["trivy", "--version"]
+              command: ["sh", "-c", "test -d /var/trivy-cache/db && test -r /var/trivy-cache/db"]
             initialDelaySeconds: 5
             periodSeconds: 10
           volumeMounts:
@@ -55,6 +64,11 @@ spec:
             readOnlyRootFilesystem: false
             runAsNonRoot: false
             runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
         - name: container-runtime-socket
           hostPath:
