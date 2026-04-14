@@ -93,7 +93,7 @@ operator:
   trivy:
     enabled: false
     image:
-      repository: aquasecurity/trivy
+      repository: ghcr.io/aquasecurity/trivy
       tag: "0.69.3"
       pullPolicy: IfNotPresent
     # Port for the Trivy HTTP server running on each node
