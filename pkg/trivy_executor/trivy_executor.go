@@ -49,8 +49,8 @@ type trivyPod struct {
 }
 
 const (
-	trivyPodCacheTTL  = 30 * time.Second
-	imageNodeCacheTTL = 30 * time.Second
+	trivyPodCacheTTL  = 2 * time.Minute
+	imageNodeCacheTTL = 2 * time.Minute
 	trivyLabelKey     = "component"
 	trivyLabelValue   = "trivy-scanner"
 )
