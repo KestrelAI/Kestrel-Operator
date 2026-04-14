@@ -26,12 +26,13 @@ spec:
         - name: trivy-server
           image: "{{ .Values.operator.trivy.image.repository }}:{{ .Values.operator.trivy.image.tag }}"
           imagePullPolicy: {{ .Values.operator.trivy.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
           args:
-            - server
-            - --listen
-            - "127.0.0.1:{{ .Values.operator.trivy.serverPort }}"
-            - --cache-dir
-            - /var/trivy-cache
+            - |
+              echo "Downloading Trivy vulnerability DB..."
+              trivy image --download-db-only --cache-dir /var/trivy-cache
+              echo "DB download complete. Refreshing DB every 12 hours..."
+              while true; do sleep 43200; trivy image --download-db-only --cache-dir /var/trivy-cache; done
           livenessProbe:
             exec:
               command: ["trivy", "--version"]
