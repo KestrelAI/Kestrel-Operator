@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -323,7 +324,7 @@ func (e *ArgoCDExecutor) getAppStatus(ctx context.Context, req *v1.DatadogQueryR
 		zap.String("request_id", req.RequestId),
 		zap.String("app_name", appName))
 
-	path := fmt.Sprintf("/api/v1/applications/%s", appName)
+	path := fmt.Sprintf("/api/v1/applications/%s", url.PathEscape(appName))
 	body, code, err := e.doGet(ctx, path)
 	return e.makeResponse(req.RequestId, body, code, err)
 }
@@ -348,7 +349,7 @@ func (e *ArgoCDExecutor) syncApp(ctx context.Context, req *v1.DatadogQueryReques
 		zap.String("request_id", req.RequestId),
 		zap.String("app_name", appName))
 
-	path := fmt.Sprintf("/api/v1/applications/%s/sync", appName)
+	path := fmt.Sprintf("/api/v1/applications/%s/sync", url.PathEscape(appName))
 	body, code, err := e.doPost(ctx, path, []byte(syncBody))
 	return e.makeResponse(req.RequestId, body, code, err)
 }

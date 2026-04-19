@@ -89,7 +89,10 @@ func (e *DatadogExecutor) ExecuteQuery(ctx context.Context, req *v1.DatadogQuery
 	e.mu.RLock()
 	hasAppKey := e.appKey != ""
 	e.mu.RUnlock()
-	if !hasAppKey {
+
+	// sendEvent only needs the API key; all other operations require the app key
+	needsAppKey := req.QueryType != v1.DatadogQueryType_DATADOG_SEND_EVENT
+	if needsAppKey && !hasAppKey {
 		e.Logger.Warn("Datadog query requires app key but none available",
 			zap.String("request_id", req.RequestId),
 			zap.String("query_type", req.QueryType.String()))
@@ -775,7 +778,7 @@ func (e *DatadogExecutor) muteMonitor(ctx context.Context, req *v1.DatadogQueryR
 		muteBody = "{}"
 	}
 
-	apiPath := fmt.Sprintf("/api/v1/monitor/%s/mute", monitorID)
+	apiPath := fmt.Sprintf("/api/v1/monitor/%s/mute", url.PathEscape(monitorID))
 	e.Logger.Info("[Datadog] Muting monitor",
 		zap.String("request_id", req.RequestId),
 		zap.String("monitor_id", monitorID))
