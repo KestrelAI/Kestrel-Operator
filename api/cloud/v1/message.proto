@@ -240,6 +240,8 @@ message InventoryCommit {
   // True if the operator detected a Datadog installation in the cluster.
   // Old operators send false (default) — the server treats it as "no Datadog".
   bool has_datadog = 1;
+  // True if the operator detected an ArgoCD installation in the cluster.
+  bool has_argocd = 2;
 }
 
 // Network policy definition matching Kubernetes NetworkPolicy format
@@ -1333,6 +1335,10 @@ enum DatadogQueryType {
   DATADOG_CREATE_MONITOR = 6;     // POST /api/v1/monitor
   DATADOG_SEND_EVENT = 7;         // POST /api/v1/events
   DATADOG_MUTE_MONITOR = 8;       // POST /api/v1/monitor/{id}/mute
+  DATADOG_LIST_MONITORS = 9;      // GET  /api/v1/monitor
+  ARGOCD_SYNC_APP = 10;           // POST /api/v1/applications/{name}/sync
+  ARGOCD_GET_APP_STATUS = 11;     // GET  /api/v1/applications/{name}
+  ARGOCD_LIST_APPS = 12;          // GET  /api/v1/applications
 }
 
 // Datadog query response from operator to server.

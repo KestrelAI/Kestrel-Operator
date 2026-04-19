@@ -126,6 +126,8 @@ func (e *DatadogExecutor) ExecuteQuery(ctx context.Context, req *v1.DatadogQuery
 		result = e.sendEvent(ctxTimeout, req)
 	case v1.DatadogQueryType_DATADOG_MUTE_MONITOR:
 		result = e.muteMonitor(ctxTimeout, req)
+	case v1.DatadogQueryType_DATADOG_LIST_MONITORS:
+		result = e.listMonitors(ctxTimeout, req)
 	default:
 		resp.Success = false
 		resp.ErrorMessage = fmt.Sprintf("unsupported query type: %s", req.QueryType.String())
@@ -779,6 +781,18 @@ func (e *DatadogExecutor) muteMonitor(ctx context.Context, req *v1.DatadogQueryR
 		zap.String("monitor_id", monitorID))
 
 	body, code, err := e.doPost(ctx, apiPath, []byte(muteBody), true)
+	return e.makeResponse(req.RequestId, body, code, err)
+}
+
+func (e *DatadogExecutor) listMonitors(ctx context.Context, req *v1.DatadogQueryRequest) *v1.DatadogQueryResponse {
+	params := url.Values{}
+	params.Set("page", "0")
+	params.Set("per_page", "200")
+
+	e.Logger.Info("[Datadog] Listing monitors",
+		zap.String("request_id", req.RequestId))
+
+	body, code, err := e.doGet(ctx, "/api/v1/monitor", params, true)
 	return e.makeResponse(req.RequestId, body, code, err)
 }
 

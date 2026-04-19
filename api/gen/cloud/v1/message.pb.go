@@ -255,6 +255,10 @@ const (
 	DatadogQueryType_DATADOG_CREATE_MONITOR     DatadogQueryType = 6 // POST /api/v1/monitor
 	DatadogQueryType_DATADOG_SEND_EVENT         DatadogQueryType = 7 // POST /api/v1/events
 	DatadogQueryType_DATADOG_MUTE_MONITOR       DatadogQueryType = 8 // POST /api/v1/monitor/{id}/mute
+	DatadogQueryType_DATADOG_LIST_MONITORS      DatadogQueryType = 9 // GET  /api/v1/monitor
+	DatadogQueryType_ARGOCD_SYNC_APP            DatadogQueryType = 10 // POST /api/v1/applications/{name}/sync
+	DatadogQueryType_ARGOCD_GET_APP_STATUS      DatadogQueryType = 11 // GET  /api/v1/applications/{name}
+	DatadogQueryType_ARGOCD_LIST_APPS           DatadogQueryType = 12 // GET  /api/v1/applications
 )
 
 // Enum value maps for DatadogQueryType.
@@ -269,6 +273,10 @@ var (
 		6: "DATADOG_CREATE_MONITOR",
 		7: "DATADOG_SEND_EVENT",
 		8: "DATADOG_MUTE_MONITOR",
+		9: "DATADOG_LIST_MONITORS",
+		10: "ARGOCD_SYNC_APP",
+		11: "ARGOCD_GET_APP_STATUS",
+		12: "ARGOCD_LIST_APPS",
 	}
 	DatadogQueryType_value = map[string]int32{
 		"DATADOG_QUERY_UNSPECIFIED":  0,
@@ -280,6 +288,10 @@ var (
 		"DATADOG_CREATE_MONITOR":     6,
 		"DATADOG_SEND_EVENT":         7,
 		"DATADOG_MUTE_MONITOR":       8,
+		"DATADOG_LIST_MONITORS":      9,
+		"ARGOCD_SYNC_APP":            10,
+		"ARGOCD_GET_APP_STATUS":      11,
+		"ARGOCD_LIST_APPS":           12,
 	}
 )
 
@@ -2165,6 +2177,8 @@ type InventoryCommit struct {
 	// True if the operator detected a Datadog installation in the cluster.
 	// Old operators send false (default) — the server treats it as "no Datadog".
 	HasDatadog    bool `protobuf:"varint,1,opt,name=has_datadog,json=hasDatadog,proto3" json:"has_datadog,omitempty"`
+	// True if the operator detected an ArgoCD installation in the cluster.
+	HasArgocd     bool `protobuf:"varint,2,opt,name=has_argocd,json=hasArgocd,proto3" json:"has_argocd,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2202,6 +2216,13 @@ func (*InventoryCommit) Descriptor() ([]byte, []int) {
 func (x *InventoryCommit) GetHasDatadog() bool {
 	if x != nil {
 		return x.HasDatadog
+	}
+	return false
+}
+
+func (x *InventoryCommit) GetHasArgocd() bool {
+	if x != nil {
+		return x.HasArgocd
 	}
 	return false
 }
