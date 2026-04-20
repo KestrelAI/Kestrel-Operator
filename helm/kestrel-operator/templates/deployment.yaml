@@ -105,6 +105,14 @@ spec:
             {{- end }}
             {{- end }}
 
+            # ArgoCD integration configuration
+            {{- if .Values.operator.argocd.enabled }}
+            {{- if .Values.operator.argocd.namespace }}
+            - name: ARGOCD_NAMESPACE
+              value: "{{ .Values.operator.argocd.namespace }}"
+            {{- end }}
+            {{- end }}
+
             # OTEL Metrics Store configuration
             {{- if .Values.operator.otel.enabled }}
             - name: ENABLE_OTEL_METRICS_STORE

@@ -73,6 +73,14 @@ operator:
     appKey: ""
     site: ""
 
+  # ArgoCD integration
+  # When enabled, the operator discovers the in-cluster ArgoCD installation
+  # and can proxy sync/status/list operations to the ArgoCD API.
+  argocd:
+    enabled: false
+    # Namespace where ArgoCD is deployed (e.g., "argocd")
+    namespace: ""
+
   # Safe-apply configuration for Chat YAML changes
   safeApply:
     # Enable safe-apply permissions for the operator
