@@ -1,0 +1,11 @@
+#topbar-cta-button {
+  background-color: #18181B !important;
+  color: #FAFAFA !important;
+  border: 1px solid #27272A !important;
+}
+
+.dark #topbar-cta-button {
+  background-color: #FAFAFA !important;
+  color: #09090B !important;
+  border: 1px solid #3F3F46 !important;
+}
