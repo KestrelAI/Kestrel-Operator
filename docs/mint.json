@@ -82,7 +82,12 @@
     {
       "group": "Cloud AI Copilot",
       "pages": [
-        "copilot/overview"
+        "copilot/overview",
+        "copilot/kubernetes",
+        "copilot/cloud",
+        "copilot/code",
+        "copilot/costs",
+        "copilot/config-changes"
       ]
     },
     {

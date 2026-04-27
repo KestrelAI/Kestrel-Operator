@@ -1,0 +1,176 @@
+---
+title: "Configuration Changes"
+description: "Generate and apply YAML and Terraform changes through the copilot"
+---
+
+The copilot can generate Kubernetes YAML, Terraform, Helm values, and CloudFormation changes when you ask it to modify infrastructure. Every change goes through a review and approval workflow — the copilot never applies anything without your explicit consent.
+
+{/* Screenshot placeholder: Copilot displaying a generated YAML diff with Safe Apply, Create PR, and Copy buttons */}
+
+## How It Works
+
+<Steps>
+  <Step title="Request a change in natural language">
+    Ask the copilot to make a change: "Increase the memory limit for the payments-api to 1Gi" or "Add a network policy to block egress from the sandbox namespace." The copilot determines the target resource, fetches its current configuration, and generates the modification.
+  </Step>
+  <Step title="Review the proposed diff">
+    The copilot presents a side-by-side diff showing exactly what will change. Each diff includes an explanation of why the change addresses your request and what the impact will be.
+  </Step>
+  <Step title="Choose how to apply">
+    Select one of three options:
+
+    - **Safe Apply** — Apply the change directly to the cluster or cloud account through the Kestrel operator
+    - **Create PR** — Open a pull request in your connected GitHub or GitLab repository (GitOps or IaC workflow)
+    - **Copy** — Copy the generated configuration to your clipboard for manual application
+  </Step>
+</Steps>
+
+{/* Screenshot placeholder: Change review interface showing diff, explanation, and the three apply option buttons */}
+
+## What You Can Change
+
+The copilot generates changes for multiple infrastructure-as-code formats depending on the target.
+
+### Kubernetes Resources
+
+Generate YAML patches for any Kubernetes resource — deployments, services, configmaps, network policies, RBAC, HPA, and more.
+
+```
+@prod-eks-cluster Scale the checkout-api deployment to 5 replicas
+```
+
+```
+@prod-eks-cluster Increase the memory limit for the payments-api to 1Gi and add a CPU request of 250m
+```
+
+```
+@prod-eks-cluster Create a network policy that blocks all egress from the sandbox namespace except DNS
+```
+
+```
+@prod-eks-cluster Add a readiness probe to the auth-service deployment that checks /healthz on port 8080 every 10 seconds
+```
+
+```
+@prod-eks-cluster Update the HPA for order-service to scale between 3 and 20 replicas based on CPU at 70%
+```
+
+### Terraform
+
+Generate Terraform changes for AWS, OCI, and other cloud resources.
+
+```
+@cloud:prod-aws Change the instance type for the analytics EC2 instances from m5.2xlarge to m5.large
+```
+
+```
+@cloud:prod-aws Add encryption at rest to the prod-data S3 bucket using the default KMS key
+```
+
+```
+@cloud:prod-aws Create a new security group rule that allows the application subnet to access RDS on port 5432
+```
+
+```
+@cloud:prod-aws Scope down the deploy-bot IAM role to only the permissions it has actually used in the last 90 days
+```
+
+### Helm Values
+
+Generate value overrides for Helm-managed releases.
+
+```
+@prod-eks-cluster Update the Helm values for the auth-service to set replicas to 3 and enable autoscaling
+```
+
+```
+@prod-eks-cluster Change the ingress annotations for the frontend Helm release to use the internal ALB class
+```
+
+### CloudFormation
+
+Generate CloudFormation template changes for AWS resources managed through stacks.
+
+```
+@cloud:prod-aws Update the CloudFormation stack for the production VPC to add a new private subnet in us-east-1c
+```
+
+```
+@cloud:prod-aws Modify the Lambda function in the data-pipeline stack to increase the timeout to 300 seconds and memory to 1024MB
+```
+
+## Change Review Interface
+
+Every generated change is presented in a structured review interface:
+
+| Component | Description |
+|-----------|-------------|
+| **Diff view** | Side-by-side comparison of the current and proposed configuration |
+| **Explanation** | Why the change was generated and what it addresses |
+| **Impact summary** | What resources will be affected and any dependencies |
+| **Apply options** | Safe Apply, Create PR, and Copy buttons |
+
+{/* Screenshot placeholder: Close-up of the diff view showing a Kubernetes deployment YAML change */}
+
+<Tip>
+The copilot generates changes based on the live state of your resources, not just the IaC definitions. If there's drift between your running configuration and your Git repository, the copilot will flag it.
+</Tip>
+
+## Safety and Permissions
+
+The copilot follows strict safety rules when generating and applying changes.
+
+- **Never auto-applies** — Every change requires your explicit approval through Safe Apply, Create PR, or Copy. The copilot will not apply changes on its own.
+- **Safe Apply requires write permissions** — The Kestrel operator must have Safe Apply or auto-remediation enabled on the target cluster. Without write permissions, only Create PR and Copy are available.
+- **Create PR requires Git integration** — Opening a pull request requires a connected [GitHub](/integrations/github) or [GitLab](/integrations/gitlab) repository with write access.
+- **Validation before apply** — The copilot validates generated YAML and Terraform against the target schema before presenting the change. Invalid configurations are flagged before you can apply them.
+- **Audit trail** — Every generated change, approval, and application is logged and visible on the Configuration Changes page.
+
+<Warning>
+Safe Apply applies changes directly to the running cluster or cloud account. Use Create PR for production changes that should go through your standard GitOps review process.
+</Warning>
+
+## Chat Configuration Changes Page
+
+All AI-generated configuration changes are recorded on the **Chat Configuration Changes** page, accessible from the Kestrel dashboard sidebar. This page shows:
+
+- Every change generated by the copilot, including the original request and the generated diff
+- The approval status — whether it was applied, opened as a PR, copied, or dismissed
+- Who approved or dismissed each change and when
+- The target resource and cluster or cloud account
+
+Use this page to review pending changes, audit what was applied, and track configuration modifications made through the copilot across your team.
+
+{/* Screenshot placeholder: Chat Configuration Changes page showing a list of generated changes with status */}
+
+## Example Conversation
+
+> **You:** `@prod-eks-cluster` The checkout-api keeps getting OOMKilled. Current memory limit is 256Mi but Datadog shows it peaks at 400Mi. Fix it.
+>
+> **Kestrel:** I'll increase the memory limit for the `checkout-api` deployment. Based on the Datadog metrics showing peaks at 400Mi, I recommend setting the limit to 512Mi to provide a 25% buffer above peak usage. Here's the proposed change:
+>
+> *(displays diff changing `resources.limits.memory` from `256Mi` to `512Mi`)*
+>
+> The memory request will also be updated from `128Mi` to `256Mi` to ensure the pod gets adequate guaranteed memory on the node. Would you like to Safe Apply, Create PR, or Copy?
+>
+> **You:** Create a PR for this. Also add a CPU request of 250m while you're at it — it's missing.
+>
+> **Kestrel:** Updated the change to include both modifications:
+>
+> 1. Memory limit `256Mi` → `512Mi`, memory request `128Mi` → `256Mi`
+> 2. Added CPU request of `250m` (was unset)
+>
+> *(displays updated diff with both changes)*
+>
+> I'll open this as a PR in `acme/infrastructure` targeting the `main` branch. The change applies to `k8s/checkout/deployment.yaml`.
+>
+> **You:** Go ahead.
+>
+> **Kestrel:** PR #892 created in `acme/infrastructure`: [Increase checkout-api memory limit and add CPU request](https://github.com/acme/infrastructure/pull/892). The PR includes the diff and a description explaining the OOMKill context and Datadog metrics that motivated the change.
+
+## Next Steps
+
+- [Kubernetes Investigation](/copilot/kubernetes) — query pods, deployments, events, and metrics
+- [Cloud Investigation](/copilot/cloud) — inspect AWS and OCI resources and security configurations
+- [Code Investigation](/copilot/code) — search and trace code changes across repositories
+- [Cost Analysis](/copilot/costs) — analyze AWS spend patterns and anomalies
