@@ -12,13 +12,15 @@ code, pre code, .prose code, .prose pre code,
 }
 
 #topbar-cta-button {
-  background-color: #18181B !important;
+  background-color: #27272A !important;
   color: #FAFAFA !important;
-  border: 1px solid #27272A !important;
+  border: 1px solid #3F3F46 !important;
 }
 
-.dark #topbar-cta-button {
+html.dark #topbar-cta-button,
+.dark #topbar-cta-button,
+[class*="dark"] #topbar-cta-button {
   background-color: #FAFAFA !important;
   color: #09090B !important;
-  border: 1px solid #3F3F46 !important;
+  border: 1px solid #D4D4D8 !important;
 }
