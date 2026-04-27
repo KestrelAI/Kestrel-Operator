@@ -1,9 +1,9 @@
 ---
 title: "Workflows Quickstart"
-description: "Build your first automated workflow in minutes"
+description: "Build your first workflow automation in seconds"
 ---
 
-Workflows are the core of Kestrel. They chain actions across your integrations — triggered by Kubernetes signals, cloud events, Slack requests, PagerDuty alerts, PostHog events, Vercel deployments, custom webhooks, or manual runs. Build them with natural language, a drag-and-drop canvas, the CLI, SDK, or MCP.
+Kestrel Workflows let you automate incident response, cloud resource provisioning, CI/CD pipelines, developer requests, and more — with AI-powered workflows that build themselves. Chain actions across 15+ integrations, triggered by Kubernetes signals, AWS cloud signals, Slack `/kestrel-workflow` requests, PagerDuty incidents, PostHog events, Vercel deployment events, custom webhooks, or on-demand runs. Build workflows with the Workflow Agent using natural language, a drag-and-drop canvas, the CLI, SDK, or MCP.
 
 {/* Screenshot placeholder: Workflow canvas with a multi-step incident response workflow */}
 
@@ -23,13 +23,13 @@ Workflows are the core of Kestrel. They chain actions across your integrations �
     {/* Screenshot placeholder: New Workflow page with template gallery */}
   </Step>
   <Step title="Describe your workflow in natural language">
-    Type a plain-English description of what you want automated. Kestrel's AI generates the workflow steps for you.
+    Type a plain-English description of what you want automated. The **Workflow Agent** generates the workflow steps for you.
 
     **Example:**
 
     > When a pod crashes in the payments namespace, trigger root cause analysis, send a Slack message with the root cause to #incidents, and create a Jira ticket assigned to the payments team.
 
-    The AI assembles the trigger, actions, and connections. Review the generated workflow and adjust as needed.
+    The Workflow Agent assembles the trigger, actions, and connections. Review the generated workflow on the canvas and adjust as needed.
 
     <Tip>
     You can also build workflows entirely with the drag-and-drop canvas — add trigger and action nodes, connect them, and configure each step manually.
@@ -40,18 +40,17 @@ Workflows are the core of Kestrel. They chain actions across your integrations �
   <Step title="Configure the trigger">
     Every workflow starts with a trigger. Select the event source that kicks off the workflow:
 
-    | Trigger Type | Examples |
+    | Trigger Type | Trigger Blocks |
     |---|---|
-    | **Kubernetes Signal** | Pod crash, deployment failure, OOMKill, node pressure |
-    | **Cloud Signal** | AWS resource change, scaling event, cost anomaly |
-    | **Slack Request** | Message in a channel, slash command |
-    | **PagerDuty** | New incident, acknowledgment, resolution |
-    | **PostHog** | Product analytics event threshold |
-    | **Vercel** | Deployment success or failure |
-    | **Custom Webhook** | Any HTTP POST to your workflow's unique endpoint |
-    | **Manual** | On-demand execution from the dashboard or CLI |
+    | **Kubernetes Signals** | Deployment Replicas Failing, Nodes Unavailable, Pod CrashLoopBackOff, Pod ImagePullBackOff, Pod OOMKilled, Pods Failing, Pods Restarting, StatefulSet Replicas Failing, Node Memory Pressure, Node Disk Pressure, DaemonSet Failing, Any Kubernetes Incident |
+    | **AWS Cloud Signals** | IAM Security Event, Root Account Activity, KMS Key Change, Secrets Manager Event, Security Hub Finding, S3 Bucket Change, EC2 Instance Issue, Lambda Function Issue, ECS/EKS Container Issue, RDS Database Issue, DynamoDB Issue, VPC/Network Change, CloudWatch Alarm, Application Log Errors, Config Rule Non-Compliant, AWS Service Health Event, Any AWS Cloud Incident, Cost Anomaly Detected, Budget Threshold Exceeded |
+    | **Slack Requests** | Create K8s Resource, Edit K8s Resource, General Kubernetes Request, Create AWS Resource, Edit AWS Resource, General Cloud Request, Any Slack `/kestrel-workflow` Request |
+    | **PagerDuty** | Incident Triggered, Incident Acknowledged, Incident Resolved, Any PagerDuty Incident, High Urgency Incident |
+    | **PostHog** | Session Error/Exception, Console Error, Rage Click, Any PostHog Event, Log Error Alert |
+    | **Vercel** | Deployment Failed, Deployment Succeeded, Deployment Created, Error Anomaly, Usage Anomaly, Domain Issue, Firewall Attack Detected, Deployment Checks Failed, Production Rollback |
+    | **Custom Webhook** | Any HTTP POST to your workflow's unique webhook endpoint with HMAC signature verification |
 
-    Configure trigger-specific filters to control when the workflow fires — for example, limit a K8s trigger to a specific namespace or label selector.
+    Configure trigger-specific filters to control when the workflow fires — for example, limit a K8s trigger to a specific namespace, cluster, or set of AWS accounts.
   </Step>
   <Step title="Configure actions and template variables">
     Add action steps to your workflow. Each action targets an integration and performs a specific operation — sending a Slack message, creating a Jira ticket, running an RCA, applying a Kubernetes manifest, and so on.
@@ -65,7 +64,7 @@ Workflows are the core of Kestrel. They chain actions across your integrations �
     </Note>
   </Step>
   <Step title="Set cooldown and save">
-    Configure a **cooldown period** to prevent the same trigger from firing the workflow repeatedly in a short window. For example, set a 5-minute cooldown so a pod crash-looping every 30 seconds doesn't generate dozens of duplicate tickets.
+    Configure a **cooldown period** to prevent the same trigger from firing the workflow repeatedly in a short window. For example, set a 5-minute cooldown so a pod crash-looping every 30 seconds doesn't generate dozens of duplicate tickets. You can also select "No cooldown" for workflows that should fire on every event.
 
     Click **Save** to activate the workflow.
   </Step>
@@ -85,13 +84,14 @@ Workflows are the core of Kestrel. They chain actions across your integrations �
 | Use Case | Trigger | Actions |
 |---|---|---|
 | Self-healing K8s incident | Pod CrashLoopBackOff | RCA → Slack alert → Apply fix → Jira ticket |
-| Cloud provisioning via Slack | Slack message in #infra-requests | Parse request → Provision AWS resource → Confirm in thread |
+| Cloud provisioning via Slack | Slack `/kestrel-workflow` request | Parse request → Provision AWS resource → Confirm in thread |
 | CI/CD automation | GitHub PR merged | ArgoCD sync → Run tests → Notify Slack on failure |
 | Cost anomaly response | AWS cost spike detected | Investigate resources → Slack alert to #finops → Linear ticket |
-| Product analytics alert | PostHog event threshold | Query metrics → Slack summary → PagerDuty if critical |
+| Vercel deployment failure | Vercel Deployment Failed | Get build logs → AI investigation → Slack notification |
+| PostHog exception alert | PostHog Session Error | Session summary → Slack alert → Jira ticket if critical |
 
 ## What's Next
 
-- [Create Custom Integrations](/workflows/custom-integrations) — build HTTP-based integrations for any API
+- [Create Custom Integrations](/workflows/custom-integrations) — build custom HTTP action blocks and webhook triggers for any API or service
 - [Workflow Observability](/workflows/observability) — monitor execution history, latency, and failure rates
 - [Set Up Integrations](/workflows/setup-integrations) — connect the tools your workflows need
