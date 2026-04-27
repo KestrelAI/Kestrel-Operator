@@ -5,7 +5,7 @@ description: "Build your first automated workflow in minutes"
 
 Workflows are the core of Kestrel. They chain actions across your integrations â€” triggered by Kubernetes signals, cloud events, Slack requests, PagerDuty alerts, PostHog events, Vercel deployments, custom webhooks, or manual runs. Build them with natural language, a drag-and-drop canvas, the CLI, SDK, or MCP.
 
-<!-- Screenshot placeholder: Workflow canvas with a multi-step incident response workflow -->
+{/* Screenshot placeholder: Workflow canvas with a multi-step incident response workflow */}
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ Workflows are the core of Kestrel. They chain actions across your integrations â
 
     You can start from a blank canvas or choose a template. Templates cover common use cases like incident response, cloud provisioning, and CI/CD automation.
 
-    <!-- Screenshot placeholder: New Workflow page with template gallery -->
+    {/* Screenshot placeholder: New Workflow page with template gallery */}
   </Step>
   <Step title="Describe your workflow in natural language">
     Type a plain-English description of what you want automated. Kestrel's AI generates the workflow steps for you.
@@ -35,7 +35,7 @@ Workflows are the core of Kestrel. They chain actions across your integrations â
     You can also build workflows entirely with the drag-and-drop canvas â€” add trigger and action nodes, connect them, and configure each step manually.
     </Tip>
 
-    <!-- Screenshot placeholder: Natural language input generating a workflow -->
+    {/* Screenshot placeholder: Natural language input generating a workflow */}
   </Step>
   <Step title="Configure the trigger">
     Every workflow starts with a trigger. Select the event source that kicks off the workflow:
@@ -58,7 +58,7 @@ Workflows are the core of Kestrel. They chain actions across your integrations â
 
     Use the **variable picker** to insert dynamic values from the trigger or from previous action outputs into any field. Variables use the `{{variable_name}}` syntax and are type-checked at build time.
 
-    <!-- Screenshot placeholder: Action configuration panel with variable picker open -->
+    {/* Screenshot placeholder: Action configuration panel with variable picker open */}
 
     <Note>
     Actions execute sequentially by default. Use parallel branches on the canvas to run actions concurrently.
@@ -72,7 +72,7 @@ Workflows are the core of Kestrel. They chain actions across your integrations â
   <Step title="Test the workflow">
     Use the **Test** button to simulate a trigger event and trace the workflow execution step by step. Each action shows its input, output, and execution time.
 
-    <!-- Screenshot placeholder: Workflow test run with step-by-step execution trace -->
+    {/* Screenshot placeholder: Workflow test run with step-by-step execution trace */}
 
     <Tip>
     You can also trigger a test run from the CLI with `kestrel workflow test <workflow-id>`.

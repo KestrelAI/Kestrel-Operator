@@ -45,7 +45,7 @@ Describe the workflow you want in plain English. Kestrel's AI interprets your in
 - *"When a Vercel deployment fails, pull the build logs, run an AI investigation, and notify the team in Slack."*
 - *"When AWS costs spike, run a cost anomaly analysis and post a report to #finops in Slack."*
 
-<!-- Screenshot placeholder: Natural language builder with example prompt and generated workflow -->
+{/* Screenshot placeholder: Natural language builder with example prompt and generated workflow */}
 
 <Tip>
 The more specific your description, the better the generated workflow. Include the trigger source, desired actions, and output destinations.
@@ -57,7 +57,7 @@ The more specific your description, the better the generated workflow. Include t
 
 The visual canvas gives you full control over workflow construction. Add triggers and actions from the sidebar, connect them into a pipeline, and configure each step individually.
 
-<!-- Screenshot placeholder: Drag-and-drop canvas with a multi-step workflow -->
+{/* Screenshot placeholder: Drag-and-drop canvas with a multi-step workflow */}
 
 ### Adding a Trigger
 
@@ -110,7 +110,7 @@ Template variables let you pass data between workflow steps. Use double curly br
 
 When configuring an action step, click the **`{x}`** button on any text field to open the variable picker. It shows all available variables from the trigger and preceding steps, grouped by source.
 
-<!-- Screenshot placeholder: Variable picker UI showing available variables grouped by step -->
+{/* Screenshot placeholder: Variable picker UI showing available variables grouped by step */}
 
 <Tip>
 The variable picker only shows variables that are available at the current step's position in the workflow. Move a step earlier or later to change which variables it can access.
@@ -258,7 +258,7 @@ Before relying on a workflow in production, test it with a simulated trigger:
 5. Click **Run Test** to execute the workflow with the sample data
 6. Inspect the output of each step in the execution detail view
 
-<!-- Screenshot placeholder: Test workflow dialog with sample payload editor -->
+{/* Screenshot placeholder: Test workflow dialog with sample payload editor */}
 
 <Tip>
 Test executions are marked as test runs in the [Observability dashboard](/workflows/observability) and do not count toward cooldowns.

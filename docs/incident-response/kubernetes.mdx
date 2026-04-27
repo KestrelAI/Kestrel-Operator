@@ -5,7 +5,7 @@ description: "AI-powered detection, root cause analysis, and remediation for Kub
 
 Kestrel monitors your Kubernetes clusters 24/7, automatically detecting incidents as they occur. When something goes wrong — a pod enters CrashLoopBackOff, a deployment rollout stalls, a node becomes unresponsive — Kestrel's AI runs root cause analysis, generates YAML fixes, identifies causal PRs, and creates postmortems.
 
-<!-- Screenshot placeholder: Kubernetes Incidents list page showing detected incidents with severity, status, and affected resources -->
+{/* Screenshot placeholder: Kubernetes Incidents list page showing detected incidents with severity, status, and affected resources */}
 
 ## Prerequisites
 
@@ -56,7 +56,7 @@ When an incident is detected, Kestrel's AI analyzes multiple data sources to det
 4. **Metrics** (if Datadog or OpenTelemetry is connected) — CPU usage, memory consumption, request latency, error rates
 5. **Knowledge sources** (if connected) — Historical incidents, runbooks, and tribal knowledge from Confluence, Jira, Slack, Glean, or Linear
 
-<!-- Screenshot placeholder: Incident detail page showing the root cause analysis section with investigation summary -->
+{/* Screenshot placeholder: Incident detail page showing the root cause analysis section with investigation summary */}
 
 The AI produces:
 
@@ -70,7 +70,7 @@ The AI produces:
 
 After identifying the root cause, Kestrel generates YAML fixes that address the issue. Fixes are generated as Kubernetes resource patches — for example, increasing memory limits for an OOMKilled pod or correcting an image tag for an ImagePullBackOff.
 
-<!-- Screenshot placeholder: YAML fix section showing a diff view of the proposed change with Apply, Create PR, and Copy buttons -->
+{/* Screenshot placeholder: YAML fix section showing a diff view of the proposed change with Apply, Create PR, and Copy buttons */}
 
 Each fix includes:
 
@@ -102,7 +102,7 @@ The AI correlates:
 
 If a likely causal PR is found, the incident detail page links directly to it with an explanation of why Kestrel believes it contributed to the issue.
 
-<!-- Screenshot placeholder: Causal PR section showing a linked GitHub PR with merge timestamp and correlation reasoning -->
+{/* Screenshot placeholder: Causal PR section showing a linked GitHub PR with merge timestamp and correlation reasoning */}
 
 ## Incident Types
 
