@@ -3,7 +3,7 @@ title: "Cloud AI Copilot Quickstart"
 description: "Ask questions about your infrastructure in plain English"
 ---
 
-The Cloud AI Copilot lets you investigate your infrastructure by asking questions in plain English. Query Kubernetes clusters, AWS resources, metrics, costs, and code — from the Kestrel dashboard or directly in Slack with the `/kestrel` command. No query syntax, no CLI flags, no context-switching between dashboards.
+The Cloud AI Copilot lets you investigate your infrastructure by asking questions in plain English. Query Kubernetes clusters, cloud resources, metrics, costs, and code — from the Kestrel dashboard or directly in Slack with the `/kestrel` command. No query syntax, no CLI flags, no context-switching between dashboards.
 
 {/* Screenshot placeholder: Copilot chat showing a multi-turn infrastructure investigation */}
 
@@ -34,18 +34,22 @@ The more integrations you connect, the more context the copilot has. Connect you
 ## Using the Dashboard Chat
 
 1. Open the Kestrel dashboard at [platform.usekestrel.ai](https://platform.usekestrel.ai)
-2. Click the **Copilot** tab in the sidebar
+2. Navigate to **Cloud AI Copilot → Chat** in the sidebar
 3. Type your question and press Enter
 
-The copilot maintains conversation context across messages, so you can ask follow-up questions naturally:
+Use `@cluster-name` to target specific Kubernetes clusters and `@cloud:connection-name` to target specific AWS or OCI accounts. You can mention multiple targets in a single query.
 
-> **You:** What pods are crashing in the payments namespace?
+The copilot maintains conversation context across messages, so you can ask follow-up questions naturally.
+
+**Example conversation:**
+
+> **You:** `@prod-eks-cluster` Why are pods in the payments namespace restarting? Cross-reference with Datadog APM latency metrics for the payments-api service over the last 2 hours.
 >
-> **Kestrel:** There are 2 pods in CrashLoopBackOff in the `payments` namespace: `payments-api-7f8b9c-x4k2m` and `payments-worker-6d4a8b-j9n3p`. Both started crashing 23 minutes ago after deployment `payments-api` was updated to image tag `v2.14.0`...
+> **Kestrel:** There are 2 pods in CrashLoopBackOff in the `payments` namespace: `payments-api-7f8b9c-x4k2m` and `payments-worker-6d4a8b-j9n3p`. Both started crashing 23 minutes ago after deployment `payments-api` was updated to image tag `v2.14.0`. Datadog shows P99 latency for `payments-api` spiked from 120ms to 4.2s at 14:32 UTC, coinciding with the deployment...
 >
-> **You:** What changed in that deployment?
+> **You:** What PR caused that deployment change, and who approved it?
 >
-> **Kestrel:** The deployment `payments-api` was updated via ArgoCD sync at 14:32 UTC. The change came from PR #847 in `acme/payments-service` which modified the database connection pool settings...
+> **Kestrel:** The deployment was updated via ArgoCD sync at 14:32 UTC. The change originated from PR #847 in `acme/payments-service`, authored by @jane.doe and approved by @john.smith. The PR modified the database connection pool settings, reducing `maxConnections` from 50 to 10...
 
 {/* Screenshot placeholder: Multi-turn copilot conversation investigating a crash */}
 
@@ -54,19 +58,19 @@ The copilot maintains conversation context across messages, so you can ask follo
 Once the [Slack integration](/integrations/slack) is connected, use the `/kestrel` slash command in any channel or DM:
 
 ```
-/kestrel what's the status of the checkout service in production?
+/kestrel @prod-eks-cluster @staging-eks-cluster compare the resource limits for the auth-service deployment across both clusters — are there any discrepancies in CPU or memory requests?
 ```
 
 ```
-/kestrel which nodes have the highest CPU utilization right now?
+/kestrel @cloud:prod-aws-380983552929 which EC2 instances in us-east-1 and eu-west-1 have been running for more than 90 days without being part of an auto-scaling group? Include estimated monthly cost for each.
 ```
 
 ```
-/kestrel show me all pods with OOMKilled restarts in the last 24 hours
+/kestrel @prod-eks-cluster show me all pods that have been OOMKilled in the last 48 hours, grouped by deployment, with their current memory limits vs actual peak usage from Datadog metrics
 ```
 
 ```
-/kestrel what Terraform code manages the prod-vpc?
+/kestrel @cloud:prod-aws-380983552929 @cloud:staging-aws-131131252671 compare the IAM role policies attached to the EKS node groups across both accounts — flag any permissions that exist in staging but not in production
 ```
 
 Kestrel responds in-thread so conversations stay organized. Other team members can see the answers and ask follow-ups in the same thread.
@@ -74,25 +78,25 @@ Kestrel responds in-thread so conversations stay organized. Other team members c
 ## Example Questions
 
 ### Kubernetes Investigations
-- "Why is the auth-service pod restarting?"
-- "What network policies apply to the frontend namespace?"
-- "Show me all deployments that changed in the last hour"
-- "Which pods are consuming the most memory in production?"
+- `@prod-eks-cluster` "Why is the auth-service deployment failing readiness probes? Check the container logs, recent config changes, and any related network policy updates in the last 6 hours"
+- `@prod-eks-cluster` "Show me all pods consuming more than 80% of their memory limit across the payments and checkout namespaces, sorted by how close they are to OOMKill"
+- `@staging-gke-cluster` "What Helm releases were upgraded in the last 24 hours and did any of them cause pod restart spikes?"
+- `@prod-eks-cluster` "Trace the full request path from the frontend ingress to the database for the order-service — which services are involved and what network policies apply at each hop?"
 
 ### Cloud Resource Queries
-- "What EC2 instances are running in us-east-1?"
-- "Show me all S3 buckets without encryption enabled"
-- "What IAM roles have admin access?"
+- `@cloud:prod-aws-380983552929` "Which security groups in the production VPC have inbound rules allowing 0.0.0.0/0 on ports other than 80 and 443?"
+- `@cloud:prod-aws-380983552929` "Show me all RDS instances that don't have automated backups enabled, multi-AZ deployment, or encryption at rest"
+- `@cloud:prod-aws-380983552929` @cloud:staging-aws-131131252671` "Compare the Lambda function configurations between prod and staging for the payment-processor functions — are there memory, timeout, or environment variable differences?"
 
 ### Cost Analysis
-- "What are my top 5 most expensive AWS services this month?"
-- "How much are we spending on idle EC2 instances?"
-- "Show me the cost trend for our EKS clusters over the last 90 days"
+- `@cloud:prod-aws-380983552929` "Break down our top 10 most expensive services this month compared to last month, and flag any that increased by more than 20%"
+- `@cloud:prod-aws-380983552929` "Estimate how much we'd save if we right-sized all EC2 instances in us-east-1 that have averaged less than 15% CPU utilization over the last 30 days"
+- `@cloud:prod-aws-380983552929` "What's our projected EKS spend for the next quarter based on current growth trends? Break it down by cluster."
 
 ### Code Investigations
-- "What PRs were merged to main in the last 24 hours?"
-- "Who last modified the payments-service Helm chart?"
-- "What Terraform code manages the production database?"
+- "What PRs were merged to the main branch of acme/infrastructure-terraform in the last 48 hours that touched any IAM policy or security group definitions?"
+- "Show me the git blame for the Kubernetes resource limits in acme/payments-service — when were they last changed and what was the reasoning in the PR description?"
+- "Search across all connected repos for any Terraform code that references the prod-vpc VPC ID — I need to understand all resources deployed into it"
 
 ## Configuration Changes
 
