@@ -7,19 +7,18 @@
     "href": "https://usekestrel.ai"
   },
   "favicon": "/logo/light.svg",
-  "css": "/custom.css",
-  "font": {
-    "headings": {
+  "fonts": {
+    "heading": {
       "family": "Geist",
       "source": "/fonts/Geist-Variable.woff2",
       "format": "woff2",
-      "weight": "100 900"
+      "weight": 400
     },
     "body": {
       "family": "Geist",
       "source": "/fonts/Geist-Variable.woff2",
       "format": "woff2",
-      "weight": "100 900"
+      "weight": 400
     }
   },
   "colors": {
