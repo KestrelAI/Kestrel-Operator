@@ -1,0 +1,65 @@
+---
+title: "Vercel"
+description: "Connect Vercel for deployment event triggers, build log access, and rollback actions in workflows"
+---
+
+The Vercel integration connects Kestrel to your Vercel projects, enabling deployment events to trigger workflows and giving AI agents access to build logs, deployment status, and rollback capabilities.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- Vercel account with project access
+
+## Setup
+
+<Steps>
+  <Step title="Connect via OAuth">
+    1. Navigate to **Integrations → Vercel** in your Kestrel dashboard
+    2. Click **Connect**
+    3. Authorize Kestrel in the Vercel OAuth popup
+    4. Select the Vercel team/account and projects to authorize
+    5. The popup closes and your Vercel account appears as connected
+  </Step>
+  <Step title="Configure the webhook">
+    After OAuth connection, Kestrel automatically registers a webhook with your Vercel account to receive deployment and error events. No manual webhook configuration is required.
+  </Step>
+</Steps>
+
+## How It's Used
+
+### In Workflows
+
+- **Trigger blocks**:
+  - **Deployment Failed** — fires when a Vercel deployment fails
+  - **Deployment Succeeded** — fires when a deployment completes successfully
+  - **Error Anomaly** — fires when Vercel detects an anomalous spike in runtime errors
+  - **Domain Issue** — fires on domain configuration or certificate problems
+
+- **Action blocks**:
+  - **Get Deployment** — retrieve deployment details (status, URL, git commit, duration)
+  - **Get Build Logs** — fetch build logs for a specific deployment
+  - **Rollback** — roll back to a previous deployment
+  - **Promote** — promote a preview deployment to production
+  - **List Deployments** — list recent deployments with filters
+  - **Investigate** — run an AI investigation combining build logs, error data, and deployment history
+
+Example: A workflow triggers on a failed deployment, fetches the build logs, analyzes the failure with AI, and posts a summary to Slack with a one-click rollback button.
+
+### In Incident Response
+
+- **Deployment correlation** — when an incident is detected, Kestrel checks recent Vercel deployments to determine if a bad deploy is the root cause
+- **Automatic rollback workflows** — pair with incident detection to automatically roll back failed deployments
+
+### In Cloud AI Copilot
+
+- Query deployments: `What Vercel deployments failed in the last 24 hours?`
+- Investigate failures: `Show me the build logs for the latest failed deployment`
+- Take action: `Roll back the production deployment to the previous version`
+
+## Disconnecting
+
+1. Navigate to **Integrations → Vercel**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This removes the webhook and stops all Vercel workflow triggers. You can reconnect at any time.

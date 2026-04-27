@@ -1,0 +1,92 @@
+---
+title: "Security & Compliance"
+description: "Enterprise-grade security controls and data privacy"
+---
+
+Kestrel is built for organizations that demand the highest standards of data privacy, security, and compliance. Every design decision prioritizes your data sovereignty and operational security.
+
+## SOC 2 Compliance
+
+Kestrel maintains SOC 2 Type II compliance, with security controls audited by independent third parties. Our compliance program covers:
+
+- **Access controls** — Role-based access with SSO enforcement
+- **Data encryption** — AES-256 at rest, TLS 1.2+ in transit
+- **Change management** — Audited deployment pipelines with automated testing
+- **Incident response** — Documented internal security incident procedures
+- **Monitoring** — Continuous infrastructure and application monitoring
+
+Contact [hello@usekestrel.ai](mailto:hello@usekestrel.ai) to request our SOC 2 report.
+
+## Data Isolation
+
+Every customer's data is fully isolated at the application and database level:
+
+- **Tenant-scoped data** — All data (incidents, cluster inventory, flows, configurations) is scoped to your tenant. Queries are always filtered by tenant ID at the database layer.
+- **Separate processing** — AI analysis runs in tenant-isolated contexts. Your incident data, logs, and resource specs are never mixed with another customer's data.
+- **Integration credentials** — API keys, tokens, and OAuth credentials for your integrations (AWS, Slack, GitHub, etc.) are encrypted and stored per-tenant.
+
+## No Cross-Customer Model Training
+
+Kestrel's AI models are **never trained on customer data**. Your Kubernetes logs, CloudTrail events, infrastructure configurations, and incident analysis are never used to train, fine-tune, or improve models for other customers.
+
+AI analysis uses foundation models (via API) with your data provided as context at inference time only. No customer data is retained by the model provider after inference.
+
+## Read-Only by Default
+
+The Kestrel operator and cloud integrations are **read-only by default**:
+
+| Component | Default Access | Write Access |
+|-----------|---------------|--------------|
+| **Kubernetes Operator** | Read pods, events, logs, resources | Requires explicit Safe Apply or auto-remediation enablement |
+| **AWS Integration** | Read CloudTrail, describe resources, Cost Explorer | Requires explicit IaC remediation configuration |
+| **OCI Integration** | Read Audit logs, describe resources | Requires explicit IaC remediation configuration |
+| **GitHub / GitLab** | Read repository contents | PR creation requires explicit enablement |
+
+Write operations only occur when you explicitly:
+1. Click **Safe Apply** on a generated fix in the dashboard
+2. Click **Create PR** to open a pull request with a fix
+3. Enable **auto-remediation** for specific incident types on a specific cluster
+
+Every write operation is logged in the [audit trail](#full-audit-trail).
+
+## No Sensitive Data Storage
+
+Kestrel does not store secrets, credentials, or sensitive environment variables from your clusters or cloud accounts:
+
+- **Environment variables** — Kestrel reads resource specs for analysis but does not persist Secret values or sensitive environment variable contents
+- **Cloud credentials** — AWS and OCI credentials are used for API calls and never logged or stored in plaintext
+- **Integration tokens** — OAuth tokens and API keys are encrypted at rest using AES-256
+
+## Full Audit Trail
+
+Every action in Kestrel is logged in an immutable audit trail:
+
+- **User actions** — Login, configuration changes, fix approvals, integration setup
+- **AI actions** — Incident detection, root cause analysis, fix generation, auto-remediation
+- **Write operations** — Every Safe Apply, PR creation, and auto-remediation event with before/after state
+- **Integration events** — Slack notifications sent, PagerDuty incidents created, Jira tickets filed
+
+Audit logs are accessible from the Kestrel dashboard and can be exported for compliance reporting.
+
+## SSO Support
+
+Kestrel supports Single Sign-On via Google OAuth for enterprise customers. All team members authenticate through your organization's Google Workspace identity provider, with:
+
+- Centralized user provisioning
+- Enforced multi-factor authentication (via Google Workspace policies)
+- Automatic session management
+
+## On-Premise Deployment
+
+For organizations with strict data residency requirements, regulatory compliance needs, or air-gapped environments, Kestrel supports full self-hosted deployment:
+
+- **Your infrastructure** — All components run in your own Kubernetes cluster (AWS, GCP, Azure, OCI)
+- **Your LLM provider** — Use Amazon Bedrock, Vertex AI, Azure OpenAI, or OCI Generative AI with VPC/private endpoints
+- **Air-gapped option** — No internet access required; all services accessed via private endpoints
+- **Native workload identity** — IRSA, GKE Workload Identity, Azure Managed Identity, or OKE Workload Identity
+
+See [On-Premise Overview](/on-premise/overview) and [On-Premise Setup](/on-premise/setup) for deployment details.
+
+## Questions
+
+For security questionnaires, compliance documentation, or to discuss your organization's specific requirements, contact us at [hello@usekestrel.ai](mailto:hello@usekestrel.ai).

@@ -1,0 +1,149 @@
+---
+title: "Cloud AI Copilot"
+description: "Investigate your infrastructure with conversational AI"
+---
+
+The Kestrel Cloud AI Copilot lets you ask questions about your Kubernetes clusters, cloud accounts, metrics, code repositories, and costs in plain English. Use the dashboard chat interface or the `/kestrel` Slack command to investigate issues, query resources, and generate configuration changes.
+
+<!-- Screenshot placeholder: Copilot chat interface in the Kestrel dashboard showing a conversation about pod status -->
+
+## What the Copilot Can Do
+
+- **Investigate Kubernetes issues** — query pod logs, events, resource specs, and metrics across clusters
+- **Inspect cloud resources** — examine AWS and OCI resources, CloudWatch metrics, and security configurations
+- **Search and read code** — find files, functions, and configurations across connected GitHub and GitLab repos
+- **Analyze costs** — query AWS Cost Explorer data, identify spend patterns, and surface anomalies
+- **Generate config changes** — produce YAML and Terraform modifications with an approval workflow before applying
+
+## Using the Dashboard Chat
+
+The copilot is available directly in the Kestrel dashboard. Open the chat panel from the incident detail page or the main copilot page and start asking questions.
+
+<!-- Screenshot placeholder: Dashboard copilot panel open on an incident detail page -->
+
+The copilot has full context of your connected integrations — it knows which clusters are connected, what AWS accounts are linked, and what observability tools are available. You don't need to specify connection details in your questions.
+
+## Using via Slack
+
+With the [Slack integration](/integrations/slack) connected, use the `/kestrel` slash command anywhere in your workspace:
+
+```
+/kestrel what pods are crashing in production?
+```
+
+```
+/kestrel show me the IAM roles with admin access in our staging account
+```
+
+```
+/kestrel what changed in the payments service in the last 24 hours?
+```
+
+The copilot responds in the same channel with full context. Follow up in the thread to continue the conversation.
+
+<Tip>
+You can also ask follow-up questions in Kestrel incident notification threads. The copilot automatically has the incident context when responding in those threads.
+</Tip>
+
+## Capabilities
+
+### Kubernetes Investigation
+
+Query any aspect of your connected Kubernetes clusters:
+
+- **Pod status and logs** — "Why is the auth-service pod crashing?" / "Show me logs from the payment-worker pod"
+- **Events** — "What events happened in the production namespace in the last hour?"
+- **Resource specs** — "What are the memory limits for the API deployment?" / "Which pods don't have resource requests set?"
+- **Metrics** — "What's the CPU usage for the checkout service?" (requires Datadog or OpenTelemetry)
+- **Network policies** — "What network policies apply to the frontend namespace?"
+- **Deployment status** — "Is the latest rollout for order-service healthy?"
+
+### Cloud Investigation
+
+Query your connected AWS and OCI accounts:
+
+- **Resource inspection** — "What S3 buckets are publicly accessible?" / "Show me all EC2 instances in us-east-1"
+- **CloudWatch metrics** — "What's the CPU utilization for the prod RDS instance?"
+- **Security configuration** — "Which security groups allow inbound SSH from 0.0.0.0/0?"
+- **CloudTrail events** — "Who modified the IAM policy for the deploy role yesterday?"
+- **OCI resources** — "List all compute instances in the production compartment"
+
+### Code Investigation
+
+Search and read files across connected GitHub and GitLab repositories:
+
+- **File search** — "Find the Terraform code that manages our S3 buckets"
+- **Code search** — "Where is the database connection string configured?"
+- **Config lookup** — "Show me the Helm values for the auth-service"
+- **Change history** — "What changed in the Dockerfile for the API service recently?"
+
+### Cost Analysis
+
+Query AWS cost data from connected accounts:
+
+- **Spend breakdown** — "What are our top 5 AWS services by cost this month?"
+- **Cost trends** — "How has our EC2 spend changed over the last 3 months?"
+- **Anomaly detection** — "Are there any unusual cost spikes in the last week?"
+- **Resource-level costs** — "Which RDS instances cost the most?"
+
+## Configuration Changes
+
+The copilot can generate YAML and Terraform changes when you ask it to modify infrastructure. These changes go through an approval workflow — the copilot never applies changes without your explicit consent.
+
+<Steps>
+  <Step title="Request a change">
+    Ask the copilot to make a change: "Increase the memory limit for the payment-service to 1Gi"
+  </Step>
+  <Step title="Review the proposed change">
+    The copilot generates a YAML or Terraform diff and presents it for review.
+  </Step>
+  <Step title="Approve and apply">
+    Choose to apply directly (Safe Apply), create a PR (GitOps), or copy the change for manual application.
+  </Step>
+</Steps>
+
+<!-- Screenshot placeholder: Copilot showing a generated YAML change with diff view and apply options -->
+
+<Warning>
+Configuration changes require Safe Apply or auto-remediation to be enabled on the target cluster. Without write permissions, the copilot can only generate changes for you to copy and apply manually.
+</Warning>
+
+## Prerequisites
+
+The copilot works with any combination of connected integrations. Each integration enhances the copilot's ability to answer questions:
+
+| Integration | Copilot Capabilities |
+|-------------|---------------------|
+| [Kubernetes](/integrations/kubernetes) | Pod logs, events, resource specs, deployments, namespaces |
+| [AWS](/integrations/aws) | EC2, S3, RDS, IAM, VPC, CloudTrail, Cost Explorer |
+| [OCI](/integrations/oci) | Compute, Object Storage, VCN, IAM, Audit logs |
+| [Datadog](/integrations/datadog) | Metrics, monitors, dashboards, APM traces |
+| [OpenTelemetry](/integrations/opentelemetry) | Traces, metrics, and spans |
+| [GitHub](/integrations/github) | Code search, file reading, commit history, PRs |
+| [GitLab](/integrations/gitlab) | Code search, file reading, commit history, MRs |
+| [Knowledge Sources](/integrations/knowledge-sources) | Confluence, Jira, Slack history, Glean, Linear context |
+
+## Example Conversations
+
+**Debugging a production issue:**
+> **You:** Why are pods in the checkout namespace restarting?
+>
+> **Kestrel:** The `checkout-api-7d8f4` pod has restarted 5 times in the last 30 minutes. The container is being OOMKilled — current memory limit is 256Mi, but the pod is consistently using 300-350Mi based on Datadog metrics. The memory increase correlates with PR #482 merged 2 hours ago which added an in-memory caching layer.
+
+**Investigating a cloud security event:**
+> **You:** Who changed the security group for the production database?
+>
+> **Kestrel:** CloudTrail shows that user `deploy-bot` modified security group `sg-0a1b2c3d` at 14:32 UTC today. The change added an inbound rule allowing TCP port 5432 from `0.0.0.0/0`. This was done via the `ModifySecurityGroupRules` API call from IP `203.0.113.42` using role `arn:aws:iam::123456789012:role/deploy-bot`.
+
+**Querying costs:**
+> **You:** What's driving our AWS cost increase this month?
+>
+> **Kestrel:** Your total AWS spend is up 23% month-over-month. The primary driver is EC2 ($4,200 increase) — specifically, 3 new `m5.2xlarge` instances launched in `us-west-2` on March 15th in the `staging` account. RDS costs are also up 12% due to a storage auto-scaling event on the `prod-analytics` instance.
+
+## Next Steps
+
+- [Connect Kubernetes clusters](/integrations/kubernetes) to enable K8s investigation
+- [Connect AWS accounts](/integrations/aws) for cloud resource queries
+- [Set up Slack](/integrations/slack) to use the `/kestrel` command
+- [Connect GitHub or GitLab](/integrations/github) for code investigation
+- [Add knowledge sources](/integrations/knowledge-sources) for richer context in answers

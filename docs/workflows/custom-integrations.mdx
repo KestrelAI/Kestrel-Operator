@@ -1,0 +1,293 @@
+---
+title: "Custom Integrations"
+description: "Create custom HTTP action blocks and webhook trigger blocks"
+---
+
+Kestrel's built-in integrations cover the most common tools in the cloud operations stack. For everything else — internal APIs, niche SaaS products, or any service with an HTTP API — you can build custom action blocks and webhook trigger blocks.
+
+## Custom Action Blocks (HTTP)
+
+A custom HTTP action block lets you call any API endpoint as a workflow step. Define the request template once, then reuse it across workflows with dynamic parameters.
+
+### Creating a Custom Action
+
+<Steps>
+  <Step title="Open the action builder">
+    In the workflow canvas, click **Add Action** → **Custom HTTP**.
+  </Step>
+  <Step title="Configure the request">
+    Set the HTTP method, URL, headers, and body. Use template variables for dynamic values.
+  </Step>
+  <Step title="Configure authentication">
+    Select an auth method and provide credentials.
+  </Step>
+  <Step title="Map the response">
+    Define which fields from the API response should be available as output variables for downstream steps.
+  </Step>
+</Steps>
+
+<!-- Screenshot placeholder: Custom HTTP action configuration panel -->
+
+### Request Configuration
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| **Method** | HTTP method | `POST`, `GET`, `PUT`, `PATCH`, `DELETE` |
+| **URL** | Endpoint URL (supports template variables) | `https://api.example.com/v1/alerts/{{trigger.alert_id}}` |
+| **Headers** | Request headers as key-value pairs | `Content-Type: application/json`, `X-Custom: {{trigger.metadata}}` |
+| **Body** | Request body (JSON, form data, or raw) | `{"message": "{{rca_result.root_cause}}"}` |
+
+### Authentication
+
+Select one of three auth methods:
+
+<Tabs>
+  <Tab title="API Key">
+    Send an API key as a header.
+    - **Header Name**: The header to set (e.g., `X-API-Key`)
+    - **API Key**: The key value (stored encrypted)
+  </Tab>
+  <Tab title="Bearer Token">
+    Send a bearer token in the `Authorization` header.
+    - **Token**: The bearer token value (stored encrypted)
+  </Tab>
+  <Tab title="Basic Auth">
+    Send HTTP Basic Authentication credentials.
+    - **Username**: The username
+    - **Password**: The password (stored encrypted)
+  </Tab>
+</Tabs>
+
+<Note>
+Credentials are stored encrypted and never exposed in workflow logs or execution history.
+</Note>
+
+### Response Mapping
+
+Define output variables by mapping JSON paths from the API response:
+
+| Output Variable Name | JSON Path | Description |
+|----------------------|-----------|-------------|
+| `status` | `$.status` | Response status field |
+| `result_id` | `$.data.id` | ID from nested response |
+| `message` | `$.message` | Response message |
+
+Mapped variables become available as `{{step_outputs.<action-name>.<variable>}}` in downstream steps.
+
+### Parameters
+
+Define named parameters that can be filled in per-workflow. Parameters appear as configurable fields when the custom action is added to a workflow canvas.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| **Name** | string | Parameter identifier |
+| **Label** | string | Display label in the UI |
+| **Type** | string, number, boolean | Parameter data type |
+| **Default** | any | Default value (optional) |
+| **Required** | boolean | Whether the parameter must be set |
+
+---
+
+## Custom Trigger Blocks (Webhooks)
+
+A custom webhook trigger lets you start a workflow from any external service that can send HTTP POST requests.
+
+### Creating a Custom Trigger
+
+<Steps>
+  <Step title="Add a webhook trigger">
+    In the workflow canvas, click **Add Trigger** → **Custom Webhook**.
+  </Step>
+  <Step title="Paste an example payload">
+    Paste a sample JSON payload from the external service. Kestrel auto-detects the fields and generates a variable mapping.
+  </Step>
+  <Step title="Configure field mapping">
+    Review the auto-detected fields. Rename variables, adjust types, and mark which fields should be available as template variables.
+  </Step>
+  <Step title="Copy the webhook URL">
+    Copy the generated webhook URL and configure it in the external service.
+  </Step>
+</Steps>
+
+<!-- Screenshot placeholder: Custom webhook trigger with pasted example payload and auto-detected field mapping -->
+
+### Webhook URL
+
+Each custom webhook trigger gets a unique URL:
+
+```
+https://platform.usekestrel.ai/api/webhooks/workflows/<workflow-id>/<trigger-id>
+```
+
+Configure this URL in the external service as the webhook destination.
+
+### HMAC Signature Verification
+
+Enable HMAC verification to ensure webhook payloads are authentic:
+
+1. Toggle **Enable HMAC Verification** in the trigger settings
+2. Select the hashing algorithm (`SHA-256` or `SHA-1`)
+3. Enter the **Signing Secret** provided by the external service
+4. Specify the **Signature Header** name (e.g., `X-Hub-Signature-256`, `Stripe-Signature`)
+
+Kestrel validates the HMAC signature on every incoming request and rejects payloads that don't match.
+
+<Warning>
+Without HMAC verification, any HTTP client that knows the webhook URL can trigger the workflow. Enable verification for production workflows.
+</Warning>
+
+### Event Type Extraction
+
+If the external service sends different event types to the same webhook, configure event type extraction to filter:
+
+- **Header-based**: Extract from a header (e.g., `X-Event-Type`)
+- **Body-based**: Extract from a JSON field (e.g., `$.event.type`)
+- **Filter**: Only trigger the workflow for specific event types
+
+### Auto-Detected Field Mapping
+
+When you paste an example payload, Kestrel parses the JSON and generates a field map:
+
+```json
+{
+  "event": "payment.completed",
+  "data": {
+    "amount": 4999,
+    "currency": "usd",
+    "customer_id": "cus_abc123"
+  }
+}
+```
+
+Auto-detected variables:
+
+| Variable | JSON Path | Type |
+|----------|-----------|------|
+| `{{trigger.event}}` | `$.event` | string |
+| `{{trigger.data.amount}}` | `$.data.amount` | number |
+| `{{trigger.data.currency}}` | `$.data.currency` | string |
+| `{{trigger.data.customer_id}}` | `$.data.customer_id` | string |
+
+You can rename, remove, or add variables after auto-detection.
+
+---
+
+## SDK Code Generation
+
+For custom webhook triggers, Kestrel generates ready-to-use SDK code that you can embed in your application to send events to the workflow.
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    import requests
+
+    requests.post(
+        "https://platform.usekestrel.ai/api/webhooks/workflows/<workflow-id>/<trigger-id>",
+        json={
+            "event": "payment.completed",
+            "data": {
+                "amount": 4999,
+                "currency": "usd",
+                "customer_id": "cus_abc123"
+            }
+        },
+        headers={
+            "Content-Type": "application/json",
+            "X-Webhook-Signature": "<computed-hmac>"
+        }
+    )
+    ```
+  </Tab>
+  <Tab title="Node.js">
+    ```javascript
+    const response = await fetch(
+      "https://platform.usekestrel.ai/api/webhooks/workflows/<workflow-id>/<trigger-id>",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Webhook-Signature": "<computed-hmac>"
+        },
+        body: JSON.stringify({
+          event: "payment.completed",
+          data: {
+            amount: 4999,
+            currency: "usd",
+            customer_id: "cus_abc123"
+          }
+        })
+      }
+    );
+    ```
+  </Tab>
+  <Tab title="cURL">
+    ```bash
+    curl -X POST \
+      "https://platform.usekestrel.ai/api/webhooks/workflows/<workflow-id>/<trigger-id>" \
+      -H "Content-Type: application/json" \
+      -H "X-Webhook-Signature: <computed-hmac>" \
+      -d '{
+        "event": "payment.completed",
+        "data": {
+          "amount": 4999,
+          "currency": "usd",
+          "customer_id": "cus_abc123"
+        }
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+Click **Copy SDK Code** in the webhook trigger settings to get pre-filled code with your actual webhook URL.
+</Tip>
+
+---
+
+## Examples
+
+### Resend Email Events
+
+Trigger a workflow when an email bounces via [Resend](https://resend.com) webhooks.
+
+**Trigger**: Custom webhook with Resend's `email.bounced` event type
+
+**Example payload**:
+```json
+{
+  "type": "email.bounced",
+  "data": {
+    "email_id": "em_abc123",
+    "to": "user@example.com",
+    "subject": "Your invoice",
+    "bounce_type": "hard"
+  }
+}
+```
+
+**Workflow**: On bounce → Slack notification to `#email-ops` with bounce details → Jira ticket for investigation.
+
+### Stripe Payment Webhooks
+
+Trigger a workflow on failed Stripe payments.
+
+**Trigger**: Custom webhook filtered to `payment_intent.payment_failed`
+
+**HMAC**: Enable with Stripe's webhook signing secret, header `Stripe-Signature`, algorithm SHA-256.
+
+**Workflow**: On failed payment → Kestrel Investigation with customer context → Slack alert to `#payments`.
+
+### Internal API Calls
+
+Trigger workflows from your own services using the generated webhook URL.
+
+**Trigger**: Custom webhook with your application's event schema.
+
+**Workflow**: On deployment event → Kestrel generates K8s manifests → GitHub PR → ArgoCD sync.
+
+---
+
+## Next Steps
+
+- [Create Workflows](/workflows/create-workflows) — Build workflows with built-in and custom integrations
+- [Workflow Integrations Setup](/workflows/setup-integrations) — Connect built-in integrations

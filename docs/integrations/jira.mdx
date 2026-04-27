@@ -1,0 +1,71 @@
+---
+title: "Jira"
+description: "Connect Jira for ticket creation, status tracking, and incident knowledge during investigations"
+---
+
+The Jira integration connects Kestrel to your Atlassian Jira instance, enabling automated ticket creation from workflows, status tracking, and historical issue search during incident investigations.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- Atlassian account with Jira access
+
+## Setup
+
+<Steps>
+  <Step title="Connect via OAuth">
+    1. Navigate to **Integrations → Jira** in your Kestrel dashboard
+    2. Click **Connect**
+    3. Authorize Kestrel in the Atlassian OAuth popup
+    4. Select the Jira site to connect (if you have multiple)
+    5. The popup closes and your Jira instance appears as connected
+  </Step>
+</Steps>
+
+<Tip>
+  Kestrel uses OAuth 2.0 with scoped permissions. Only the projects and issue types you authorize are accessible.
+</Tip>
+
+## How It's Used
+
+### In Workflows
+
+- **Action blocks**:
+  - **Create Issue** — create Jira tickets with customizable project, issue type, summary, description, priority, labels, and assignee
+  - **Add Comment** — add comments to existing issues with workflow context
+  - **Transition Issue** — move issues through workflow states (e.g., Open → In Progress → Done)
+  - **Search Issues** — query Jira using JQL to find related issues
+  - **Update Issue** — modify fields on existing issues
+
+Example: A workflow triggered by a Kubernetes incident can automatically create a Jira ticket with the incident summary, assign it to the namespace owner, and transition it to "In Progress."
+
+### In Incident Response
+
+- **Knowledge source** — during root cause analysis, Kestrel searches Jira for similar past issues, related post-mortems, and historical context about affected services (see [Knowledge Sources](/integrations/knowledge-sources))
+- **Incident tracking** — create Jira tickets directly from incident detail pages to track remediation
+
+### In Cloud AI Copilot
+
+- Create Jira tickets from the chat: `Create a Jira ticket for the payments service outage`
+- Search for related issues: `Find Jira issues related to OOM errors in production`
+
+## Configuration
+
+### Knowledge Source Setup
+
+To use Jira as a knowledge source during incident investigations:
+
+1. Navigate to **Integrations → Knowledge Sources**
+2. Click **Add Source** and select **Jira**
+3. Your connected Jira instance is auto-detected — no additional credentials needed
+4. Click **Enable**
+
+Kestrel will search Jira issues and comments for relevant historical context during incident RCA.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Jira**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all Jira workflow actions and removes Jira as a knowledge source. You can reconnect at any time.

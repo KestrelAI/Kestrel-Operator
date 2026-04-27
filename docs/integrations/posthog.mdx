@@ -1,0 +1,64 @@
+---
+title: "PostHog"
+description: "Connect PostHog for product analytics triggers, session replay, and error investigation in workflows"
+---
+
+The PostHog integration connects Kestrel to your PostHog instance, enabling product analytics events to trigger workflows and giving AI agents access to session recordings, error data, and event queries for investigation.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- PostHog account with API access
+- PostHog **API key** (Personal API Key) and **Project ID**
+
+## Setup
+
+<Steps>
+  <Step title="Get your PostHog credentials">
+    1. In PostHog, go to **Settings → Project → Project API Key** and copy your **Project ID**
+    2. Go to **Settings → User → Personal API Keys** and create a new key
+    3. Copy the generated API key
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → PostHog** in your Kestrel dashboard
+    2. Click **Connect**
+    3. Paste your **API Key** and **Project ID**
+    4. Enter your PostHog instance URL (e.g., `https://app.posthog.com` or your self-hosted URL)
+    5. Click **Connect PostHog**
+  </Step>
+</Steps>
+
+## How It's Used
+
+### In Workflows
+
+- **Trigger blocks**:
+  - **Exception** — fires when PostHog captures an unhandled exception
+  - **Rage Click** — fires when a user exhibits rage click behavior
+  - **Console Error** — fires on console error patterns matching your filter
+  - **Log Alert** — fires when PostHog log patterns match your configured thresholds
+
+- **Action blocks**:
+  - **Get Session Summary** — retrieve an AI-generated summary of a user session
+  - **Query Events** — run PostHog event queries with filters and date ranges
+  - **Get Session Recording** — fetch session recording details and metadata
+  - **Get Error Issues** — retrieve error groups and exception details
+  - **Investigate** — run an AI investigation combining session, event, and error data
+
+Example: A workflow triggers on a spike in rage clicks, queries the relevant session recordings, summarizes the user experience issue, and creates a Linear issue with the findings.
+
+### In Incident Response
+
+- **User impact correlation** — when a Kubernetes or cloud incident is detected, Kestrel can query PostHog to determine if end users are affected (e.g., error rates, session quality)
+- **Session context** — surface session recordings and error data alongside infrastructure incidents
+
+### In Cloud AI Copilot
+
+- Query product analytics: `How many errors did the checkout flow have in the last hour?`
+- Investigate user sessions: `Show me session recordings with payment failures today`
+
+## Disconnecting
+
+1. Navigate to **Integrations → PostHog**
+2. Click **Disconnect**
+3. Confirm the disconnection

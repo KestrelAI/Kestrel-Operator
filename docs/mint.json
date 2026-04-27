@@ -8,16 +8,16 @@
   },
   "favicon": "/logo/light.svg",
   "colors": {
-    "primary": "#3B82F6",
-    "light": "#93C5FD",
-    "dark": "#1E3A8A",
+    "primary": "#171717",
+    "light": "#737373",
+    "dark": "#FAFAFA",
     "background": {
-      "dark": "#020617",
-      "light": "#F8FAFC"
+      "dark": "#0A0A0A",
+      "light": "#FFFFFF"
     },
     "anchors": {
-      "from": "#3B82F6",
-      "to": "#60A5FA"
+      "from": "#404040",
+      "to": "#737373"
     }
   },
   "topbarLinks": [
@@ -58,40 +58,59 @@
       "group": "Get Started",
       "pages": [
         "introduction",
-        "quickstart"
+        "quickstart/workflows",
+        "quickstart/incident-response",
+        "quickstart/copilot"
       ]
     },
     {
-      "group": "Kubernetes",
+      "group": "Workflows",
       "pages": [
-        "kubernetes/overview",
-        "kubernetes/onboarding",
-        "kubernetes/configuration",
-        "kubernetes/opentelemetry",
-        "kubernetes/datadog",
-        "kubernetes/troubleshooting"
+        "workflows/create-workflows",
+        "workflows/custom-integrations",
+        "workflows/setup-integrations",
+        "workflows/observability"
       ]
     },
     {
-      "group": "Cloud",
+      "group": "Incident Response",
       "pages": [
-        "cloud/overview",
-        "cloud/aws",
-        "cloud/oci"
+        "incident-response/kubernetes",
+        "incident-response/cloud"
+      ]
+    },
+    {
+      "group": "Cloud AI Copilot",
+      "pages": [
+        "copilot/overview"
       ]
     },
     {
       "group": "Integrations",
       "pages": [
+        "integrations/kubernetes",
+        "integrations/aws",
+        "integrations/oci",
         "integrations/slack",
-        "integrations/cicd",
+        "integrations/github",
+        "integrations/gitlab",
         "integrations/pagerduty",
-        "integrations/tribal-knowledge"
+        "integrations/jira",
+        "integrations/confluence",
+        "integrations/glean",
+        "integrations/linear",
+        "integrations/posthog",
+        "integrations/vercel",
+        "integrations/datadog",
+        "integrations/opentelemetry",
+        "integrations/argocd",
+        "integrations/knowledge-sources"
       ]
     },
     {
-      "group": "On-Premise Deployment",
+      "group": "Enterprise",
       "pages": [
+        "enterprise/security",
         "on-premise/overview",
         "on-premise/setup"
       ]
@@ -116,7 +135,7 @@
   },
   "metadata": {
     "og:title": "Kestrel AI Documentation",
-    "og:description": "Complete documentation for the Kestrel AI platform - Kubernetes security, cloud incident response, and AI-powered infrastructure management.",
+    "og:description": "AI Agents for Cloud Operations. Automate incident response, cloud provisioning, CI/CD, and more with intelligent workflows.",
     "og:image": "https://usekestrel.ai/og-image.png",
     "twitter:card": "summary_large_image"
   },
@@ -126,20 +145,52 @@
       "destination": "/introduction"
     },
     {
+      "source": "/quickstart",
+      "destination": "/quickstart/workflows"
+    },
+    {
       "source": "/operator/overview",
-      "destination": "/kubernetes/overview"
+      "destination": "/integrations/kubernetes"
     },
     {
       "source": "/operator/onboarding",
-      "destination": "/kubernetes/onboarding"
+      "destination": "/integrations/kubernetes"
     },
     {
       "source": "/operator/configuration",
-      "destination": "/kubernetes/configuration"
+      "destination": "/integrations/kubernetes"
     },
     {
       "source": "/operator/troubleshooting",
-      "destination": "/kubernetes/troubleshooting"
+      "destination": "/integrations/kubernetes"
+    },
+    {
+      "source": "/kubernetes/overview",
+      "destination": "/integrations/kubernetes"
+    },
+    {
+      "source": "/kubernetes/onboarding",
+      "destination": "/integrations/kubernetes"
+    },
+    {
+      "source": "/cloud/overview",
+      "destination": "/integrations/aws"
+    },
+    {
+      "source": "/cloud/aws",
+      "destination": "/integrations/aws"
+    },
+    {
+      "source": "/cloud/oci",
+      "destination": "/integrations/oci"
+    },
+    {
+      "source": "/integrations/cicd",
+      "destination": "/integrations/github"
+    },
+    {
+      "source": "/integrations/tribal-knowledge",
+      "destination": "/integrations/knowledge-sources"
     }
   ]
 }

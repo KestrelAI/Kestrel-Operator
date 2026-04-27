@@ -1,0 +1,121 @@
+---
+title: "Cloud AI Copilot Quickstart"
+description: "Ask questions about your infrastructure in plain English"
+---
+
+The Cloud AI Copilot lets you investigate your infrastructure by asking questions in plain English. Query Kubernetes clusters, AWS resources, metrics, costs, and code — from the Kestrel dashboard or directly in Slack with the `/kestrel` command. No query syntax, no CLI flags, no context-switching between dashboards.
+
+<!-- Screenshot placeholder: Copilot chat showing a multi-turn infrastructure investigation -->
+
+## What the Copilot Can Do
+
+- **Investigate Kubernetes** — pod status, crash reasons, resource usage, network policies, recent changes
+- **Query cloud resources** — AWS EC2, S3, IAM, VPC, and more
+- **Analyze metrics** — pull Datadog or OpenTelemetry data into the conversation
+- **Analyze costs** — identify expensive resources, cost trends, and optimization opportunities
+- **Investigate code** — trace infrastructure changes back to PRs and commits
+- **Generate config changes** — produce YAML manifests, Terraform plans, and Helm values on demand
+
+## Prerequisites
+
+The copilot answers are only as good as the integrations connected. At minimum:
+
+- A Kestrel account at [platform.usekestrel.ai](https://platform.usekestrel.ai)
+- At least one data source connected:
+  - [Kubernetes cluster](/integrations/kubernetes) for cluster investigations
+  - [AWS](/integrations/aws) or [OCI](/integrations/oci) for cloud resource queries
+  - [Datadog](/integrations/datadog) or [OpenTelemetry](/integrations/opentelemetry) for metrics questions
+  - [GitHub](/integrations/github) or [GitLab](/integrations/gitlab) for code investigations
+
+<Tip>
+The more integrations you connect, the more context the copilot has. Connect your notification and knowledge source integrations too — Slack history, Confluence, and Jira give the copilot organizational context that improves answers.
+</Tip>
+
+## Using the Dashboard Chat
+
+1. Open the Kestrel dashboard at [platform.usekestrel.ai](https://platform.usekestrel.ai)
+2. Click the **Copilot** tab in the sidebar
+3. Type your question and press Enter
+
+The copilot maintains conversation context across messages, so you can ask follow-up questions naturally:
+
+> **You:** What pods are crashing in the payments namespace?
+>
+> **Kestrel:** There are 2 pods in CrashLoopBackOff in the `payments` namespace: `payments-api-7f8b9c-x4k2m` and `payments-worker-6d4a8b-j9n3p`. Both started crashing 23 minutes ago after deployment `payments-api` was updated to image tag `v2.14.0`...
+>
+> **You:** What changed in that deployment?
+>
+> **Kestrel:** The deployment `payments-api` was updated via ArgoCD sync at 14:32 UTC. The change came from PR #847 in `acme/payments-service` which modified the database connection pool settings...
+
+<!-- Screenshot placeholder: Multi-turn copilot conversation investigating a crash -->
+
+## Using via Slack
+
+Once the [Slack integration](/integrations/slack) is connected, use the `/kestrel` slash command in any channel or DM:
+
+```
+/kestrel what's the status of the checkout service in production?
+```
+
+```
+/kestrel which nodes have the highest CPU utilization right now?
+```
+
+```
+/kestrel show me all pods with OOMKilled restarts in the last 24 hours
+```
+
+```
+/kestrel what Terraform code manages the prod-vpc?
+```
+
+Kestrel responds in-thread so conversations stay organized. Other team members can see the answers and ask follow-ups in the same thread.
+
+## Example Questions
+
+### Kubernetes Investigations
+- "Why is the auth-service pod restarting?"
+- "What network policies apply to the frontend namespace?"
+- "Show me all deployments that changed in the last hour"
+- "Which pods are consuming the most memory in production?"
+
+### Cloud Resource Queries
+- "What EC2 instances are running in us-east-1?"
+- "Show me all S3 buckets without encryption enabled"
+- "What IAM roles have admin access?"
+
+### Cost Analysis
+- "What are my top 5 most expensive AWS services this month?"
+- "How much are we spending on idle EC2 instances?"
+- "Show me the cost trend for our EKS clusters over the last 90 days"
+
+### Code Investigations
+- "What PRs were merged to main in the last 24 hours?"
+- "Who last modified the payments-service Helm chart?"
+- "What Terraform code manages the production database?"
+
+## Configuration Changes
+
+When you ask the copilot to make a change — for example, "scale the checkout deployment to 5 replicas" or "add a network policy to block egress from the sandbox namespace" — it generates the configuration change and presents it for your review.
+
+You can:
+- **Apply directly** to the cluster from the dashboard
+- **Create a PR** to your GitOps repository via GitHub or GitLab
+- **Copy the manifest** to apply manually
+
+<Warning>
+The copilot never applies changes without your explicit approval. All generated configurations are presented for review first.
+</Warning>
+
+## Enhancing Copilot Context
+
+Connect additional integrations to improve the quality and depth of copilot answers:
+
+| Integration | What It Adds |
+|---|---|
+| [Datadog](/integrations/datadog) | Metrics, APM traces, and monitor status |
+| [OpenTelemetry](/integrations/opentelemetry) | Traces and custom metrics |
+| [Confluence](/integrations/confluence) | Runbooks and architecture documentation |
+| [Jira](/integrations/jira) | Related tickets and known issues |
+| [Glean](/integrations/glean) | Cross-tool enterprise knowledge search |
+| [GitHub](/integrations/github) / [GitLab](/integrations/gitlab) | Code context, PR history, IaC definitions |

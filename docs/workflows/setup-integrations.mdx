@@ -1,0 +1,130 @@
+---
+title: "Workflow Integrations Setup"
+description: "Connect the integrations your workflows need"
+---
+
+Workflows chain actions across multiple integrations. Before using an integration in a workflow, connect it on the **Integrations** page in the Kestrel dashboard. This page links to the setup guide for each supported integration.
+
+<Note>
+You only need to connect an integration once. All workflows in your organization share the same integration connections.
+</Note>
+
+## Infrastructure
+
+<CardGroup cols={2}>
+  <Card title="Kubernetes" icon="dharmachakra" href="/integrations/kubernetes">
+    Connect clusters for incident detection, resource inventory, and K8s manifest deployment.
+  </Card>
+  <Card title="AWS" icon="aws" href="/integrations/aws">
+    Connect AWS accounts for cloud monitoring, incident detection, VPC Flow Logs, and cost management.
+  </Card>
+  <Card title="OCI" icon="cloud" href="/integrations/oci">
+    Connect Oracle Cloud Infrastructure for resource inventory and incident detection.
+  </Card>
+</CardGroup>
+
+## Source Control & CI/CD
+
+<CardGroup cols={2}>
+  <Card title="GitHub" icon="github" href="/integrations/github">
+    Create pull requests, open issues, trigger Actions workflows, and investigate code.
+  </Card>
+  <Card title="GitLab" icon="gitlab" href="/integrations/gitlab">
+    Create merge requests, open issues, and trigger pipelines.
+  </Card>
+  <Card title="ArgoCD" icon="rotate" href="/integrations/argocd">
+    Sync applications and check sync status as part of GitOps workflows.
+  </Card>
+</CardGroup>
+
+## Notifications & Chat
+
+<CardGroup cols={2}>
+  <Card title="Slack" icon="slack" href="/integrations/slack">
+    Send messages, post thread replies, and request Slack-based approvals.
+  </Card>
+  <Card title="PagerDuty" icon="bell" href="/integrations/pagerduty">
+    Create and resolve alerts, escalate incidents, and trigger on PagerDuty events.
+  </Card>
+</CardGroup>
+
+## Project Management
+
+<CardGroup cols={2}>
+  <Card title="Jira" icon="ticket" href="/integrations/jira">
+    Create and update tickets, add comments, and track remediation tasks.
+  </Card>
+  <Card title="Linear" icon="chart-line" href="/integrations/linear">
+    Create issues and track engineering work from workflow actions.
+  </Card>
+</CardGroup>
+
+## Documentation
+
+<CardGroup cols={1}>
+  <Card title="Confluence" icon="book" href="/integrations/confluence">
+    Publish RCA documents and create postmortem pages automatically.
+  </Card>
+</CardGroup>
+
+## Monitoring
+
+<CardGroup cols={2}>
+  <Card title="Datadog" icon="chart-area" href="/integrations/datadog">
+    Query metrics and check monitor status to enrich workflow context.
+  </Card>
+  <Card title="OpenTelemetry" icon="signal" href="/integrations/opentelemetry">
+    Collect traces and metrics for deep infrastructure observability.
+  </Card>
+</CardGroup>
+
+## Product Analytics
+
+<CardGroup cols={1}>
+  <Card title="PostHog" icon="chart-bar" href="/integrations/posthog">
+    Trigger workflows on PostHog events, query sessions, and summarize user activity.
+  </Card>
+</CardGroup>
+
+## Deployment
+
+<CardGroup cols={1}>
+  <Card title="Vercel" icon="triangle" href="/integrations/vercel">
+    Trigger workflows on deployment events, fetch build logs, and execute rollbacks.
+  </Card>
+</CardGroup>
+
+## Cost Management
+
+AWS Cost features (Cost Explorer queries, anomaly detection, forecasts, budgets) are available through the [AWS integration](/integrations/aws). No separate setup is required — cost management actions are enabled when you connect an AWS account.
+
+## Knowledge Sources
+
+Workflows can reference context from your team's knowledge bases during AI-powered steps like RCA and investigation. Connect knowledge sources so Kestrel's AI agents can search historical incidents, runbooks, and documentation.
+
+<CardGroup cols={3}>
+  <Card title="Confluence" icon="book" href="/integrations/confluence">
+    Runbooks and postmortems
+  </Card>
+  <Card title="Jira" icon="ticket" href="/integrations/jira">
+    Past incident tickets
+  </Card>
+  <Card title="Slack" icon="slack" href="/integrations/slack">
+    Historical conversations
+  </Card>
+  <Card title="Glean" icon="magnifying-glass" href="/integrations/glean">
+    Enterprise search
+  </Card>
+  <Card title="Linear" icon="chart-line" href="/integrations/linear">
+    Engineering context
+  </Card>
+</CardGroup>
+
+For details on how knowledge sources enhance AI actions, see [Knowledge Sources](/integrations/knowledge-sources).
+
+---
+
+## Next Steps
+
+- [Create Workflows](/workflows/create-workflows) — Build your first workflow after connecting integrations
+- [Custom Integrations](/workflows/custom-integrations) — Connect services not listed here using HTTP actions and webhooks

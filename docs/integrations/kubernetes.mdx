@@ -1,0 +1,221 @@
+---
+title: "Kubernetes"
+description: "Connect your Kubernetes clusters to Kestrel for real-time incident detection, traffic visibility, and AI-powered operations"
+---
+
+The Kestrel Operator is a lightweight Kubernetes agent that connects your clusters to the Kestrel AI platform. It streams resource metadata, events, logs, and network traffic telemetry over mTLS — enabling 24/7 real-time incident detection, AI-powered workflows, and an infrastructure copilot without any changes to your existing applications.
+
+## Prerequisites
+
+- Kubernetes cluster (v1.24+)
+- `kubectl` configured with cluster admin access
+- `helm` CLI (v3.0+)
+- A Kestrel AI account with **Organization Admin** role
+- Network connectivity to `grpc.platform.usekestrel.ai:443`
+
+## Setup
+
+<Steps>
+  <Step title="Generate operator credentials">
+    1. Log in to the [Kestrel AI Dashboard](https://platform.usekestrel.ai)
+    2. Navigate to **Integrations → Kubernetes**
+    3. Click **Generate New Credential**
+    4. Set a **Cluster Name** (e.g., `production-cluster`) — alphanumeric, dots, dashes, and underscores only
+    5. Choose your **Flow Collection Source** (Cilium L3/L4 or Istio L7)
+    6. Choose your **Metrics Source** (Kubernetes Metrics Server, OpenTelemetry, or Datadog)
+    7. Optionally enable **Safe-Apply Permissions** for AI-powered resource management
+  </Step>
+  <Step title="Download the Helm values file">
+    Click **Download** to save the pre-configured values file:
+    ```
+    kestrel-ai-operator-values-<cluster-name>.yaml
+    ```
+  </Step>
+  <Step title="Deploy with Helm">
+    ```bash
+    helm install kestrel-operator \
+      oci://ghcr.io/kestrelai/charts/kestrel-operator \
+      --version latest \
+      --namespace kestrel-ai \
+      --create-namespace \
+      -f kestrel-ai-operator-values-<cluster-name>.yaml
+    ```
+  </Step>
+  <Step title="Verify installation">
+    Check pod status:
+    ```bash
+    kubectl get pods -n kestrel-ai -l app=kestrel-operator
+    ```
+    Expected output:
+    ```
+    NAME                               READY   STATUS    RESTARTS   AGE
+    kestrel-operator-xxxxxxxxx-xxxxx   1/1     Running   0          1m
+    ```
+    Then confirm the cluster shows as **Connected** (green badge) in **Integrations → Kubernetes**.
+  </Step>
+</Steps>
+
+<Note>
+  The operator token automatically renews every 24 hours. No manual rotation is required.
+</Note>
+
+## Flow Collection Sources
+
+<Tabs>
+  <Tab title="Cilium (L3/L4)">
+    Collects Layer 3/4 network flows from Cilium CNI via Hubble Relay. This is the default — no extra configuration needed if Cilium is your CNI.
+  </Tab>
+  <Tab title="Istio (L7)">
+    Collects Layer 7 HTTP/gRPC access logs from Envoy proxies via Istio's Access Log Service. Requires registering Kestrel as an Istio extension provider — see the [Configuration Reference](#istio-configuration) below.
+  </Tab>
+</Tabs>
+
+## How It's Used
+
+### In Workflows
+
+- **Trigger blocks**: Pod crash loops, OOMKills, node pressure, deployment failures, HPA events, and custom Kubernetes signals
+- **Action blocks**: Kubectl commands, resource scaling, rolling restarts, network policy application, safe-apply YAML changes
+- **Context**: Full cluster inventory, pod logs, events, and metrics available as workflow variables
+
+### In Incident Response
+
+- **24/7 real-time detection** from Kubernetes events, pod logs, node conditions, and network telemetry
+- **Automated root cause analysis** correlating events, metrics, logs, and network flows
+- **YAML fix generation** with one-click GitOps deployment via connected GitHub/GitLab repos
+- **Causal PR detection** — identifies recent deployments that may have caused the incident
+
+### In Cloud AI Copilot
+
+- Ask questions about any connected cluster: `What pods are crashing in production?`
+- Query metrics and resource utilization: `Show memory usage for the payments namespace`
+- Generate and apply Kubernetes resources through conversational AI
+- Use the `/kestrel` Slack command for quick cluster queries
+
+## Configuration Reference
+
+### Helm Values
+
+#### Authentication
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `auth.token` | string | `""` | JWT token (generated in dashboard) |
+| `server.host` | string | `grpc.platform.usekestrel.ai` | gRPC endpoint |
+| `server.port` | integer | `443` | gRPC port |
+
+#### Cilium
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `operator.cilium.disableFlows` | boolean | `false` | Disable Cilium flow collection |
+| `operator.cilium.hubble.tls.forceDisable` | boolean | `false` | Disable TLS for Hubble connections |
+
+#### Istio Configuration
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `operator.istio.enabled` | boolean | `false` | Enable Istio ALS for L7 flows |
+| `operator.istio.alsPort` | integer | `8080` | ALS gRPC server port |
+
+When enabling Istio, register Kestrel as an extension provider in your Istio mesh config:
+
+```yaml
+meshConfig:
+  extensionProviders:
+    - name: kestrel-operator-als
+      envoyHttpAls:
+        service: kestrel-operator-als.kestrel-ai.svc.cluster.local
+        port: 8080
+    - name: kestrel-operator-als-tcp
+      envoyTcpAls:
+        service: kestrel-operator-als.kestrel-ai.svc.cluster.local
+        port: 8080
+```
+
+#### Metrics Source
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `operator.otel.enabled` | boolean | `false` | Enable OpenTelemetry metrics receiver |
+| `operator.otel.receiverPort` | integer | `4317` | OTLP gRPC receiver port |
+| `operator.datadog.enabled` | boolean | `false` | Enable Datadog metrics integration |
+| `operator.datadog.namespace` | string | `"datadog"` | Namespace where Datadog is deployed |
+
+#### Safe-Apply
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `operator.safeApply.enabled` | boolean | `false` | Grant RBAC permissions for applying approved changes |
+
+<Warning>
+  Safe-Apply permissions allow the operator to create, update, and delete Kubernetes resources. Only enable if you plan to use AI-powered resource management features.
+</Warning>
+
+### Quick Configuration Examples
+
+**Cilium with Datadog metrics:**
+```yaml
+auth:
+  token: "your-token-here"
+operator:
+  cluster:
+    id: "cluster-uuid"
+    name: "production-cluster"
+  datadog:
+    enabled: true
+    namespace: "datadog"
+```
+
+**Istio with OpenTelemetry metrics:**
+```yaml
+auth:
+  token: "your-token-here"
+operator:
+  cluster:
+    id: "cluster-uuid"
+    name: "production-cluster"
+  cilium:
+    disableFlows: true
+  istio:
+    enabled: true
+    alsPort: 8080
+  otel:
+    enabled: true
+```
+
+## Managing Clusters
+
+### Multiple Clusters
+
+Connect multiple clusters to a single Kestrel organization. Generate a unique credential for each cluster and deploy the operator with its specific token.
+
+<Note>
+  Your subscription tier determines the maximum number of clusters. Contact [hello@usekestrel.ai](mailto:hello@usekestrel.ai) to upgrade.
+</Note>
+
+### Updating
+
+```bash
+helm upgrade kestrel-operator \
+  oci://ghcr.io/kestrelai/charts/kestrel-operator \
+  --version latest \
+  --namespace kestrel-ai \
+  -f kestrel-ai-operator-values-<cluster-name>.yaml
+```
+
+### Uninstalling
+
+```bash
+helm uninstall kestrel-operator -n kestrel-ai
+```
+
+Then revoke the credential in **Integrations → Kubernetes** by clicking the delete icon next to your cluster.
+
+### Connection Status
+
+| Status | Meaning |
+|---|---|
+| **Connected** (Green) | Actively sending data |
+| **Offline** (Gray) | Previously connected, currently offline |
+| **Pending** (Red) | Never connected with this token |

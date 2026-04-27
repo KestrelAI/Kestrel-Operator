@@ -1,0 +1,222 @@
+---
+title: "Cloud Incident Response"
+description: "AI-powered detection and remediation for AWS and OCI cloud incidents"
+---
+
+Kestrel monitors your AWS and OCI cloud accounts for security events, misconfigurations, and anomalous activity. When an incident is detected — an IAM policy violation, an S3 bucket made public, a VPC route change — Kestrel runs root cause analysis and generates Terraform, CloudFormation, or CLI fixes.
+
+<!-- Screenshot placeholder: Cloud Incidents list page showing detected cloud incidents with severity, service, and affected resources -->
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="AWS Account" icon="aws" href="/integrations/aws">
+    Connect an AWS account with CloudTrail enabled.
+  </Card>
+  <Card title="OCI Tenancy" icon="cloud" href="/integrations/oci">
+    Connect an OCI tenancy with Audit logging enabled.
+  </Card>
+  <Card title="Slack (optional)" icon="slack" href="/integrations/slack">
+    Receive cloud incident notifications in your team's channels.
+  </Card>
+  <Card title="PagerDuty (optional)" icon="bell" href="/integrations/pagerduty">
+    Route cloud incidents to your on-call team.
+  </Card>
+  <Card title="GitHub / GitLab (optional)" icon="code-branch" href="/integrations/github">
+    Enable IaC remediation workflows with PR-based Terraform fixes.
+  </Card>
+</CardGroup>
+
+## How Detection Works
+
+### AWS
+
+Kestrel analyzes your AWS environment through:
+
+- **CloudTrail events** — API call analysis for IAM changes, security group modifications, S3 policy changes, VPC route changes, and other security-relevant actions
+- **Resource monitoring** — Continuous assessment of EC2 instances, S3 buckets, RDS databases, Lambda functions, and other AWS resources
+- **Cost anomalies** — Detection of unusual spend patterns across services and accounts
+- **PagerDuty signals** — If PagerDuty is connected, Kestrel enriches PagerDuty alerts with cloud context and AI analysis
+
+### OCI
+
+Kestrel analyzes your OCI environment through:
+
+- **Audit log events** — API call analysis for IAM policy changes, compartment modifications, network security changes, and other security-relevant actions
+- **Cloud Guard problems** — Integration with OCI Cloud Guard for threat detection
+- **Resource monitoring** — Continuous assessment of compute instances, object storage buckets, databases, and network configurations
+
+<!-- Screenshot placeholder: Cloud incident detail page showing root cause analysis with CloudTrail event timeline -->
+
+## Root Cause Analysis
+
+When a cloud incident is detected, Kestrel's AI investigates:
+
+1. **API event history** — The sequence of CloudTrail or OCI Audit events that led to the incident
+2. **Resource configuration** — Current and previous state of the affected resource
+3. **IAM context** — Who performed the action, what role they assumed, and whether it was authorized
+4. **Network context** — VPC, subnet, security group, and route table configurations
+5. **Knowledge sources** (if connected) — Historical incidents, runbooks, and organizational context from Confluence, Jira, Slack, Glean, or Linear
+
+The AI produces:
+
+- **Investigation summary** — What happened, who was involved, and the blast radius
+- **Root cause** — The specific API call or configuration change that caused the incident
+- **Timeline** — Chronological sequence of events with timestamps and principals
+- **Affected resources** — All cloud resources impacted
+- **Risk assessment** — Severity and potential downstream impact
+
+## Fix Generation
+
+Kestrel generates infrastructure-as-code fixes for cloud incidents. The fix format depends on your infrastructure tooling:
+
+| Fix Type | Description |
+|----------|-------------|
+| **Terraform** | HCL resource definitions ready to apply or commit |
+| **AWS CLI** | AWS CLI commands to remediate the issue directly |
+| **OCI CLI** | OCI CLI commands for OCI resource remediation |
+
+<!-- Screenshot placeholder: Cloud fix section showing a Terraform diff with Create PR and Copy buttons -->
+
+Each fix includes:
+
+- **Diff view** — Before and after comparison of the resource configuration
+- **Explanation** — Why this change resolves the issue
+- **Validation** — Pre-apply checks to confirm the fix is safe
+
+## IaC Remediation Workflow
+
+When a GitHub or GitLab integration is connected along with an IaC repository configuration, Kestrel can open pull requests with Terraform fixes directly in your infrastructure repository:
+
+<Steps>
+  <Step title="Incident detected">
+    Kestrel detects a cloud security event (e.g., S3 bucket made public).
+  </Step>
+  <Step title="AI generates fix">
+    Root cause analysis runs and a Terraform fix is generated.
+  </Step>
+  <Step title="PR created">
+    Kestrel opens a pull request in your configured Terraform repository with the fix.
+  </Step>
+  <Step title="Review and merge">
+    Your team reviews the PR. Merging applies the fix through your existing GitOps pipeline.
+  </Step>
+</Steps>
+
+Configure IaC repositories from the incident detail page by selecting your connected GitHub or GitLab repo and the target directory for Terraform files.
+
+## Cloud Incident Types
+
+### AWS — IAM & Access
+
+| Type | Description |
+|------|-------------|
+| **IAMCompromise** | Potential IAM credential compromise detected |
+| **IAMPolicyViolation** | IAM policy change that violates security best practices |
+| **IAMRoleAbuse** | Suspicious IAM role assumption patterns |
+| **UnauthorizedAccess** | API calls from unauthorized principals |
+| **CredentialLeak** | Exposed credentials detected |
+| **PrivilegeEscalation** | Attempt to escalate IAM privileges |
+
+### AWS — S3
+
+| Type | Description |
+|------|-------------|
+| **S3PublicAccess** | S3 bucket or object made publicly accessible |
+| **S3PolicyModification** | Bucket policy changed in a security-relevant way |
+| **S3DataExfiltration** | Unusual data access patterns on S3 objects |
+| **S3EncryptionDisabled** | Bucket encryption configuration removed or weakened |
+
+### AWS — Network & VPC
+
+| Type | Description |
+|------|-------------|
+| **SecurityGroupModification** | Security group rules changed |
+| **VPCModification** | VPC configuration changed |
+| **VPCRouteChange** | Route table entry added, modified, or deleted |
+| **VPCFlowLogsDisabled** | VPC Flow Logs disabled |
+| **VPCPeeringChange** | VPC peering connection modified |
+| **VPCGatewayChange** | Internet or NAT gateway configuration changed |
+| **VPCSubnetChange** | Subnet configuration changed |
+| **VPCDeletion** | VPC deleted |
+| **NetworkTrafficAnomaly** | Unusual network traffic patterns detected |
+
+### AWS — Compute & Services
+
+| Type | Description |
+|------|-------------|
+| **EC2Anomaly** | Unusual EC2 instance behavior |
+| **EC2InstanceCompromise** | Potential EC2 instance compromise |
+| **EC2UnauthorizedAccess** | Unauthorized access to EC2 instances |
+| **APIThrottling** | API throttling across AWS services |
+| **ResourceExhaustion** | Service limit or quota exhaustion |
+| **ServiceHealthDegradation** | Degraded performance of AWS services |
+
+### AWS — Compliance
+
+| Type | Description |
+|------|-------------|
+| **ConfigComplianceViolation** | AWS Config rule violation |
+| **SecurityHubFinding** | AWS Security Hub finding |
+
+### OCI — IAM & Access
+
+| Type | Description |
+|------|-------------|
+| **OCIIAMCompromise** | Potential OCI IAM compromise detected |
+| **OCIIAMUserChange** | IAM user created, modified, or deleted |
+| **OCIIAMGroupChange** | IAM group membership changed |
+| **OCIDynamicGroupChange** | Dynamic group matching rules changed |
+| **OCIPolicyChange** | OCI IAM policy statement modified |
+| **OCICompartmentChange** | Compartment created, moved, or deleted |
+| **OCICredentialChange** | API key or auth token modified |
+| **OCIPrivilegeEscalation** | Privilege escalation attempt detected |
+
+### OCI — Network
+
+| Type | Description |
+|------|-------------|
+| **OCISecurityListChange** | Security list ingress/egress rules changed |
+| **OCINetworkSecurityGroupChange** | Network security group rules modified |
+| **OCIVCNChange** | VCN configuration changed |
+| **OCISubnetChange** | Subnet configuration modified |
+| **OCIRouteTableChange** | Route table rules changed |
+| **OCIInternetGatewayChange** | Internet gateway created or modified |
+| **OCINatGatewayChange** | NAT gateway configuration changed |
+| **OCILoadBalancerChange** | Load balancer configuration modified |
+| **OCIDrgChange** | Dynamic Routing Gateway modified |
+
+### OCI — Storage & Compute
+
+| Type | Description |
+|------|-------------|
+| **OCIBucketPublicAccess** | Object Storage bucket made publicly accessible |
+| **OCIBucketPolicyChange** | Bucket policy modified |
+| **OCIComputeAnomaly** | Unusual compute instance behavior |
+| **OCIDatabaseSecurityChange** | Database security configuration changed |
+| **OCIKMSKeyCompromise** | Potential KMS key compromise |
+
+### OCI — Cloud Guard
+
+| Type | Description |
+|------|-------------|
+| **OCICloudGuardProblem** | Cloud Guard detected a security problem |
+
+## Custom Workflows
+
+Build custom cloud incident response workflows that trigger on cloud events. For example:
+
+- Notify a security channel when an S3 bucket is made public
+- Auto-create a Jira ticket for every IAM policy violation
+- Escalate VPC route changes to PagerDuty during change-freeze windows
+- Run a custom remediation script when a Security Hub finding is detected
+
+See [Workflows](/workflows/create-workflows) to build custom cloud incident response automation.
+
+## Next Steps
+
+- [Connect an AWS account](/integrations/aws) to start detecting cloud incidents
+- [Connect an OCI tenancy](/integrations/oci) for Oracle Cloud monitoring
+- [Set up GitHub or GitLab](/integrations/github) for IaC remediation PRs
+- [Configure Slack notifications](/integrations/slack) for real-time cloud alerts
+- [Build custom workflows](/workflows/create-workflows) for automated cloud incident response

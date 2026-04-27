@@ -1,0 +1,124 @@
+---
+title: "Knowledge Sources"
+description: "Connect your organization's knowledge sources to enhance incident investigations with historical context"
+---
+
+Knowledge Sources connects Kestrel to the tools where your team's operational knowledge already lives. When an incident is detected, Kestrel automatically searches your connected sources for similar past incidents, runbooks, postmortems, and relevant discussions — providing historical context alongside real-time diagnostics.
+
+## How It Works
+
+When an incident is detected, Kestrel automatically:
+
+1. Searches connected knowledge sources for relevant context
+2. Finds similar past incidents and their resolutions
+3. Locates runbooks and documentation for affected services
+4. Surfaces team discussions about the affected systems
+5. Retrieves postmortems and lessons learned from related incidents
+
+This context is presented alongside Kestrel's automated investigation, giving you both real-time diagnostics and historical insight.
+
+## Supported Sources
+
+| Source | Auth Method | What It Searches |
+|--------|------------|------------------|
+| [**Slack**](/integrations/slack) | Kestrel App (no extra setup) | Messages and threads for relevant discussions |
+| [**Confluence**](/integrations/confluence) | OAuth (via Confluence integration) | Wiki pages, runbooks, postmortems, architecture docs |
+| [**Jira**](/integrations/jira) | OAuth (via Jira integration) | Issues, comments, and postmortems |
+| [**Linear**](/integrations/linear) | OAuth (via Linear integration) | Issues, projects, and comments |
+| [**Notion**](/integrations/knowledge-sources#notion) | Internal Integration Token | Pages and databases |
+| [**Glean**](/integrations/glean) | API Key | Enterprise-wide search across all connected tools |
+
+## Setup
+
+### Adding a Source
+
+<Steps>
+  <Step title="Navigate to Knowledge Sources">
+    Go to **Integrations → Knowledge Sources** in your Kestrel dashboard.
+  </Step>
+  <Step title="Add a source">
+    Click **Add Source** and select the source type from the dropdown.
+  </Step>
+  <Step title="Authenticate">
+    Follow the source-specific instructions below. Sources that have a dedicated integration (Slack, Confluence, Jira, Linear) are auto-detected when that integration is already connected.
+  </Step>
+  <Step title="Enable">
+    Click **Add Source** to save and enable the knowledge source.
+  </Step>
+</Steps>
+
+### Slack
+
+Slack uses the same Kestrel app as incident notifications. No additional credentials are required.
+
+**Prerequisite**: Your Slack workspace must be connected via the [Slack Integration](/integrations/slack).
+
+1. Select **Slack** as the source type
+2. If connected, you'll see a green confirmation
+3. Click **Enable Slack Search**
+
+<Tip>
+  Invite @Kestrel to the channels you want to be searchable for knowledge source lookups.
+</Tip>
+
+### Confluence
+
+If Confluence is connected via the [Confluence Integration](/integrations/confluence), it's auto-detected. Otherwise:
+
+1. Go to [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+2. Create an API token
+3. Enter your **Email Address**, **API Token**, and **Base URL** (e.g., `https://yourcompany.atlassian.net`)
+
+### Jira
+
+If Jira is connected via the [Jira Integration](/integrations/jira), it's auto-detected. Otherwise:
+
+1. Go to [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+2. Create or reuse an Atlassian API token
+3. Enter your **Email Address**, **API Token**, and **Base URL**
+
+### Linear
+
+If Linear is connected via the [Linear Integration](/integrations/linear), it's auto-detected. Otherwise:
+
+1. Go to [linear.app/settings/account/security](https://linear.app/settings/account/security)
+2. Create a **Personal API Key**
+3. Paste the key in the **API Key** field
+
+<Note>
+  Personal API keys have the same permissions as your user account. Consider using a service account for production.
+</Note>
+
+### Notion
+
+1. Go to [notion.so/my-integrations](https://notion.so/my-integrations) and create a new integration
+2. Copy the **Internal Integration Secret** token
+3. **Important**: Share the pages/databases you want searchable with your integration
+4. Paste the token in the **API Key** field
+5. Optionally enter a **Workspace ID**
+
+<Note>
+  You must explicitly share each Notion page or database with the integration for it to be searchable.
+</Note>
+
+### Glean
+
+See the [Glean integration page](/integrations/glean) for full setup instructions.
+
+## Managing Sources
+
+### Testing a Connection
+
+Click the **Test** button on any source to verify credentials and connectivity.
+
+### Enabling/Disabling
+
+Use the toggle switch on each source to temporarily enable or disable it without removing the configuration.
+
+### Editing
+
+Click the edit icon to update the display name, credentials, or base URL. Leave credential fields blank to keep existing values.
+
+### Deleting
+
+Click the delete icon and confirm to permanently remove a source. Incident analysis will no longer include context from that source.

@@ -1,0 +1,182 @@
+---
+title: "Kubernetes Incident Response"
+description: "AI-powered detection, root cause analysis, and remediation for Kubernetes incidents"
+---
+
+Kestrel monitors your Kubernetes clusters 24/7, automatically detecting incidents as they occur. When something goes wrong — a pod enters CrashLoopBackOff, a deployment rollout stalls, a node becomes unresponsive — Kestrel's AI runs root cause analysis, generates YAML fixes, identifies causal PRs, and creates postmortems.
+
+<!-- Screenshot placeholder: Kubernetes Incidents list page showing detected incidents with severity, status, and affected resources -->
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Kubernetes Cluster" icon="dharmachakra" href="/integrations/kubernetes">
+    Connect at least one Kubernetes cluster with the Kestrel operator installed.
+  </Card>
+  <Card title="Slack (optional)" icon="slack" href="/integrations/slack">
+    Receive incident notifications and ask follow-up questions in threads.
+  </Card>
+  <Card title="Observability (optional)" icon="chart-line" href="/integrations/datadog">
+    Connect Datadog or OpenTelemetry for metrics context during root cause analysis.
+  </Card>
+  <Card title="PagerDuty (optional)" icon="bell" href="/integrations/pagerduty">
+    Route incidents to your on-call team with AI-enriched context.
+  </Card>
+  <Card title="GitHub / GitLab (optional)" icon="code-branch" href="/integrations/github">
+    Enable causal PR detection and GitOps remediation workflows.
+  </Card>
+  <Card title="Knowledge Sources (optional)" icon="book" href="/integrations/knowledge-sources">
+    Connect Confluence, Jira, Slack history, Glean, or Linear for historical incident context.
+  </Card>
+</CardGroup>
+
+## How Detection Works
+
+The Kestrel operator runs inside your cluster and continuously monitors:
+
+- **Pod status** — CrashLoopBackOff, OOMKilled, ImagePullBackOff, evictions, probe failures
+- **Deployment rollouts** — stalled rollouts, failed replica scaling, rollback events
+- **Node health** — NotReady nodes, resource pressure, taint/toleration mismatches
+- **Kubernetes events** — scheduling failures, volume errors, RBAC denials, container runtime errors
+- **Application signals** — segfaults, panics, uncaught exceptions, null pointer errors, deadlocks
+
+When the operator detects an abnormal condition, it creates an incident and immediately begins AI-powered investigation.
+
+<Tip>
+Kestrel distinguishes between **transient** incidents (pods that crash once and recover) and **persistent** incidents. Transient incidents are hidden by default in the dashboard but are still recorded for historical analysis.
+</Tip>
+
+## Root Cause Analysis
+
+When an incident is detected, Kestrel's AI analyzes multiple data sources to determine the root cause:
+
+1. **Container logs** — Recent logs from the affected pod and its previous restarts
+2. **Kubernetes events** — Events attached to the pod, deployment, node, and namespace
+3. **Resource specifications** — CPU/memory requests and limits, volume mounts, environment variables, probes
+4. **Metrics** (if Datadog or OpenTelemetry is connected) — CPU usage, memory consumption, request latency, error rates
+5. **Knowledge sources** (if connected) — Historical incidents, runbooks, and tribal knowledge from Confluence, Jira, Slack, Glean, or Linear
+
+<!-- Screenshot placeholder: Incident detail page showing the root cause analysis section with investigation summary -->
+
+The AI produces:
+
+- **Investigation summary** — A step-by-step account of what was analyzed and what was found
+- **Root cause** — The identified cause of the incident with supporting evidence
+- **Timeline** — Sequence of events leading to the incident
+- **Affected resources** — All Kubernetes resources involved (pods, deployments, services, nodes)
+- **Service dependencies** — Upstream and downstream services that may be impacted
+
+## Fix Generation
+
+After identifying the root cause, Kestrel generates YAML fixes that address the issue. Fixes are generated as Kubernetes resource patches — for example, increasing memory limits for an OOMKilled pod or correcting an image tag for an ImagePullBackOff.
+
+<!-- Screenshot placeholder: YAML fix section showing a diff view of the proposed change with Apply, Create PR, and Copy buttons -->
+
+Each fix includes:
+
+- **Diff view** — Side-by-side comparison of the current and proposed resource spec
+- **Explanation** — Why this change addresses the root cause
+- **Apply options:**
+
+| Method | Description |
+|--------|-------------|
+| **Safe Apply** | Apply the fix directly to the cluster through the Kestrel operator |
+| **Create PR** | Open a pull request in your connected GitHub or GitLab repository (GitOps workflow) |
+| **Copy YAML** | Copy the fix to your clipboard for manual application |
+
+For application-level incidents (segfaults, exceptions, panics), Kestrel also generates **code fixes** — suggested source code changes with file paths and diffs, ready to be applied as a PR.
+
+<Warning>
+Safe Apply requires write permissions on the Kestrel operator. By default, the operator runs in read-only mode. See [Auto-Remediation](#auto-remediation) to enable write access.
+</Warning>
+
+## Causal PR Detection
+
+When a GitHub or GitLab integration is connected, Kestrel searches for recently merged pull requests or merge requests that may have caused the incident.
+
+The AI correlates:
+
+- The **affected resource** (deployment, namespace, image tag)
+- The **incident timeline** (when the issue first appeared)
+- **Recent merges** in connected repositories (code changes, config changes, Helm value updates)
+
+If a likely causal PR is found, the incident detail page links directly to it with an explanation of why Kestrel believes it contributed to the issue.
+
+<!-- Screenshot placeholder: Causal PR section showing a linked GitHub PR with merge timestamp and correlation reasoning -->
+
+## Incident Types
+
+### Infrastructure Incidents
+
+| Type | Description |
+|------|-------------|
+| **CrashLoopBackOff** | Container repeatedly crashes after starting |
+| **OOMKilled** | Container terminated due to exceeding memory limits |
+| **ImagePullBackOff** | Unable to pull the container image |
+| **RolloutFailure** | Deployment rollout failed or stalled |
+| **NodeNotReady** | Node is not in a Ready state |
+| **SchedulingFailure** | Pod cannot be scheduled to any node |
+| **InsufficientResources** | Cluster lacks CPU or memory to schedule the pod |
+| **TaintTolerationMismatch** | Pod tolerations don't match available node taints |
+| **NodeSelectorMismatch** | No nodes match the pod's node selector |
+| **PodEvicted** | Pod was evicted due to resource pressure |
+| **LivenessProbeFailure** | Liveness probe is failing, triggering container restarts |
+| **ReadinessProbeFailure** | Readiness probe is failing, removing the pod from service |
+| **HealthCheckFailure** | Health check endpoint is not responding |
+| **MissingPVC** | PersistentVolumeClaim referenced by the pod does not exist |
+| **VolumeError** | Volume mount or attachment failure |
+| **VolumeResizeError** | PersistentVolume resize operation failed |
+| **NetworkError** | Network connectivity issue affecting the pod |
+| **RBACError** | Insufficient RBAC permissions for the workload |
+| **ResourceExhaustion** | Cluster-wide resource exhaustion (CPU, memory, or disk) |
+| **ContainerRuntimeError** | Container runtime failure (containerd, CRI-O) |
+| **LifecycleHookError** | PreStop or PostStart lifecycle hook failure |
+| **ConfigError** | ConfigMap or Secret misconfiguration |
+
+### Application Incidents
+
+| Type | Description |
+|------|-------------|
+| **ApplicationError** | Generic application error detected in logs |
+| **Segfault** | Segmentation fault in the application process |
+| **NullPointerException** | Null pointer or nil reference dereference |
+| **Panic** | Go panic or equivalent unrecoverable error |
+| **UncaughtException** | Unhandled exception in the application |
+| **IndexOutOfBounds** | Array or slice index out of range |
+| **DivisionByZero** | Division by zero error |
+| **MemoryError** | Application-level memory allocation failure |
+| **StackOverflow** | Stack overflow due to excessive recursion |
+| **AssertionError** | Assertion failure in application code |
+| **Deadlock** | Thread or goroutine deadlock detected |
+
+## Auto-Remediation
+
+By default, the Kestrel operator runs in **read-only mode** — it can detect incidents and generate fixes, but cannot apply changes to your cluster. To enable automatic or one-click fix application:
+
+1. Navigate to **Clusters** in the Kestrel dashboard
+2. Select the cluster you want to configure
+3. Enable **Safe Apply** to allow one-click fix application from the dashboard
+4. Optionally enable **Auto-Remediation** to let Kestrel automatically apply approved fix types without manual intervention
+
+<Info>
+Auto-remediation policies are configured per cluster. You can define which incident types and severities are eligible for automatic remediation.
+</Info>
+
+## Custom Workflows
+
+Build custom incident response workflows that trigger when Kubernetes incidents are detected. For example:
+
+- Notify a specific Slack channel when a critical OOMKilled incident occurs in the `production` namespace
+- Create a Jira ticket for every incident in a specific cluster
+- Automatically restart a deployment after a transient CrashLoopBackOff
+- Escalate to PagerDuty only if the incident persists for more than 5 minutes
+
+See [Workflows](/workflows/create-workflows) to build custom Kubernetes incident response automation.
+
+## Next Steps
+
+- [Connect a Kubernetes cluster](/integrations/kubernetes) to start detecting incidents
+- [Set up Slack notifications](/integrations/slack) for real-time alerts
+- [Connect GitHub or GitLab](/integrations/github) for causal PR detection and GitOps remediation
+- [Build custom workflows](/workflows/create-workflows) for automated incident response
+- [Configure PagerDuty](/integrations/pagerduty) for on-call routing with AI context

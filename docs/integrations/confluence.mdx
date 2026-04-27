@@ -1,0 +1,73 @@
+---
+title: "Confluence"
+description: "Connect Confluence for publishing runbooks, postmortems, and using wiki pages as incident knowledge"
+---
+
+The Confluence integration connects Kestrel to your Atlassian Confluence instance, enabling automated publishing of RCA reports, postmortems, and runbooks from workflows, plus historical knowledge search during incident investigations.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- Atlassian account with Confluence access
+
+## Setup
+
+<Steps>
+  <Step title="Connect via OAuth">
+    1. Navigate to **Integrations → Confluence** in your Kestrel dashboard
+    2. Click **Connect**
+    3. Authorize Kestrel in the Atlassian OAuth popup
+    4. Select the Confluence site to connect (if you have multiple)
+    5. The popup closes and your Confluence instance appears as connected
+  </Step>
+</Steps>
+
+<Tip>
+  If you've already connected Jira on the same Atlassian site, Confluence may be auto-detected. Check the Confluence integration card for a pre-authorized connection.
+</Tip>
+
+## How It's Used
+
+### In Workflows
+
+- **Action blocks**:
+  - **Create Page** — publish new Confluence pages with customizable space, title, and body content
+  - **Update Page** — modify existing pages (append, prepend, or replace content)
+  - **Publish RCA** — automatically publish root cause analysis reports to a designated space
+  - **Publish Postmortem** — generate and publish structured postmortem documents
+  - **Publish Runbook** — create or update runbook entries with workflow-generated content
+  - **Search Pages** — query Confluence for pages using CQL
+
+Example: A workflow triggered by an incident resolution can automatically generate a postmortem from the incident timeline, RCA findings, and remediation steps, and publish it to your team's Confluence space.
+
+### In Incident Response
+
+- **Knowledge source** — during root cause analysis, Kestrel searches Confluence for relevant runbooks, architecture docs, past postmortems, and team documentation about affected services (see [Knowledge Sources](/integrations/knowledge-sources))
+- **Postmortem publishing** — generate and publish structured postmortems directly from the incident detail page
+
+### In Cloud AI Copilot
+
+- Search documentation: `Find the runbook for the payments service`
+- Publish content: `Create a Confluence page summarizing today's incident`
+
+## Configuration
+
+### Knowledge Source Setup
+
+To use Confluence as a knowledge source during incident investigations:
+
+1. Navigate to **Integrations → Knowledge Sources**
+2. Click **Add Source** and select **Confluence**
+3. Your connected Confluence instance is auto-detected
+4. Optionally restrict search to specific spaces
+5. Click **Enable**
+
+Kestrel will search Confluence pages and blog posts for relevant historical context during incident RCA.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Confluence**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all Confluence workflow actions and removes Confluence as a knowledge source. You can reconnect at any time.
