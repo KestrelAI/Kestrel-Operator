@@ -3,21 +3,21 @@ title: "Introduction"
 description: "Kestrel documentation - AI Agents for Cloud Operations"
 ---
 
-Kestrel is the AI agents platform for cloud operations. Build intelligent workflows that automate incident response, cloud provisioning, CI/CD pipelines, and developer requests — using natural language, a drag-and-drop canvas, CLI, SDK, or MCP. Connect 15+ integrations, describe what you want, and let AI agents handle the rest.
+Kestrel is the agentic platform for cloud operations. Build workflows that automate incident response, cloud provisioning, CI/CD pipelines, and developer requests — using natural language, a drag-and-drop canvas, CLI, SDK, or MCP. Monitor Kubernetes and cloud infrastructure 24/7 with AI agents that detect, investigate, and fix incidents in seconds. Ask any question about your infrastructure through a conversational AI copilot. Connect 15+ integrations, describe what you want, and let AI agents handle the rest.
 
 {/* Screenshot placeholder: Kestrel platform overview showing the workflow canvas */}
 
-## Kestrel Products
+## What Kestrel Does
 
 <CardGroup cols={3}>
   <Card title="Workflows" icon="diagram-project" href="/quickstart/workflows">
-    Build automated workflows with natural language or a drag-and-drop canvas. Chain actions across Kubernetes, AWS, Slack, GitHub, PagerDuty, Datadog, and more. Trigger from K8s signals, cloud events, Slack requests, webhooks, or any integration — with built-in cooldowns and observability.
+    Build workflows with natural language or a drag-and-drop canvas that automate incident response, cloud resource provisioning, CI/CD pipelines, and on-demand developer requests. Chain actions across Kubernetes, AWS, Slack, GitHub, PagerDuty, Datadog, Vercel, and more. Trigger from K8s signals, cloud events, Slack requests, custom webhooks, or any integration — with built-in observability.
   </Card>
-  <Card title="Incident Response" icon="shield-halved" href="/quickstart/incident-response">
-    AI-powered 24/7 monitoring for Kubernetes and cloud incidents. Automatic root cause analysis, YAML and Terraform fix generation, causal PR detection, and postmortem creation — with optional auto-remediation.
+  <Card title="Incident Response" icon="siren" href="/quickstart/incident-response">
+    AI agents that monitor 24/7 for Kubernetes and cloud incidents. Automatic root cause analysis; YAML, Terraform, and code fix generation, causal PR detection, and postmortem creation — with optional auto-remediation.
   </Card>
   <Card title="Cloud AI Copilot" icon="comments" href="/quickstart/copilot">
-    Ask questions about your infrastructure in plain English. Investigate K8s clusters, AWS resources, metrics, and costs through the dashboard chat or the Slack `/kestrel` command.
+    Ask questions about your infrastructure and applications in plain English. Investigate K8s clusters, cloud resources, metrics, network traffic, costs and more through a chat interface or the Slack `/kestrel` command.
   </Card>
 </CardGroup>
 
@@ -25,10 +25,10 @@ Kestrel is the AI agents platform for cloud operations. Build intelligent workfl
 
 <Steps>
   <Step title="Connect your integrations">
-    Link Kubernetes clusters, cloud accounts, observability tools, notification channels, code repositories, and knowledge sources from the Kestrel dashboard. Each integration takes less than two minutes.
+    Link Kubernetes clusters, cloud accounts, observability tools, notification channels, code repositories, and knowledge sources from the Kestrel platform. Each integration takes less than two minutes to setup. Once connected, Kestrel automatically starts monitoring for Kubernetes and cloud incidents across both infrastructure and application layers. The Cloud AI Copilot also becomes available immediately — ask any question about your infrastructure through the dashboard chat or the Slack `/kestrel` command.
   </Step>
   <Step title="Build workflows">
-    Describe what you want in natural language — or drag and drop actions on the canvas. Configure triggers, actions, and template variables. Kestrel's AI assembles and validates the workflow for you.
+    Describe what you want in natural language to the Workflow Agent — or drag and drop actions on the canvas, configuring triggers and actions using template variables. Kestrel's AI assembles and validates the workflow for you.
   </Step>
   <Step title="AI handles the rest">
     Workflows run automatically when triggered. AI agents execute each step, route notifications, generate fixes, create tickets, and escalate when needed — with full audit logs and observability.
@@ -41,28 +41,28 @@ Kestrel connects to your clouds, clusters, observability tools, CI/CD pipelines,
 
 | Integration | Purpose |
 |---|---|
-| [Kubernetes](/integrations/kubernetes) | Cluster monitoring, incident detection, resource inventory |
-| [AWS](/integrations/aws) | Cloud resource inventory, incident detection, VPC Flow Logs |
-| [OCI](/integrations/oci) | Oracle Cloud resource inventory and incident detection |
-| [Slack](/integrations/slack) | Notifications, interactive Q&A, `/kestrel` copilot command, workflow triggers |
-| [GitHub](/integrations/github) | GitOps deployments, causal PR detection, IaC remediation |
-| [GitLab](/integrations/gitlab) | GitOps deployments, merge request remediation |
-| [PagerDuty](/integrations/pagerduty) | On-call alerting with RCA context and auto-resolution |
-| [Jira](/integrations/jira) | Ticket creation and incident tracking |
-| [Confluence](/integrations/confluence) | Knowledge source for incident context |
-| [Datadog](/integrations/datadog) | Metrics, monitors, and observability context |
-| [ArgoCD](/integrations/argocd) | GitOps sync status and deployment tracking |
-| [PostHog](/integrations/posthog) | Product analytics events and workflow triggers |
-| [Vercel](/integrations/vercel) | Deployment events and workflow triggers |
-| [Linear](/integrations/linear) | Issue tracking and workflow actions |
-| [Glean](/integrations/glean) | Enterprise knowledge search during incidents |
-| [OpenTelemetry](/integrations/opentelemetry) | Traces and metrics for incident investigation |
+| [Kubernetes](/integrations/kubernetes) | Cluster monitoring, incident detection, resource inventory. **Workflows:** trigger on pod crashes, node failures, rollout issues; actions include RCA, fix generation, manifest creation, kubectl investigations |
+| [AWS](/integrations/aws) | Cloud resource inventory, incident detection, VPC Flow Logs. **Workflows:** trigger on IAM, S3, EC2, RDS, Lambda events; actions include cloud RCA, Terraform/CLI generation, cost queries, anomaly detection, forecasting |
+| [OCI](/integrations/oci) | Oracle Cloud resource inventory, incident detection, VCN Flow Logs |
+| [Slack](/integrations/slack) | Notifications, interactive Q&A, `/kestrel` copilot, `/kestrel-workflow` triggers. **Workflows:** trigger from Slack requests; actions include sending messages, threaded replies, approval requests, DMs |
+| [GitHub](/integrations/github) | GitOps deployments, causal PR detection, IaC remediation. **Workflows:** actions include creating PRs/issues, triggering Actions, waiting for runs, AI code investigation, AI code fix generation |
+| [GitLab](/integrations/gitlab) | GitOps deployments, merge request remediation. **Workflows:** actions include creating MRs/issues, triggering pipelines, waiting for pipeline completion |
+| [PagerDuty](/integrations/pagerduty) | On-call alerting with RCA context and auto-resolution. **Workflows:** trigger on PD incidents; actions include creating/acknowledging/resolving alerts, adding notes, escalation |
+| [Jira](/integrations/jira) | Ticket creation and incident tracking. **Workflows:** actions include creating tickets, adding comments, transitioning ticket status |
+| [Confluence](/integrations/confluence) | RCA publishing, postmortems, runbooks. **Workflows:** actions include publishing RCA pages, postmortems, runbook entries, updating existing pages. Also used as a knowledge source during incident investigation |
+| [Datadog](/integrations/datadog) | Metrics, monitors, and observability context. **Workflows:** actions include querying metrics, creating monitors, sending events, muting monitors |
+| [ArgoCD](/integrations/argocd) | GitOps deployment management. **Workflows:** actions include triggering syncs, waiting for sync completion, checking application health status |
+| [PostHog](/integrations/posthog) | Product analytics events and session replay. **Workflows:** trigger on exceptions, rage clicks, console errors, log alerts; actions include session summaries, event queries, error issue details |
+| [Vercel](/integrations/vercel) | Deployment events and build management. **Workflows:** trigger on deployment failures/successes, error anomalies; actions include getting deployments, build logs, rollbacks, promotions, AI investigation |
+| [Linear](/integrations/linear) | Issue tracking. **Workflows:** actions include creating issues. Also used as a knowledge source |
+| [Glean](/integrations/glean) | Enterprise knowledge search during incident investigation |
+| [OpenTelemetry](/integrations/opentelemetry) | Metrics for incident root cause analysis and copilot context |
 
 ## Enterprise Security
 
 Built for organizations that demand the highest standards of data privacy, security, and compliance.
 
-- **SOC 2 Compliant** — Enterprise-grade security controls audited by independent third parties
+- **SOC 2 Compliant** — Enterprise-grade security controls audited by an independent third party
 - **Complete Data Isolation** — Your data is never combined with other customers
 - **No Cross-Customer Training** — AI models are never trained on another customer's data
 - **Read-Only by Default** — No write access unless you explicitly enable auto-remediation
@@ -73,10 +73,10 @@ Built for organizations that demand the highest standards of data privacy, secur
 
 <CardGroup cols={3}>
   <Card title="Workflows Quickstart" icon="bolt" href="/quickstart/workflows">
-    Build your first automated workflow in minutes.
+    Build your first workflow automation in seconds.
   </Card>
-  <Card title="Incident Response Quickstart" icon="shield-halved" href="/quickstart/incident-response">
-    Set up AI-powered incident detection and response.
+  <Card title="Incident Response Quickstart" icon="siren" href="/quickstart/incident-response">
+    Set up agentic incident detection and response.
   </Card>
   <Card title="Copilot Quickstart" icon="comments" href="/quickstart/copilot">
     Start asking questions about your infrastructure.
