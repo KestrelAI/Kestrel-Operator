@@ -38,9 +38,21 @@ The Kestrel Slack integration brings incident response, workflow automation, and
 
 ### In Workflows
 
-- **Trigger blocks**: Use the `/kestrel-workflow` command to trigger workflows directly from Slack. Users can invoke a workflow by name and pass parameters inline.
-- **Action blocks**: Send messages to channels, post threaded replies, send DMs, update messages, add reactions
-- **Approval gates**: Request and collect workflow approvals via interactive Slack messages
+**Trigger blocks:**
+- **Create K8s Resource** — fires when a user requests Kubernetes resource creation via `/kestrel-workflow`
+- **Edit K8s Resource** — fires when a user requests a Kubernetes resource edit via `/kestrel-workflow`
+- **General Kubernetes Request** — fires on any Kubernetes-related `/kestrel-workflow` request
+- **Create AWS Resource** — fires when a user requests AWS resource creation via `/kestrel-workflow`
+- **Edit AWS Resource** — fires when a user requests an AWS resource edit via `/kestrel-workflow`
+- **General Cloud Request** — fires on any cloud-related `/kestrel-workflow` request
+- **Any Slack /kestrel-workflow Request** — fires on any `/kestrel-workflow` command invocation
+
+**Action blocks:**
+- **Send Message** — post a message to a Slack channel or DM
+- **Update Message** — update an existing Slack message in place
+- **Request Justification** — send an interactive approval/justification prompt and wait for a response
+
+Example: A workflow triggers on a Create K8s Resource request from Slack, sends a justification prompt to the requester's manager, and upon approval creates the resource and posts a confirmation.
 
 <Note>
   The `/kestrel-workflow` command lets any team member trigger pre-built workflows without leaving Slack — for example, `/kestrel-workflow restart-pod namespace=payments pod=api-server`.

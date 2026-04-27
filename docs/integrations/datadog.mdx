@@ -64,7 +64,13 @@ operator:
 
 ### In Workflows
 
-- **Action blocks**: Query Datadog metrics, events, and logs as workflow steps to enrich context or make decisions based on metric thresholds
+**Action blocks:**
+- **Query Metrics** — query Datadog time-series metrics with custom queries and time ranges
+- **Create Monitor** — create a new Datadog monitor with specified thresholds and alerting conditions
+- **Send Event** — post a custom event to the Datadog event stream
+- **Mute Monitor** — mute a Datadog monitor for a specified duration
+
+Example: A workflow triggered by a Kubernetes incident queries Datadog for CPU and memory metrics around the incident timeframe, and if resource exhaustion is detected, creates a Datadog monitor to track the recovery.
 
 ### In Incident Response
 

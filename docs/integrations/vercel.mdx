@@ -29,19 +29,24 @@ The Vercel integration connects Kestrel to your Vercel projects, enabling deploy
 
 ### In Workflows
 
-- **Trigger blocks**:
-  - **Deployment Failed** — fires when a Vercel deployment fails
-  - **Deployment Succeeded** — fires when a deployment completes successfully
-  - **Error Anomaly** — fires when Vercel detects an anomalous spike in runtime errors
-  - **Domain Issue** — fires on domain configuration or certificate problems
+**Trigger blocks:**
+- **Deployment Failed** — fires when a Vercel deployment build fails
+- **Deployment Succeeded** — fires when a deployment completes successfully
+- **Deployment Created** — fires when a new Vercel deployment is initiated
+- **Error Anomaly** — fires when Vercel detects an anomalous spike in runtime errors
+- **Usage Anomaly** — fires when Vercel detects unusual usage patterns
+- **Domain Issue** — fires on domain configuration or certificate problems
+- **Firewall Attack Detected** — fires when Vercel's firewall detects a potential attack
+- **Deployment Checks Failed** — fires when deployment integration checks fail
+- **Production Rollback** — fires when a production deployment is rolled back
 
-- **Action blocks**:
-  - **Get Deployment** — retrieve deployment details (status, URL, git commit, duration)
-  - **Get Build Logs** — fetch build logs for a specific deployment
-  - **Rollback** — roll back to a previous deployment
-  - **Promote** — promote a preview deployment to production
-  - **List Deployments** — list recent deployments with filters
-  - **Investigate** — run an AI investigation combining build logs, error data, and deployment history
+**Action blocks:**
+- **Get Deployment** — retrieve deployment details including status, URL, and git commit
+- **Get Build Logs** — fetch build log output for a specific deployment
+- **Rollback Production** — roll back production to a previous stable deployment
+- **Promote to Production** — promote a preview deployment to production
+- **List Deployments** — list recent deployments with optional filters
+- **Investigate Vercel** — run an AI investigation combining build logs, error data, and deployment history
 
 Example: A workflow triggers on a failed deployment, fetches the build logs, analyzes the failure with AI, and posts a summary to Slack with a one-click rollback button.
 

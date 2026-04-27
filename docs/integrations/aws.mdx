@@ -73,8 +73,30 @@ You can enable/disable flow logs on individual VPCs.
 
 ### In Workflows
 
-- **Trigger blocks**: CloudTrail events, security group changes, IAM policy modifications, S3 public access changes, cost anomalies
-- **Action blocks**: Query AWS resources, describe instances, check security groups, generate Terraform fixes, create PRs for IaC remediation
+**Trigger blocks:**
+- **IAM Security Event** — fires on IAM role, policy, or user changes detected via CloudTrail
+- **Root Account Activity** — fires when the AWS root account is used
+- **KMS Key Change** — fires on KMS key creation, deletion, or policy changes
+- **Secrets Manager Event** — fires on secret creation, rotation, or deletion in Secrets Manager
+- **Security Hub Finding** — fires when AWS Security Hub reports a new finding
+- **S3 Bucket Change** — fires on S3 bucket policy, ACL, or public access changes
+- **EC2 Instance Issue** — fires on EC2 instance state changes, status check failures, or termination
+- **Lambda Function Issue** — fires on Lambda invocation errors, throttles, or configuration changes
+- **ECS/EKS Container Issue** — fires on ECS task failures or EKS cluster events
+- **RDS Database Issue** — fires on RDS instance failures, failovers, or storage issues
+- **DynamoDB Issue** — fires on DynamoDB table throttles, capacity changes, or errors
+- **VPC/Network Change** — fires on VPC, security group, NACL, or route table modifications
+- **CloudWatch Alarm** — fires when a CloudWatch alarm transitions to ALARM state
+- **Application Log Errors** — fires when application log error patterns exceed a threshold
+- **Config Rule Non-Compliant** — fires when an AWS Config rule evaluates a resource as non-compliant
+- **AWS Service Health Event** — fires on AWS Health Dashboard service disruptions affecting your account
+- **Any AWS Cloud Incident** — fires on any AWS cloud incident detected by Kestrel
+- **Cost Anomaly Detected** — fires when AWS Cost Anomaly Detection identifies unusual spend
+- **Budget Threshold Exceeded** — fires when an AWS Budget threshold is breached
+
+Cloud operations (querying resources, describing instances, checking security groups, generating Terraform fixes, creating IaC remediation PRs) are provided by Kestrel's built-in action blocks and are available in any workflow alongside these triggers.
+
+Example: A workflow triggers on a Security Hub finding, queries the affected resource details, generates a Terraform fix, and opens a pull request in the connected IaC repository.
 
 ### In Incident Response
 

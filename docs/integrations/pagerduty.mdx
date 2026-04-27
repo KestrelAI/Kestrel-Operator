@@ -52,8 +52,21 @@ For simple setups that route alerts to a single service:
 
 ### In Workflows
 
-- **Trigger blocks**: PagerDuty incident created, acknowledged, resolved, escalated
-- **Action blocks**: Create PagerDuty incidents, acknowledge incidents, resolve incidents, add notes, reassign
+**Trigger blocks:**
+- **Incident Triggered** — fires when a new PagerDuty incident is created
+- **Incident Acknowledged** — fires when a PagerDuty incident is acknowledged by a responder
+- **Incident Resolved** — fires when a PagerDuty incident is resolved
+- **Any PagerDuty Incident** — fires on any PagerDuty incident state change
+- **High Urgency Incident** — fires when a high-urgency PagerDuty incident is triggered
+
+**Action blocks:**
+- **Create Alert** — create a new PagerDuty alert on a specified service
+- **Acknowledge Alert** — acknowledge an existing PagerDuty alert
+- **Add Note to Alert** — attach a note with investigation context to a PagerDuty alert
+- **Resolve Alert** — resolve a PagerDuty alert
+- **Escalate** — escalate a PagerDuty incident to the next escalation level
+
+Example: A workflow triggers on a high-urgency incident, runs an automated root cause analysis, adds the findings as a note, and escalates if the issue matches a known critical pattern.
 
 ### In Incident Response
 

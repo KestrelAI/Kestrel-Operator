@@ -32,18 +32,19 @@ The PostHog integration connects Kestrel to your PostHog instance, enabling prod
 
 ### In Workflows
 
-- **Trigger blocks**:
-  - **Exception** — fires when PostHog captures an unhandled exception
-  - **Rage Click** — fires when a user exhibits rage click behavior
-  - **Console Error** — fires on console error patterns matching your filter
-  - **Log Alert** — fires when PostHog log patterns match your configured thresholds
+**Trigger blocks:**
+- **Session Error/Exception** — fires when PostHog captures an unhandled exception in a session
+- **Console Error** — fires on console error patterns matching your filter
+- **Rage Click** — fires when a user exhibits rage click behavior
+- **Any PostHog Event** — fires on any PostHog event matching your configured criteria
+- **Log Error Alert** — fires when PostHog log error patterns exceed your configured threshold
 
-- **Action blocks**:
-  - **Get Session Summary** — retrieve an AI-generated summary of a user session
-  - **Query Events** — run PostHog event queries with filters and date ranges
-  - **Get Session Recording** — fetch session recording details and metadata
-  - **Get Error Issues** — retrieve error groups and exception details
-  - **Investigate** — run an AI investigation combining session, event, and error data
+**Action blocks:**
+- **Get Session Summary** — retrieve an AI-generated summary of a user session
+- **Get Session Recording** — fetch session recording details and metadata
+- **Query Events** — run PostHog event queries with filters and date ranges
+- **List Session Recordings** — list session recordings matching specified filters
+- **Get Error Issue** — retrieve error group details and exception information
 
 Example: A workflow triggers on a spike in rage clicks, queries the relevant session recordings, summarizes the user experience issue, and creates a Linear issue with the findings.
 

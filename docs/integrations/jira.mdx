@@ -30,12 +30,10 @@ The Jira integration connects Kestrel to your Atlassian Jira instance, enabling 
 
 ### In Workflows
 
-- **Action blocks**:
-  - **Create Issue** — create Jira tickets with customizable project, issue type, summary, description, priority, labels, and assignee
-  - **Add Comment** — add comments to existing issues with workflow context
-  - **Transition Issue** — move issues through workflow states (e.g., Open → In Progress → Done)
-  - **Search Issues** — query Jira using JQL to find related issues
-  - **Update Issue** — modify fields on existing issues
+**Action blocks:**
+- **Create Ticket** — create a Jira ticket with customizable project, issue type, summary, description, priority, labels, and assignee
+- **Add Comment** — add a comment to an existing Jira issue with workflow context
+- **Transition Ticket** — move a Jira issue through workflow states (e.g., Open → In Progress → Done)
 
 Example: A workflow triggered by a Kubernetes incident can automatically create a Jira ticket with the incident summary, assign it to the namespace owner, and transition it to "In Progress."
 
