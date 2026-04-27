@@ -148,24 +148,30 @@ Which repos have GitHub Actions workflows that deploy to the production EKS clus
 
 ## Example Conversation
 
-> **You:** The payments-api is failing with `connection refused` errors when trying to reach the orders database. Can you find how the database host is configured?
->
-> **Kestrel:** I searched across your connected repositories and found the database configuration in two places:
+**You:**
+> The payments-api is failing with `connection refused` errors when trying to reach the orders database. Can you find how the database host is configured?
+
+**Kestrel:**
+> I searched across your connected repositories and found the database configuration in two places:
 >
 > 1. **Application code** — `acme/payments-service/src/config/database.ts` reads the `ORDERS_DB_HOST` environment variable, falling back to `localhost:5432` if unset.
 > 2. **Kubernetes manifest** — `acme/infrastructure/k8s/payments/deployment.yaml` sets `ORDERS_DB_HOST` to `orders-db.payments.svc.cluster.local:5432` via a ConfigMap reference (`payments-db-config`).
 >
 > The ConfigMap `payments-db-config` is defined in `acme/infrastructure/k8s/payments/configmap.yaml`. The current value on the `main` branch is `orders-db.payments.svc.cluster.local:5432`.
->
-> **You:** Was this ConfigMap changed recently?
->
-> **Kestrel:** Yes. PR #312 in `acme/infrastructure` was merged 3 hours ago by @alex.kim. The PR changed the `ORDERS_DB_HOST` value from `orders-db.payments.svc.cluster.local:5432` to `orders-db-v2.payments.svc.cluster.local:5432` as part of a database migration. The PR description mentions: "Point payments-api to the new PostgreSQL 16 instance."
+
+**You:**
+> Was this ConfigMap changed recently?
+
+**Kestrel:**
+> Yes. PR #312 in `acme/infrastructure` was merged 3 hours ago by @alex.kim. The PR changed the `ORDERS_DB_HOST` value from `orders-db.payments.svc.cluster.local:5432` to `orders-db-v2.payments.svc.cluster.local:5432` as part of a database migration. The PR description mentions: "Point payments-api to the new PostgreSQL 16 instance."
 >
 > However, I don't see a corresponding Kubernetes Service named `orders-db-v2` in the `payments` namespace — the service may not have been created yet, which would explain the `connection refused` errors.
->
-> **You:** Show me the Terraform code for the new database instance. Is it fully provisioned?
->
-> **Kestrel:** The new RDS instance is defined in `acme/infrastructure/terraform/modules/rds/orders-db-v2.tf`. It was added in PR #308, merged last week. The Terraform config provisions a `db.r6g.large` PostgreSQL 16.2 instance in `us-east-1a` with Multi-AZ enabled.
+
+**You:**
+> Show me the Terraform code for the new database instance. Is it fully provisioned?
+
+**Kestrel:**
+> The new RDS instance is defined in `acme/infrastructure/terraform/modules/rds/orders-db-v2.tf`. It was added in PR #308, merged last week. The Terraform config provisions a `db.r6g.large` PostgreSQL 16.2 instance in `us-east-1a` with Multi-AZ enabled.
 >
 > The Terraform output `orders_db_v2_endpoint` is referenced in the Kubernetes Service definition in `acme/infrastructure/k8s/payments/service-orders-db-v2.yaml` — but this file was added in PR #313, which is still open and hasn't been merged yet. That's why the Service doesn't exist in the cluster.
 

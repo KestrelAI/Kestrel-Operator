@@ -186,23 +186,29 @@ Compare resources and configurations across multiple connected clusters.
 
 ## Example Conversation
 
-> **You:** `@prod-eks-cluster` Pods in the payments namespace are throwing 5xx errors. What's going on? Cross-reference with Datadog latency and error rate metrics for the payments-api service.
->
-> **Kestrel:** I found 3 pods in the `payments` namespace showing issues:
+**You:**
+> `@prod-eks-cluster` Pods in the payments namespace are throwing 5xx errors. What's going on? Cross-reference with Datadog latency and error rate metrics for the payments-api service.
+
+**Kestrel:**
+> I found 3 pods in the `payments` namespace showing issues:
 >
 > - `payments-api-7f8b9c-x4k2m` — Running but 12 container restarts in the last hour
 > - `payments-api-7f8b9c-n3j8p` — CrashLoopBackOff since 14:47 UTC
 > - `payments-worker-6d4a8b-j9n3p` — Running, 0 restarts
 >
 > Datadog metrics show the `payments-api` P99 latency spiked from 85ms to 3.8s at 14:32 UTC. Error rate jumped from 0.1% to 14.2% at the same time. The container logs from `payments-api-7f8b9c-n3j8p` show repeated `FATAL: connection pool exhausted, max_connections=10` errors. The deployment was updated at 14:30 UTC — image changed from `v2.13.2` to `v2.14.0`.
->
-> **You:** What changed in v2.14.0? Can you find the PR?
->
-> **Kestrel:** The image tag `v2.14.0` maps to PR #847 in `acme/payments-service`, merged at 14:28 UTC by @jane.doe. The PR description says "Optimize DB connection handling" — it reduced `DB_MAX_CONNECTIONS` from 50 to 10 in the deployment environment variables. This matches the `connection pool exhausted` error in the logs. The connection pool is now too small for the current request volume.
->
-> **You:** Roll back the deployment to v2.13.2 and increase the memory limit to 512Mi while you're at it.
->
-> **Kestrel:** Here's the proposed change for the `payments-api` deployment:
+
+**You:**
+> What changed in v2.14.0? Can you find the PR?
+
+**Kestrel:**
+> The image tag `v2.14.0` maps to PR #847 in `acme/payments-service`, merged at 14:28 UTC by @jane.doe. The PR description says "Optimize DB connection handling" — it reduced `DB_MAX_CONNECTIONS` from 50 to 10 in the deployment environment variables. This matches the `connection pool exhausted` error in the logs. The connection pool is now too small for the current request volume.
+
+**You:**
+> Roll back the deployment to v2.13.2 and increase the memory limit to 512Mi while you're at it.
+
+**Kestrel:**
+> Here's the proposed change for the `payments-api` deployment:
 >
 > 1. Revert image tag from `v2.14.0` to `v2.13.2`
 > 2. Increase memory limit from `256Mi` to `512Mi`

@@ -145,17 +145,21 @@ Use this page to review pending changes, audit what was applied, and track confi
 
 ## Example Conversation
 
-> **You:** `@prod-eks-cluster` The checkout-api keeps getting OOMKilled. Current memory limit is 256Mi but Datadog shows it peaks at 400Mi. Fix it.
->
-> **Kestrel:** I'll increase the memory limit for the `checkout-api` deployment. Based on the Datadog metrics showing peaks at 400Mi, I recommend setting the limit to 512Mi to provide a 25% buffer above peak usage. Here's the proposed change:
+**You:**
+> `@prod-eks-cluster` The checkout-api keeps getting OOMKilled. Current memory limit is 256Mi but Datadog shows it peaks at 400Mi. Fix it.
+
+**Kestrel:**
+> I'll increase the memory limit for the `checkout-api` deployment. Based on the Datadog metrics showing peaks at 400Mi, I recommend setting the limit to 512Mi to provide a 25% buffer above peak usage. Here's the proposed change:
 >
 > *(displays diff changing `resources.limits.memory` from `256Mi` to `512Mi`)*
 >
 > The memory request will also be updated from `128Mi` to `256Mi` to ensure the pod gets adequate guaranteed memory on the node. Would you like to Safe Apply, Create PR, or Copy?
->
-> **You:** Create a PR for this. Also add a CPU request of 250m while you're at it — it's missing.
->
-> **Kestrel:** Updated the change to include both modifications:
+
+**You:**
+> Create a PR for this. Also add a CPU request of 250m while you're at it — it's missing.
+
+**Kestrel:**
+> Updated the change to include both modifications:
 >
 > 1. Memory limit `256Mi` → `512Mi`, memory request `128Mi` → `256Mi`
 > 2. Added CPU request of `250m` (was unset)
@@ -163,10 +167,12 @@ Use this page to review pending changes, audit what was applied, and track confi
 > *(displays updated diff with both changes)*
 >
 > I'll open this as a PR in `acme/infrastructure` targeting the `main` branch. The change applies to `k8s/checkout/deployment.yaml`.
->
-> **You:** Go ahead.
->
-> **Kestrel:** PR #892 created in `acme/infrastructure`: [Increase checkout-api memory limit and add CPU request](https://github.com/acme/infrastructure/pull/892). The PR includes the diff and a description explaining the OOMKill context and Datadog metrics that motivated the change.
+
+**You:**
+> Go ahead.
+
+**Kestrel:**
+> PR #892 created in `acme/infrastructure`: [Increase checkout-api memory limit and add CPU request](https://github.com/acme/infrastructure/pull/892). The PR includes the diff and a description explaining the OOMKill context and Datadog metrics that motivated the change.
 
 ## Next Steps
 

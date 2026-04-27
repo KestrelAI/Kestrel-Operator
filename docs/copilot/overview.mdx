@@ -104,17 +104,23 @@ Kestrel responds in-thread so conversations stay organized. Other team members c
 
 ## Example Conversation
 
-> **You:** `@prod-eks-cluster` Why are pods in the checkout namespace restarting? Cross-reference with Datadog metrics.
->
-> **Kestrel:** Two pods in the `checkout` namespace are in CrashLoopBackOff: `checkout-api-7f8b9c-x4k2m` and `checkout-worker-6d4a8b-j9n3p`. Both started crashing 23 minutes ago after deployment `checkout-api` was updated to image tag `v2.14.0`. Datadog shows P99 latency spiked from 120ms to 4.2s at 14:32 UTC, coinciding with the deployment. The container logs show `FATAL: too many connections for role "checkout_svc"` — the connection pool was exhausted.
->
-> **You:** What PR caused that deployment change?
->
-> **Kestrel:** The deployment was updated via ArgoCD sync at 14:32 UTC. The change originated from PR #847 in `acme/checkout-service`, authored by @jane.doe and approved by @john.smith. The PR modified the database connection pool settings, reducing `maxConnections` from 50 to 10. This matches the `too many connections` error in the logs.
->
-> **You:** Roll back the deployment to the previous image tag.
->
-> **Kestrel:** Here's the proposed change to roll back `checkout-api` to image tag `v2.13.2`:
+**You:**
+> `@prod-eks-cluster` Why are pods in the checkout namespace restarting? Cross-reference with Datadog metrics.
+
+**Kestrel:**
+> Two pods in the `checkout` namespace are in CrashLoopBackOff: `checkout-api-7f8b9c-x4k2m` and `checkout-worker-6d4a8b-j9n3p`. Both started crashing 23 minutes ago after deployment `checkout-api` was updated to image tag `v2.14.0`. Datadog shows P99 latency spiked from 120ms to 4.2s at 14:32 UTC, coinciding with the deployment. The container logs show `FATAL: too many connections for role "checkout_svc"` — the connection pool was exhausted.
+
+**You:**
+> What PR caused that deployment change?
+
+**Kestrel:**
+> The deployment was updated via ArgoCD sync at 14:32 UTC. The change originated from PR #847 in `acme/checkout-service`, authored by @jane.doe and approved by @john.smith. The PR modified the database connection pool settings, reducing `maxConnections` from 50 to 10. This matches the `too many connections` error in the logs.
+
+**You:**
+> Roll back the deployment to the previous image tag.
+
+**Kestrel:**
+> Here's the proposed change to roll back `checkout-api` to image tag `v2.13.2`:
 >
 > *(displays diff with Apply, Create PR, and Copy options)*
 

@@ -159,25 +159,31 @@ Compare costs across multiple AWS accounts.
 
 ## Example Conversation
 
-> **You:** `@cloud:prod-aws` Our AWS bill jumped 30% this month. What's going on?
->
-> **Kestrel:** Your total AWS spend for the current month is $47,200, up from $36,300 last month (+30%). The top 3 drivers of the increase:
+**You:**
+> `@cloud:prod-aws` Our AWS bill jumped 30% this month. What's going on?
+
+**Kestrel:**
+> Your total AWS spend for the current month is $47,200, up from $36,300 last month (+30%). The top 3 drivers of the increase:
 >
 > 1. **EC2** — up $5,800 (+28%). Three new `m5.2xlarge` instances were launched in `us-west-2` on the 15th. They're running in the `analytics` account and aren't part of any Auto Scaling group.
 > 2. **RDS** — up $3,100 (+41%). The `prod-analytics` instance had a storage auto-scaling event that grew it from 500GB to 1.2TB. There was also a class change from `db.r5.large` to `db.r5.2xlarge` on the 8th.
 > 3. **NAT Gateway** — up $2,000 (+62%). Data processing through the NAT gateway in `us-east-1` doubled compared to last month, likely from the new batch processing jobs.
->
-> **You:** Can we save money on those EC2 instances? They might be over-provisioned.
->
-> **Kestrel:** Based on CloudWatch metrics for the last 2 weeks, the three `m5.2xlarge` instances in `us-west-2` average 12% CPU utilization and 4.2GB of memory usage (out of 32GB available). You have a few options:
+
+**You:**
+> Can we save money on those EC2 instances? They might be over-provisioned.
+
+**Kestrel:**
+> Based on CloudWatch metrics for the last 2 weeks, the three `m5.2xlarge` instances in `us-west-2` average 12% CPU utilization and 4.2GB of memory usage (out of 32GB available). You have a few options:
 >
 > - **Right-size to `m5.large`**: Saves ~$4,200/month. The instances would still have headroom at 48% average CPU and 8GB memory.
 > - **Switch to Spot**: These aren't in an ASG but could tolerate interruption if they're batch analytics jobs. Spot pricing for `m5.2xlarge` in `us-west-2` is currently 67% cheaper.
 > - **Reserved Instances**: If you need them long-term, a 1-year no-upfront RI for `m5.large` would save an additional 30% on top of right-sizing.
->
-> **You:** Let's right-size them to `m5.large`. Can you find the Terraform code?
->
-> **Kestrel:** The instances are defined in `acme/infrastructure/terraform/analytics/ec2.tf`. Here's the proposed change to update all three from `m5.2xlarge` to `m5.large`:
+
+**You:**
+> Let's right-size them to `m5.large`. Can you find the Terraform code?
+
+**Kestrel:**
+> The instances are defined in `acme/infrastructure/terraform/analytics/ec2.tf`. Here's the proposed change to update all three from `m5.2xlarge` to `m5.large`:
 >
 > *(displays Terraform diff with Create PR and Copy options)*
 

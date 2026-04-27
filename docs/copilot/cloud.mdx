@@ -198,28 +198,34 @@ Compare configurations and resources across multiple cloud accounts.
 
 ## Example Conversation
 
-> **You:** `@cloud:prod-aws` We got an alert about unauthorized access. Show me all CloudTrail events from unusual source IPs in the last 12 hours.
->
-> **Kestrel:** I found 3 API calls from IP addresses not in your organization's known CIDR ranges:
+**You:**
+> `@cloud:prod-aws` We got an alert about unauthorized access. Show me all CloudTrail events from unusual source IPs in the last 12 hours.
+
+**Kestrel:**
+> I found 3 API calls from IP addresses not in your organization's known CIDR ranges:
 >
 > 1. `AssumeRole` on `arn:aws:iam::123456789012:role/deploy-bot` from `198.51.100.42` at 03:14 UTC — user agent `aws-cli/2.15.0`
 > 2. `ListBuckets` from the same IP at 03:16 UTC using the assumed `deploy-bot` session
 > 3. `GetObject` on `s3://prod-config-bucket/database.yml` at 03:17 UTC from the same session
 >
 > The `deploy-bot` role was assumed using access key `AKIA...3F7Q` which belongs to IAM user `ci-pipeline`. This key hasn't been rotated in 214 days.
->
-> **You:** What permissions does that deploy-bot role have? And is the access key compromised?
->
-> **Kestrel:** The `deploy-bot` role has the following attached policies:
+
+**You:**
+> What permissions does that deploy-bot role have? And is the access key compromised?
+
+**Kestrel:**
+> The `deploy-bot` role has the following attached policies:
 >
 > - `AmazonS3FullAccess` (AWS managed)
 > - `custom-deploy-policy` (inline) — grants `ec2:*`, `ecs:*`, and `lambda:*` on all resources
 >
 > This is significantly over-permissioned for a CI/CD role. Regarding the access key — the source IP `198.51.100.42` geolocates to a datacenter in Ashburn, VA (AWS us-east-1 region), which could be a legitimate CI runner. However, previous API calls from `ci-pipeline` all originated from `10.0.x.x` (your VPC). I'd recommend rotating the key immediately and scoping down the role permissions.
->
-> **You:** Generate a Terraform change to scope down that role to just the S3 and ECS permissions it actually needs.
->
-> **Kestrel:** Based on the CloudTrail history for this role over the last 90 days, the `deploy-bot` role actually only uses these actions: `s3:GetObject`, `s3:PutObject` on the `prod-config-bucket` and `prod-artifacts` buckets, and `ecs:UpdateService`, `ecs:DescribeServices` on the `production` cluster. Here's a least-privilege policy:
+
+**You:**
+> Generate a Terraform change to scope down that role to just the S3 and ECS permissions it actually needs.
+
+**Kestrel:**
+> Based on the CloudTrail history for this role over the last 90 days, the `deploy-bot` role actually only uses these actions: `s3:GetObject`, `s3:PutObject` on the `prod-config-bucket` and `prod-artifacts` buckets, and `ecs:UpdateService`, `ecs:DescribeServices` on the `production` cluster. Here's a least-privilege policy:
 >
 > *(displays Terraform diff replacing the over-permissioned policies with a scoped-down custom policy)*
 
