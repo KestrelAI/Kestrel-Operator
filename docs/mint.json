@@ -8,6 +8,20 @@
   },
   "favicon": "/logo/light.svg",
   "css": "/custom.css",
+  "font": {
+    "headings": {
+      "family": "Geist",
+      "source": "/fonts/Geist-Variable.woff2",
+      "format": "woff2",
+      "weight": "100 900"
+    },
+    "body": {
+      "family": "Geist",
+      "source": "/fonts/Geist-Variable.woff2",
+      "format": "woff2",
+      "weight": "100 900"
+    }
+  },
   "colors": {
     "primary": "#18181B",
     "light": "#A1A1AA",
