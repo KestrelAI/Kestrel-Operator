@@ -47,16 +47,6 @@ The PostHog integration connects Kestrel to your PostHog instance, enabling prod
 
 Example: A workflow triggers on a spike in rage clicks, queries the relevant session recordings, summarizes the user experience issue, and creates a Linear issue with the findings.
 
-### In Incident Response
-
-- **User impact correlation** — when a Kubernetes or cloud incident is detected, Kestrel can query PostHog to determine if end users are affected (e.g., error rates, session quality)
-- **Session context** — surface session recordings and error data alongside infrastructure incidents
-
-### In Cloud AI Copilot
-
-- Query product analytics: `How many errors did the checkout flow have in the last hour?`
-- Investigate user sessions: `Show me session recordings with payment failures today`
-
 ## Disconnecting
 
 1. Navigate to **Integrations → PostHog**

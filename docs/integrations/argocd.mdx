@@ -53,18 +53,6 @@ ArgoCD is auto-detected by the Kestrel Operator when it is installed in the same
 
 Example: A workflow triggered by a merged PR can automatically sync the corresponding ArgoCD application, wait for the sync to complete, verify health status, and notify the team on Slack.
 
-### In Incident Response
-
-- **Deployment correlation** — during root cause analysis, Kestrel checks recent ArgoCD syncs to determine if a deployment caused the incident
-- **Sync status** — surfaces out-of-sync or degraded ArgoCD applications alongside Kubernetes incident data
-- **Rollback context** — provides ArgoCD sync history to help identify which revision introduced the issue
-
-### In Cloud AI Copilot
-
-- Query ArgoCD status: `What is the sync status of the payments application?`
-- Trigger operations: `Sync the production-api ArgoCD application`
-- Investigate deployments: `What ArgoCD syncs happened in the last hour?`
-
 ## Disconnecting
 
 To disable the ArgoCD integration:

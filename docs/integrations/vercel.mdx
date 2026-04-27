@@ -45,17 +45,6 @@ The Vercel integration connects Kestrel to your Vercel projects, enabling deploy
 
 Example: A workflow triggers on a failed deployment, fetches the build logs, analyzes the failure with AI, and posts a summary to Slack with a one-click rollback button.
 
-### In Incident Response
-
-- **Deployment correlation** — when an incident is detected, Kestrel checks recent Vercel deployments to determine if a bad deploy is the root cause
-- **Automatic rollback workflows** — pair with incident detection to automatically roll back failed deployments
-
-### In Cloud AI Copilot
-
-- Query deployments: `What Vercel deployments failed in the last 24 hours?`
-- Investigate failures: `Show me the build logs for the latest failed deployment`
-- Take action: `Roll back the production deployment to the previous version`
-
 ## Disconnecting
 
 1. Navigate to **Integrations → Vercel**
