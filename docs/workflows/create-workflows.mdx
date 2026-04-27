@@ -13,9 +13,9 @@ You can create workflows five ways:
 |--------|----------|
 | **Workflow Agent** | Fastest way to build — describe what you want in natural language, the Workflow Agent builds it |
 | **Drag-and-Drop Canvas** | Visual construction with full control over step configuration |
-| **CLI** | Scripting and automation |
-| **SDK** | Programmatic workflow management |
-| **MCP** | AI agent orchestration (Cursor, Claude, etc.) |
+| **CLI** | Scripting and automation — see [CLI reference](/workflows/cli) |
+| **SDK** | Programmatic workflow management — see [SDK reference](/workflows/sdk) |
+| **MCP** | AI agent orchestration (Cursor, Claude, etc.) — see [MCP reference](/workflows/mcp) |
 
 ---
 
@@ -194,7 +194,7 @@ Actions are grouped by integration. Each action produces output variables that d
 
 <CardGroup cols={2}>
   <Card title="Kestrel" icon="brain">
-    **Trigger K8s RCA & Generate Fix**, Apply YAML Fix, Find Causal PRs/MRs, **Trigger Cloud RCA & Generate Fix**, Wait, Generate K8s Manifest, Apply K8s Manifest, Create GitOps PR, Generate Helm Values, Generate Cloud Resource, Execute Cloud CLI, Create IaC PR, Investigate Cloud, Investigate Kubernetes, AI Cost Analysis
+    Trigger K8s RCA & Generate Fix, Apply YAML Fix, Find Causal PRs/MRs, Trigger Cloud RCA & Generate Fix, Wait, Generate K8s Manifest, Apply K8s Manifest, Create GitOps PR, Generate Helm Values, Generate Cloud Resource, Execute Cloud CLI, Create IaC PR, Investigate Cloud, Investigate Kubernetes, AI Cost Analysis
   </Card>
   <Card title="GitHub" icon="github">
     Create Pull Request, Create Issue, Trigger GitHub Action, Wait for GitHub Action Run, Get GitHub Action Status, Read File, Search Code, AI Code Investigation, AI Code Fix, Wait for PR Approval, Wait for PR Merge
@@ -232,8 +232,8 @@ Actions are grouped by integration. Each action produces output variables that d
   <Card title="Approval Gates" icon="shield-check">
     Wait for Manual Approval, Wait for Slack Approval, Wait for PR/MR Approval
   </Card>
-  <Card title="Custom HTTP" icon="globe">
-    Call any API endpoint with custom HTTP action blocks. See [Custom Integrations](/workflows/custom-integrations).
+  <Card title="Custom HTTP & Webhooks" icon="globe">
+    Create custom action blocks to call any API endpoint, and custom webhook triggers to start workflows from external systems. See [Custom Integrations](/workflows/custom-integrations).
   </Card>
 </CardGroup>
 

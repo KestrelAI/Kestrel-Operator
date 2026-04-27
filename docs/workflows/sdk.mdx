@@ -1,0 +1,326 @@
+---
+title: "SDK"
+description: "Programmatically create and manage workflows with the Kestrel SDK"
+---
+
+The Kestrel SDK provides programmatic access to workflow management. Use it to build custom tooling, integrate workflows into existing systems, or manage workflows at scale.
+
+## Installation
+
+<CodeGroup>
+
+```bash Python
+pip install kestrel-sdk
+```
+
+```bash TypeScript
+npm install @kestrelai/sdk
+```
+
+</CodeGroup>
+
+## Authentication
+
+<CodeGroup>
+
+```python Python
+from kestrel import KestrelClient
+
+client = KestrelClient(api_key="your-api-key")
+```
+
+```typescript TypeScript
+import { KestrelClient } from '@kestrelai/sdk';
+
+const client = new KestrelClient({ apiKey: 'your-api-key' });
+```
+
+</CodeGroup>
+
+<Tip>
+Use the `KESTREL_API_KEY` environment variable instead of hardcoding keys. The SDK reads it automatically when no `api_key` parameter is provided.
+</Tip>
+
+## Workflow Management
+
+### List workflows
+
+<CodeGroup>
+
+```python Python
+workflows = client.workflows.list()
+
+for wf in workflows:
+    print(f"{wf.id}: {wf.name} ({wf.status})")
+```
+
+```typescript TypeScript
+const workflows = await client.workflows.list();
+
+for (const wf of workflows) {
+  console.log(`${wf.id}: ${wf.name} (${wf.status})`);
+}
+```
+
+</CodeGroup>
+
+### Create a workflow
+
+<CodeGroup>
+
+```python Python
+workflow = client.workflows.create(
+    name="Production Incident Response",
+    description="Auto-triage production pod crashes",
+    trigger={
+        "source": "kubernetes_incident",
+        "config": {
+            "incident_types": ["pod_crash_loop"],
+            "namespaces": ["production"],
+        },
+    },
+    cooldown="24h",
+    steps=[
+        {
+            "id": "action-1",
+            "type": "kestrel-rca",
+            "name": "Run RCA",
+            "config": {"include_metrics": True, "include_logs": True},
+        },
+        {
+            "id": "action-2",
+            "type": "slack-send-message",
+            "name": "Notify team",
+            "depends_on": ["action-1"],
+            "config": {
+                "channel": "#incidents",
+                "message": "{{incident.title}} — {{step_outputs.action-1.root_cause}}",
+            },
+        },
+    ],
+)
+
+print(f"Created: {workflow.id}")
+```
+
+```typescript TypeScript
+const workflow = await client.workflows.create({
+  name: 'Production Incident Response',
+  description: 'Auto-triage production pod crashes',
+  trigger: {
+    source: 'kubernetes_incident',
+    config: {
+      incidentTypes: ['pod_crash_loop'],
+      namespaces: ['production'],
+    },
+  },
+  cooldown: '24h',
+  steps: [
+    {
+      id: 'action-1',
+      type: 'kestrel-rca',
+      name: 'Run RCA',
+      config: { includeMetrics: true, includeLogs: true },
+    },
+    {
+      id: 'action-2',
+      type: 'slack-send-message',
+      name: 'Notify team',
+      dependsOn: ['action-1'],
+      config: {
+        channel: '#incidents',
+        message: '{{incident.title}} — {{step_outputs.action-1.root_cause}}',
+      },
+    },
+  ],
+});
+
+console.log(`Created: ${workflow.id}`);
+```
+
+</CodeGroup>
+
+### Get a workflow
+
+<CodeGroup>
+
+```python Python
+workflow = client.workflows.get("workflow-id")
+print(workflow.name, workflow.status)
+```
+
+```typescript TypeScript
+const workflow = await client.workflows.get('workflow-id');
+console.log(workflow.name, workflow.status);
+```
+
+</CodeGroup>
+
+### Update a workflow
+
+<CodeGroup>
+
+```python Python
+client.workflows.update("workflow-id", name="Updated Name", cooldown="12h")
+```
+
+```typescript TypeScript
+await client.workflows.update('workflow-id', { name: 'Updated Name', cooldown: '12h' });
+```
+
+</CodeGroup>
+
+### Delete a workflow
+
+<CodeGroup>
+
+```python Python
+client.workflows.delete("workflow-id")
+```
+
+```typescript TypeScript
+await client.workflows.delete('workflow-id');
+```
+
+</CodeGroup>
+
+### Activate / Pause
+
+<CodeGroup>
+
+```python Python
+client.workflows.activate("workflow-id")
+client.workflows.pause("workflow-id")
+```
+
+```typescript TypeScript
+await client.workflows.activate('workflow-id');
+await client.workflows.pause('workflow-id');
+```
+
+</CodeGroup>
+
+## Workflow Generation
+
+Use AI to generate workflows from natural language descriptions:
+
+<CodeGroup>
+
+```python Python
+workflow = client.workflows.generate(
+    "When a PagerDuty alert fires, run Kubernetes RCA, "
+    "post findings to Slack, and create a Jira ticket"
+)
+
+print(f"Generated: {workflow.name}")
+print(f"Steps: {len(workflow.steps)}")
+```
+
+```typescript TypeScript
+const workflow = await client.workflows.generate(
+  'When a PagerDuty alert fires, run Kubernetes RCA, post findings to Slack, and create a Jira ticket'
+);
+
+console.log(`Generated: ${workflow.name}`);
+console.log(`Steps: ${workflow.steps.length}`);
+```
+
+</CodeGroup>
+
+## Execution Management
+
+### List executions
+
+<CodeGroup>
+
+```python Python
+executions = client.executions.list(workflow_id="workflow-id")
+
+for ex in executions:
+    print(f"{ex.id}: {ex.status} ({ex.started_at})")
+```
+
+```typescript TypeScript
+const executions = await client.executions.list({ workflowId: 'workflow-id' });
+
+for (const ex of executions) {
+  console.log(`${ex.id}: ${ex.status} (${ex.startedAt})`);
+}
+```
+
+</CodeGroup>
+
+### Trigger a workflow
+
+<CodeGroup>
+
+```python Python
+execution = client.workflows.trigger(
+    "workflow-id",
+    data={"environment": "production", "service": "api"},
+)
+
+print(f"Execution started: {execution.id}")
+```
+
+```typescript TypeScript
+const execution = await client.workflows.trigger('workflow-id', {
+  data: { environment: 'production', service: 'api' },
+});
+
+console.log(`Execution started: ${execution.id}`);
+```
+
+</CodeGroup>
+
+### Get execution details
+
+<CodeGroup>
+
+```python Python
+execution = client.executions.get("execution-id")
+
+for step in execution.steps:
+    print(f"  {step.name}: {step.status} ({step.duration_ms}ms)")
+```
+
+```typescript TypeScript
+const execution = await client.executions.get('execution-id');
+
+for (const step of execution.steps) {
+  console.log(`  ${step.name}: ${step.status} (${step.durationMs}ms)`);
+}
+```
+
+</CodeGroup>
+
+## Error Handling
+
+<CodeGroup>
+
+```python Python
+from kestrel.exceptions import KestrelAPIError, NotFoundError
+
+try:
+    workflow = client.workflows.get("nonexistent-id")
+except NotFoundError:
+    print("Workflow not found")
+except KestrelAPIError as e:
+    print(f"API error: {e.status_code} — {e.message}")
+```
+
+```typescript TypeScript
+import { KestrelAPIError, NotFoundError } from '@kestrelai/sdk';
+
+try {
+  const workflow = await client.workflows.get('nonexistent-id');
+} catch (e) {
+  if (e instanceof NotFoundError) {
+    console.log('Workflow not found');
+  } else if (e instanceof KestrelAPIError) {
+    console.log(`API error: ${e.statusCode} — ${e.message}`);
+  }
+}
+```
+
+</CodeGroup>

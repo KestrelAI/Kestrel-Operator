@@ -1,0 +1,189 @@
+---
+title: "CLI"
+description: "Create, manage, and trigger workflows from the command line"
+---
+
+The Kestrel CLI lets you manage workflows from your terminal. Use it for scripting, CI/CD integration, and automation.
+
+## Installation
+
+```bash
+curl -fsSL https://get.usekestrel.ai/cli | sh
+```
+
+Or install via Homebrew:
+
+```bash
+brew install kestrelai/tap/kestrel
+```
+
+## Authentication
+
+Authenticate with your Kestrel API key:
+
+```bash
+kestrel auth login --api-key <your-api-key>
+```
+
+Generate an API key from **Settings → API Keys** in the Kestrel dashboard.
+
+<Tip>
+Set the `KESTREL_API_KEY` environment variable to skip the login step in CI/CD environments.
+</Tip>
+
+## Workflow Commands
+
+### List workflows
+
+```bash
+kestrel workflows list
+```
+
+```bash
+kestrel workflows list --status active
+```
+
+### Get workflow details
+
+```bash
+kestrel workflows get <workflow-id>
+```
+
+### Create a workflow
+
+Create a workflow from a YAML definition file:
+
+```bash
+kestrel workflows create -f workflow.yaml
+```
+
+Or generate one with natural language:
+
+```bash
+kestrel workflows generate "When a pod crashes in production, run RCA, post to #incidents on Slack, and create a Jira ticket"
+```
+
+### Update a workflow
+
+```bash
+kestrel workflows update <workflow-id> -f workflow.yaml
+```
+
+### Delete a workflow
+
+```bash
+kestrel workflows delete <workflow-id>
+```
+
+### Activate / Pause
+
+```bash
+kestrel workflows activate <workflow-id>
+kestrel workflows pause <workflow-id>
+```
+
+### Test a workflow
+
+Run a workflow with mock trigger data:
+
+```bash
+kestrel workflows test <workflow-id>
+```
+
+### Trigger a workflow manually
+
+```bash
+kestrel workflows trigger <workflow-id> --data '{"key": "value"}'
+```
+
+## Execution Commands
+
+### List executions
+
+```bash
+kestrel executions list
+kestrel executions list --workflow <workflow-id> --status failed
+```
+
+### Get execution details
+
+```bash
+kestrel executions get <execution-id>
+```
+
+View step-by-step output, timing, and any errors for a specific execution.
+
+## Workflow YAML Format
+
+Workflow definitions use a YAML format that maps directly to the visual canvas:
+
+```yaml
+name: "Production Incident Response"
+description: "Auto-triage production pod crashes"
+trigger:
+  source: kubernetes_incident
+  config:
+    incident_types:
+      - pod_crash_loop
+    namespaces:
+      - production
+cooldown: 24h
+
+steps:
+  - id: action-1
+    type: kestrel-rca
+    name: "Run RCA"
+    config:
+      include_metrics: true
+      include_logs: true
+
+  - id: action-2
+    type: slack-send-message
+    name: "Notify team"
+    depends_on: [action-1]
+    config:
+      channel: "#incidents"
+      message: "{{incident.title}} — {{step_outputs.action-1.root_cause}}"
+
+  - id: action-3
+    type: jira-create-ticket
+    name: "Create ticket"
+    depends_on: [action-1]
+    config:
+      project: "INFRA"
+      summary: "{{incident.title}}"
+      description: "{{step_outputs.action-1.investigation_summary}}"
+```
+
+## CI/CD Integration
+
+Use the CLI in CI/CD pipelines to deploy workflow changes alongside code:
+
+```yaml
+# GitHub Actions example
+- name: Deploy workflows
+  env:
+    KESTREL_API_KEY: ${{ secrets.KESTREL_API_KEY }}
+  run: |
+    kestrel workflows update prod-incident-response -f workflows/incident-response.yaml
+    kestrel workflows activate prod-incident-response
+```
+
+## Output Formats
+
+All commands support JSON output for scripting:
+
+```bash
+kestrel workflows list --output json
+kestrel workflows list --output table
+```
+
+## Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--api-key` | API key (overrides stored credentials) |
+| `--output` | Output format: `table` (default), `json`, `yaml` |
+| `--org` | Organization ID (for multi-org accounts) |
+| `--quiet` | Suppress non-essential output |
+| `--verbose` | Enable debug logging |
