@@ -83,10 +83,10 @@
         "workflows/create-workflows",
         "workflows/custom-integrations",
         "workflows/setup-integrations",
+        "workflows/observability",
         "workflows/cli",
         "workflows/sdk",
-        "workflows/mcp",
-        "workflows/observability"
+        "workflows/mcp"
       ]
     },
     {
