@@ -12,11 +12,22 @@ code, pre code, .prose code, .prose pre code,
 }
 
 html[class~="dark"] #topbar-cta-button,
+html[class*="dark"] #topbar-cta-button,
 html.dark #topbar-cta-button,
-.dark #topbar-cta-button {
+.dark #topbar-cta-button,
+[data-theme="dark"] #topbar-cta-button,
+:root[data-theme="dark"] #topbar-cta-button {
   background-color: #FAFAFA !important;
   color: #09090B !important;
   border-color: #D4D4D8 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  #topbar-cta-button {
+    background-color: #FAFAFA !important;
+    color: #09090B !important;
+    border-color: #D4D4D8 !important;
+  }
 }
 
 #topbar-cta-button {
