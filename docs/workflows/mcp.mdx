@@ -5,21 +5,30 @@ description: "Manage Kestrel workflows through the Model Context Protocol for AI
 
 The Kestrel MCP server exposes workflow management as tools that AI coding agents (Cursor, Claude Desktop, Windsurf, etc.) can call directly. This lets you create, modify, and monitor workflows through conversational AI in your IDE.
 
+## Prerequisites
+
+Install the [Kestrel CLI](/workflows/cli) and log in:
+
+```bash
+kestrel login
+```
+
+The MCP server uses your CLI session credentials stored at `~/.kestrel/config.json`. You must be logged in before starting the MCP server.
+
 ## Setup
+
+The MCP server runs as a subcommand of the Kestrel CLI binary. Configure your MCP client to run `kestrel mcp`.
 
 ### Cursor
 
-Add the Kestrel MCP server to your Cursor configuration at `~/.cursor/mcp.json`:
+Add to `~/.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "kestrel": {
-      "command": "npx",
-      "args": ["-y", "@kestrelai/mcp-server"],
-      "env": {
-        "KESTREL_API_KEY": "your-api-key"
-      }
+      "command": "kestrel",
+      "args": ["mcp"]
     }
   }
 }
@@ -27,17 +36,14 @@ Add the Kestrel MCP server to your Cursor configuration at `~/.cursor/mcp.json`:
 
 ### Claude Desktop
 
-Add to your Claude Desktop configuration at `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "kestrel": {
-      "command": "npx",
-      "args": ["-y", "@kestrelai/mcp-server"],
-      "env": {
-        "KESTREL_API_KEY": "your-api-key"
-      }
+      "command": "kestrel",
+      "args": ["mcp"]
     }
   }
 }
@@ -51,55 +57,73 @@ Add to your Windsurf MCP configuration:
 {
   "mcpServers": {
     "kestrel": {
-      "command": "npx",
-      "args": ["-y", "@kestrelai/mcp-server"],
-      "env": {
-        "KESTREL_API_KEY": "your-api-key"
-      }
+      "command": "kestrel",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
+<Tip>
+If the `kestrel` binary isn't on your PATH, use the full path (e.g., `/usr/local/bin/kestrel`).
+</Tip>
+
 ## Available Tools
 
-Once connected, the following tools are available to the AI agent:
+Once connected, the AI agent has access to the following tools:
 
 ### Workflow Management
 
 | Tool | Description |
 |------|-------------|
-| `list_workflows` | List all workflows with optional status filter |
-| `get_workflow` | Get full details of a specific workflow |
-| `create_workflow` | Create a new workflow from a definition |
-| `update_workflow` | Update an existing workflow's configuration |
-| `delete_workflow` | Delete a workflow |
-| `activate_workflow` | Activate a paused workflow |
+| `list_workflows` | List all workflows, optionally filtered by status (draft, active, paused, archived) |
+| `get_workflow` | Get detailed info about a workflow including its definition, trigger config, and stats |
+| `create_workflow` | Create a new workflow from a structured definition |
+| `update_workflow` | Update an existing workflow's name, description, or definition |
+| `delete_workflow` | Permanently delete a workflow |
+| `activate_workflow` | Activate a draft or paused workflow so it responds to triggers |
 | `pause_workflow` | Pause an active workflow |
-| `duplicate_workflow` | Create a copy of an existing workflow |
+| `duplicate_workflow` | Create a copy of an existing workflow as a new draft |
 
 ### Workflow Generation
 
 | Tool | Description |
 |------|-------------|
-| `generate_workflow` | Generate a workflow from a natural language description |
+| `generate_workflow` | Generate a workflow from a natural language description using the Kestrel AI agent |
+| `request_workflow` | Submit a natural language request to trigger a matching workflow (equivalent of Slack `/kestrel-workflow`) |
+| `list_suggested_workflows` | Get AI-suggested workflows based on connected integrations |
 
 ### Execution Management
 
 | Tool | Description |
 |------|-------------|
-| `list_executions` | List workflow executions with filters |
-| `get_execution` | Get execution details including step outputs |
-| `trigger_workflow` | Manually trigger a workflow with custom data |
-| `test_workflow` | Run a workflow test with mock trigger data |
+| `list_executions` | List executions for a specific workflow with pagination |
+| `get_execution` | Get details of a specific execution including step results |
+| `cancel_execution` | Cancel a running workflow execution |
+| `get_workflow_stats` | Get aggregate stats: total/active workflows, execution counts, status breakdown, daily trend |
 
-### Catalog
+### Approval Management
 
 | Tool | Description |
 |------|-------------|
-| `list_triggers` | List available trigger types and their configurations |
-| `list_actions` | List available action types and their configurations |
-| `list_integrations` | List connected integrations and their status |
+| `list_pending_approvals` | List all pending approval gates across all executions |
+| `approve_step` | Approve a pending approval gate (supports justification text for justification-type approvals) |
+| `reject_step` | Reject a pending approval gate |
+
+### Request Management
+
+| Tool | Description |
+|------|-------------|
+| `list_unmatched_requests` | List workflow requests that couldn't be matched to an existing workflow |
+| `approve_workflow_request` | Approve an unmatched request (infra team action) |
+| `reject_workflow_request` | Reject an unmatched request |
+
+### Catalog and Integrations
+
+| Tool | Description |
+|------|-------------|
+| `get_catalog` | Get the full catalog of available signal triggers and action blocks |
+| `get_integrations_status` | Check which integrations are connected |
 
 ## Example Conversations
 
@@ -107,42 +131,22 @@ Once connected, the following tools are available to the AI agent:
 
 > "Create a Kestrel workflow that triggers when a PagerDuty alert fires, runs Kubernetes RCA, and posts the results to #incidents on Slack"
 
-The AI agent calls `generate_workflow` with your description, then `create_workflow` to save it, and `activate_workflow` to turn it on.
+The AI agent calls `generate_workflow` with your description, reviews the result, then `create_workflow` to save it, and `activate_workflow` to turn it on.
 
 **Checking execution history:**
 
 > "Show me the last 5 failed workflow executions and what went wrong"
 
-The agent calls `list_executions` with a `failed` status filter, then `get_execution` for each to retrieve step-level error details.
+The agent calls `list_workflows` to find workflows, `list_executions` for each, then `get_execution` for failed ones to retrieve step-level error details.
 
-**Modifying an existing workflow:**
+**Approving a pending gate:**
 
-> "Update my incident response workflow to also create a Confluence postmortem page after the RCA completes"
+> "Are there any pending workflow approvals? Approve the one for the production deployment"
 
-The agent calls `list_workflows` to find it, `get_workflow` for the current definition, then `update_workflow` with the added step.
+The agent calls `list_pending_approvals`, identifies the relevant one, and calls `approve_step`.
 
-**Investigating observability:**
+**Submitting a request:**
 
-> "Which of my workflows have failed in the last 24 hours? Show me what went wrong"
+> "I need to provision an MSK cluster with 3 brokers in us-east-1"
 
-The agent calls `list_executions` filtered by time range and failure status, then retrieves details for each.
-
-## Resources
-
-The MCP server also exposes read-only resources that provide context to the AI agent:
-
-| Resource | Description |
-|----------|-------------|
-| `kestrel://workflows` | List of all workflows with status |
-| `kestrel://workflows/{id}` | Full workflow definition |
-| `kestrel://catalog/triggers` | Available trigger types |
-| `kestrel://catalog/actions` | Available action types |
-| `kestrel://integrations` | Connected integration status |
-
-## Authentication
-
-The MCP server authenticates using the `KESTREL_API_KEY` environment variable. Generate an API key from **Settings → API Keys** in the Kestrel dashboard.
-
-<Warning>
-The API key has the same permissions as your user account. Use a dedicated service account key for shared MCP configurations.
-</Warning>
+The agent calls `request_workflow` which routes through the workflow matching system — same as `/kestrel-workflow` in Slack.

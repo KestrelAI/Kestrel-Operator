@@ -26,20 +26,42 @@ npm install @kestrelai/sdk
 ```python Python
 from kestrel import KestrelClient
 
-client = KestrelClient(api_key="your-api-key")
+client = KestrelClient(
+    server_url="https://app.usekestrel.ai",
+    email="you@company.com",
+    password="your-password",
+)
 ```
 
 ```typescript TypeScript
 import { KestrelClient } from '@kestrelai/sdk';
 
-const client = new KestrelClient({ apiKey: 'your-api-key' });
+const client = new KestrelClient({
+  serverUrl: 'https://app.usekestrel.ai',
+  email: 'you@company.com',
+  password: 'your-password',
+});
 ```
 
 </CodeGroup>
 
 <Tip>
-Use the `KESTREL_API_KEY` environment variable instead of hardcoding keys. The SDK reads it automatically when no `api_key` parameter is provided.
+Use environment variables instead of hardcoding credentials. The SDK reads `KESTREL_SERVER_URL`, `KESTREL_EMAIL`, and `KESTREL_PASSWORD` automatically when no parameters are provided.
 </Tip>
+
+If you're already logged in via the [Kestrel CLI](/workflows/cli), the SDK can reuse your session:
+
+<CodeGroup>
+
+```python Python
+client = KestrelClient.from_cli_config()
+```
+
+```typescript TypeScript
+const client = await KestrelClient.fromCliConfig();
+```
+
+</CodeGroup>
 
 ## Workflow Management
 
