@@ -23,8 +23,8 @@
   },
   "colors": {
     "primary": "#18181B",
-    "light": "#A1A1AA",
-    "dark": "#FAFAFA",
+    "light": "#FAFAFA",
+    "dark": "#18181B",
     "background": {
       "dark": "#09090B",
       "light": "#FFFFFF"
