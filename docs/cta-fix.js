@@ -1,25 +1,22 @@
-// Fix CTA button in dark mode
 function fixCtaButton() {
   var btn = document.getElementById('topbar-cta-button');
   if (!btn) return;
-  
-  var isDark = document.documentElement.classList.contains('dark') ||
-               document.documentElement.getAttribute('data-theme') === 'dark' ||
-               document.documentElement.style.colorScheme === 'dark' ||
-               window.matchMedia('(prefers-color-scheme: dark)').matches;
-  
+
+  var bg = getComputedStyle(document.body).backgroundColor;
+  var match = bg.match(/\d+/g);
+  if (!match) return;
+
+  var r = parseInt(match[0]), g = parseInt(match[1]), b = parseInt(match[2]);
+  var luminance = (0.299 * r + 0.587 * g + 0.114 * b);
+  var isDark = luminance < 128;
+
   if (isDark) {
     btn.style.setProperty('background-color', '#FAFAFA', 'important');
     btn.style.setProperty('color', '#09090B', 'important');
-    btn.style.setProperty('border-color', 'transparent', 'important');
-  } else {
-    btn.style.setProperty('border-color', 'transparent', 'important');
   }
+  btn.style.setProperty('border-color', 'transparent', 'important');
 }
 
-// Run on load and observe theme changes
 fixCtaButton();
 setInterval(fixCtaButton, 500);
-
-var observer = new MutationObserver(fixCtaButton);
-observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] });
+new MutationObserver(fixCtaButton).observe(document.documentElement, { attributes: true });
