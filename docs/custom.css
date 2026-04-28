@@ -10,3 +10,7 @@ code, pre code, .prose code, .prose pre code,
 [class*="language-"], pre[class*="language-"] {
   font-family: 'Geist Mono', 'SF Mono', 'Fira Code', monospace !important;
 }
+
+html[class~="dark"] #topbar-cta-button {
+  color: #09090B !important;
+}
