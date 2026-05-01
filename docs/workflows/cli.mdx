@@ -7,19 +7,41 @@ The Kestrel CLI lets you manage workflows from your terminal. Use it for scripti
 
 ## Installation
 
+### Homebrew (macOS / Linux)
+
 ```bash
-curl -fsSL https://get.usekestrel.ai/cli | sh
+brew install KestrelAI/tap/kestrel
 ```
 
-Or install via Homebrew:
+### Binary Download
+
+Download the latest release from [GitHub Releases](https://github.com/KestrelAI/kestrel-cli/releases):
 
 ```bash
-brew install kestrelai/tap/kestrel
+# macOS (Apple Silicon)
+curl -L https://github.com/KestrelAI/kestrel-cli/releases/latest/download/kestrel_darwin_arm64.tar.gz | tar xz
+sudo mv kestrel /usr/local/bin/
+
+# macOS (Intel)
+curl -L https://github.com/KestrelAI/kestrel-cli/releases/latest/download/kestrel_darwin_amd64.tar.gz | tar xz
+sudo mv kestrel /usr/local/bin/
+
+# Linux (x64)
+curl -L https://github.com/KestrelAI/kestrel-cli/releases/latest/download/kestrel_linux_amd64.tar.gz | tar xz
+sudo mv kestrel /usr/local/bin/
 ```
 
 ## Authentication
 
-Authenticate with your Kestrel email and password:
+### API Key (recommended)
+
+Create an API key in the Kestrel platform under **Workflows > API Keys**, then:
+
+```bash
+kestrel auth kestrel_sk_...
+```
+
+### Email / Password
 
 ```bash
 kestrel login
@@ -28,16 +50,16 @@ kestrel login
 You'll be prompted for your server URL, email, and password. Credentials are stored locally at `~/.kestrel/config.json`.
 
 ```bash
-kestrel login --server https://app.usekestrel.ai --email you@company.com
+kestrel login --server https://platform.usekestrel.ai --email you@company.com
 ```
 
-Check your current session:
+### Check Status
 
 ```bash
 kestrel status
 ```
 
-Log out and clear stored credentials:
+### Log Out
 
 ```bash
 kestrel logout
@@ -64,8 +86,6 @@ kestrel workflows get <workflow-id>
 
 ### Create a workflow from file
 
-Create a workflow from a JSON definition:
-
 ```bash
 kestrel workflows create --file workflow.json
 ```
@@ -78,19 +98,17 @@ Use the AI agent to generate a workflow from a description:
 kestrel workflows generate "When a pod crashloops, run RCA, create a Jira ticket, and notify #incidents on Slack"
 ```
 
-Add `--save` to immediately save the generated workflow as a draft:
+Add `--save` to immediately save as a draft:
 
 ```bash
-kestrel workflows generate --save "When a PagerDuty alert fires, investigate the Kubernetes cluster and post findings to Slack"
+kestrel workflows generate --save "When a PagerDuty alert fires, investigate the cluster and post findings to Slack"
 ```
 
 ### Edit a workflow
 
-Update a workflow's name or description:
-
 ```bash
 kestrel workflows edit <workflow-id> --name "New Name"
-kestrel workflows edit <workflow-id> --description "When a pod crashloops, run RCA and notify Slack"
+kestrel workflows edit <workflow-id> --description "Updated description"
 ```
 
 ### Delete a workflow
@@ -106,7 +124,7 @@ kestrel workflows activate <workflow-id>
 kestrel workflows pause <workflow-id>
 ```
 
-### Duplicate a workflow
+### Duplicate
 
 ```bash
 kestrel workflows duplicate <workflow-id>
@@ -115,7 +133,7 @@ kestrel workflows duplicate <workflow-id> --name "Copy of my workflow"
 
 ### Test a workflow
 
-Run a workflow with mock trigger data:
+Run a dry-run execution:
 
 ```bash
 kestrel workflows test <workflow-id>
@@ -123,93 +141,57 @@ kestrel workflows test <workflow-id>
 
 ### Request a workflow
 
-Submit a natural language request to trigger a matching workflow. This is the CLI equivalent of the Slack `/kestrel-workflow` command:
+Submit a natural language request to trigger a matching workflow (CLI equivalent of `/kestrel-workflow` in Slack):
 
 ```bash
 kestrel workflows request "provision an MSK cluster with 3 brokers in us-east-1"
 kestrel workflows request "scale the payments deployment to 5 replicas"
 ```
 
-If a matching workflow is found, it executes immediately. If parameters are missing, you'll be prompted interactively. If no match exists, the request is logged for your infrastructure team.
-
 ## Execution Commands
-
-### List executions for a workflow
 
 ```bash
 kestrel workflows executions <workflow-id>
 kestrel workflows executions <workflow-id> --page 2 --page-size 10
 ```
 
-### View workflow statistics
+### Statistics
 
 ```bash
 kestrel workflows stats
 ```
 
-Shows total/active workflows, execution counts, status breakdown, and a daily execution trend.
-
 ## Approval Commands
-
-### List pending approvals
 
 ```bash
 kestrel approvals list
-```
-
-### Approve a workflow step
-
-```bash
 kestrel approvals approve <approval-id>
-```
-
-For justification-type approvals, provide a reason:
-
-```bash
-kestrel approvals approve <approval-id> --justification "Emergency fix for production outage"
-```
-
-If you omit `--justification` on a justification-type approval, you'll be prompted interactively.
-
-### Reject a workflow step
-
-```bash
+kestrel approvals approve <approval-id> --justification "Emergency fix"
 kestrel approvals reject <approval-id>
 ```
 
 ## Request Commands
 
-### List unmatched requests
-
-View workflow requests that couldn't be matched to an existing workflow:
-
 ```bash
 kestrel requests list
-```
-
-### Approve / Reject requests
-
-```bash
 kestrel requests approve <request-id>
 kestrel requests reject <request-id>
 ```
 
+## API Key Commands
+
+```bash
+kestrel apikeys list
+kestrel apikeys create <name>
+kestrel apikeys create <name> --scopes "workflows:read,catalog:read" --expires-in 90d
+kestrel apikeys revoke <key-id>
+kestrel apikeys delete <key-id>
+```
+
 ## Catalog and Integrations
 
-### View available triggers and actions
-
 ```bash
-kestrel workflows catalog
-```
-
-### Check integration status
-
-```bash
-kestrel workflows integrations
-```
-
-### View AI-suggested workflows
-
-```bash
-kestrel workflows suggestions
+kestrel workflows catalog          # Available triggers and actions
+kestrel workflows integrations     # Integration connection status
+kestrel workflows suggestions      # AI-suggested workflows
 ```

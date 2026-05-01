@@ -3,21 +3,22 @@ title: "MCP"
 description: "Manage Kestrel workflows through the Model Context Protocol for AI agent integration"
 ---
 
-The Kestrel MCP server exposes workflow management as tools that AI coding agents (Cursor, Claude Desktop, Windsurf, etc.) can call directly. This lets you create, modify, and monitor workflows through conversational AI in your IDE.
+The Kestrel MCP server exposes workflow management as tools that AI coding agents (Cursor, Claude Desktop, Windsurf, etc.) can call directly. This lets you create, modify, and monitor workflows through conversational AI.
 
 ## Prerequisites
 
-Install the [Kestrel CLI](/workflows/cli) and log in:
+Install the [Kestrel CLI](/workflows/cli) and authenticate:
 
 ```bash
-kestrel login
+brew install KestrelAI/tap/kestrel
+kestrel auth kestrel_sk_...
 ```
 
-The MCP server uses your CLI session credentials stored at `~/.kestrel/config.json`. You must be logged in before starting the MCP server.
+The MCP server uses your CLI credentials stored at `~/.kestrel/config.json`.
 
 ## Setup
 
-The MCP server runs as a subcommand of the Kestrel CLI binary. Configure your MCP client to run `kestrel mcp`.
+The MCP server runs as a subcommand of the CLI. Configure your AI tool to run `kestrel mcp`.
 
 ### Cursor
 
@@ -65,88 +66,80 @@ Add to your Windsurf MCP configuration:
 ```
 
 <Tip>
-If the `kestrel` binary isn't on your PATH, use the full path (e.g., `/usr/local/bin/kestrel`).
+If `kestrel` isn't on your PATH, use the full path (e.g., `/usr/local/bin/kestrel`).
 </Tip>
 
 ## Available Tools
-
-Once connected, the AI agent has access to the following tools:
 
 ### Workflow Management
 
 | Tool | Description |
 |------|-------------|
-| `list_workflows` | List all workflows, optionally filtered by status (draft, active, paused, archived) |
-| `get_workflow` | Get detailed info about a workflow including its definition, trigger config, and stats |
-| `create_workflow` | Create a new workflow from a structured definition |
-| `update_workflow` | Update an existing workflow's name, description, or definition |
-| `delete_workflow` | Permanently delete a workflow |
-| `activate_workflow` | Activate a draft or paused workflow so it responds to triggers |
+| `list_workflows` | List all workflows, optionally filtered by status |
+| `get_workflow` | Get workflow details including definition and trigger config |
+| `create_workflow` | Create a new workflow from a definition |
+| `update_workflow` | Update a workflow's name, description, or definition |
+| `delete_workflow` | Delete a workflow |
+| `activate_workflow` | Activate a workflow |
 | `pause_workflow` | Pause an active workflow |
-| `duplicate_workflow` | Create a copy of an existing workflow as a new draft |
+| `duplicate_workflow` | Copy a workflow as a new draft |
 
 ### Workflow Generation
 
 | Tool | Description |
 |------|-------------|
-| `generate_workflow` | Generate a workflow from a natural language description using the Kestrel AI agent |
-| `request_workflow` | Submit a natural language request to trigger a matching workflow (equivalent of Slack `/kestrel-workflow`) |
-| `list_suggested_workflows` | Get AI-suggested workflows based on connected integrations |
+| `generate_workflow` | Generate a workflow from natural language |
+| `request_workflow` | Submit a request to trigger a matching workflow |
+| `list_suggested_workflows` | Get AI-suggested workflows |
 
 ### Execution Management
 
 | Tool | Description |
 |------|-------------|
-| `list_executions` | List executions for a specific workflow with pagination |
-| `get_execution` | Get details of a specific execution including step results |
-| `cancel_execution` | Cancel a running workflow execution |
-| `get_workflow_stats` | Get aggregate stats: total/active workflows, execution counts, status breakdown, daily trend |
+| `list_executions` | List executions for a workflow |
+| `get_execution` | Get execution details including step results |
+| `cancel_execution` | Cancel a running execution |
+| `get_workflow_stats` | Aggregate execution statistics |
 
 ### Approval Management
 
 | Tool | Description |
 |------|-------------|
-| `list_pending_approvals` | List all pending approval gates across all executions |
-| `approve_step` | Approve a pending approval gate (supports justification text for justification-type approvals) |
-| `reject_step` | Reject a pending approval gate |
+| `list_pending_approvals` | List pending approval gates |
+| `approve_step` | Approve a gate (with optional justification) |
+| `reject_step` | Reject a gate |
 
 ### Request Management
 
 | Tool | Description |
 |------|-------------|
-| `list_unmatched_requests` | List workflow requests that couldn't be matched to an existing workflow |
-| `approve_workflow_request` | Approve an unmatched request (infra team action) |
-| `reject_workflow_request` | Reject an unmatched request |
+| `list_unmatched_requests` | List unmatched workflow requests |
+| `approve_workflow_request` | Approve a request |
+| `reject_workflow_request` | Reject a request |
 
 ### Catalog and Integrations
 
 | Tool | Description |
 |------|-------------|
-| `get_catalog` | Get the full catalog of available signal triggers and action blocks |
-| `get_integrations_status` | Check which integrations are connected |
+| `get_catalog` | Available signal triggers and action blocks |
+| `get_integrations_status` | Integration connection status |
 
 ## Example Conversations
 
 **Creating a workflow:**
 
-> "Create a Kestrel workflow that triggers when a PagerDuty alert fires, runs Kubernetes RCA, and posts the results to #incidents on Slack"
+> "Create a workflow that triggers when a PagerDuty alert fires, runs K8s RCA, and posts results to #incidents on Slack"
 
-The AI agent calls `generate_workflow` with your description, reviews the result, then `create_workflow` to save it, and `activate_workflow` to turn it on.
+The AI agent calls `generate_workflow`, reviews the result, then `create_workflow` and `activate_workflow`.
 
-**Checking execution history:**
+**Checking executions:**
 
 > "Show me the last 5 failed workflow executions and what went wrong"
 
-The agent calls `list_workflows` to find workflows, `list_executions` for each, then `get_execution` for failed ones to retrieve step-level error details.
+The agent calls `list_workflows`, `list_executions`, then `get_execution` for failed ones.
 
-**Approving a pending gate:**
+**Approving a gate:**
 
-> "Are there any pending workflow approvals? Approve the one for the production deployment"
+> "Are there any pending approvals? Approve the production deployment one"
 
-The agent calls `list_pending_approvals`, identifies the relevant one, and calls `approve_step`.
-
-**Submitting a request:**
-
-> "I need to provision an MSK cluster with 3 brokers in us-east-1"
-
-The agent calls `request_workflow` which routes through the workflow matching system — same as `/kestrel-workflow` in Slack.
+The agent calls `list_pending_approvals`, identifies the right one, and calls `approve_step`.
