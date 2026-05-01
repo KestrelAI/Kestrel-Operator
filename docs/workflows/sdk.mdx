@@ -1,348 +1,316 @@
 ---
-title: "SDK"
-description: "Programmatically create and manage workflows with the Kestrel SDK"
+title: "Python SDK"
+description: "Programmatically create, manage, and monitor workflows with the Kestrel Python SDK"
 ---
 
-The Kestrel SDK provides programmatic access to workflow management. Use it to build custom tooling, integrate workflows into existing systems, or manage workflows at scale.
+The Kestrel Python SDK provides a typed, fluent API for building and managing workflows programmatically. It supports both synchronous and asynchronous usage with API key authentication.
 
 ## Installation
 
-<CodeGroup>
-
-```bash Python
+```bash
 pip install kestrel-sdk
 ```
 
-```bash TypeScript
-npm install @kestrelai/sdk
-```
-
-</CodeGroup>
-
 ## Authentication
 
-<CodeGroup>
+Create an API key in the Kestrel platform under **Workflows > API Keys**, then use it to authenticate:
 
-```python Python
+```python
 from kestrel import KestrelClient
 
-client = KestrelClient(
-    server_url="https://app.usekestrel.ai",
-    email="you@company.com",
-    password="your-password",
+client = KestrelClient(api_key="kestrel_sk_...")
+```
+
+For async usage:
+
+```python
+from kestrel import AsyncKestrelClient
+
+async with AsyncKestrelClient(api_key="kestrel_sk_...") as client:
+    workflows = await client.workflows.list()
+```
+
+<Tip>
+If you're logged in via the [CLI](/workflows/cli), the SDK can reuse your session:
+
+```python
+client = KestrelClient.from_config()
+```
+</Tip>
+
+## Workflow Builder
+
+Build workflows using typed classes with IDE autocompletion instead of raw dictionaries:
+
+```python
+from kestrel import KestrelClient
+from kestrel.workflows import Workflow, Trigger, Action, Condition, Approval
+
+wf = (
+    Workflow("Pod Crash RCA + Jira")
+    .description("Run RCA on pod crash, create Jira ticket")
+    .trigger(
+        Trigger.k8s_pod_status()
+        .reasons("CrashLoopBackOff")
+        .cluster("my-cluster-id")
+        .namespace("production")
+    )
+    .cooldown(hours=24)
+    .then(Action.kestrel_trigger_rca().label("Run RCA"))
+    .then(Action.jira_create_ticket()
+        .project("KAN")
+        .title("{{incident.title}}")
+        .priority("High")
+        .assignee("Raman Varma")
+        .label("Create Jira Ticket")
+    )
+    .then(Action.confluence_publish_rca()
+        .space_key("SD")
+        .title("RCA: {{incident.title}}")
+        .label("Publish RCA")
+    )
+    .alert_on_failure(channel="alerts-channel-id")
+)
+
+client = KestrelClient(api_key="kestrel_sk_...")
+created = client.workflows.deploy(wf, activate=True)
+print(f"Deployed: {created.id} ({created.status})")
+```
+
+### Triggers
+
+Create triggers for different signal sources:
+
+```python
+# Kubernetes
+Trigger.k8s_pod_status().reasons("CrashLoopBackOff", "OOMKilled")
+Trigger.k8s_rollout_status().resource_kinds("Deployment")
+Trigger.k8s_node_condition().conditions("NotReady")
+
+# AWS
+Trigger.aws_cloudtrail().service_names("iam", "s3")
+Trigger.aws_security_hub().severities("CRITICAL", "HIGH")
+Trigger.aws_cost_anomaly()
+
+# PagerDuty
+Trigger.pagerduty_triggered()
+
+# PostHog
+Trigger.posthog_exception()
+Trigger.posthog_rage_click()
+
+# Vercel
+Trigger.vercel_deployment_failed()
+
+# Slack Requests
+Trigger.request_any()
+
+# Custom Webhook
+Trigger.custom_webhook("my-event-type")
+```
+
+All triggers support filter chaining:
+
+```python
+trigger = (
+    Trigger.k8s_pod_status()
+    .reasons("CrashLoopBackOff")
+    .cluster("cluster-id-1", "cluster-id-2")
+    .namespace("production", "staging")
+    .workload("api-server", "worker")
 )
 ```
 
-```typescript TypeScript
-import { KestrelClient } from '@kestrelai/sdk';
+### Actions
 
-const client = new KestrelClient({
-  serverUrl: 'https://app.usekestrel.ai',
-  email: 'you@company.com',
-  password: 'your-password',
-});
+Every integration has typed factory methods:
+
+```python
+# Kestrel
+Action.kestrel_trigger_rca()
+Action.kestrel_trigger_cloud_rca()
+Action.kestrel_apply_yaml_fix()
+Action.kestrel_find_service_deps().cluster_id("...").ns("default").workload_name("api")
+
+# Slack
+Action.slack_send_message().channel("incidents").message("{{incident.title}}").include_rca(True)
+
+# Jira
+Action.jira_create_ticket().project("KAN").title("{{incident.title}}").priority("High")
+
+# GitHub
+Action.github_create_pr().repo("org/repo").title("Fix: {{incident.title}}")
+Action.github_investigate_code().query("{{rca_result.root_cause}}").repo("org/repo")
+
+# Confluence
+Action.confluence_publish_rca().space_key("ENG")
+
+# PagerDuty
+Action.pagerduty_create_alert().service("service-id").severity("critical")
+
+# Datadog
+Action.datadog_query_metrics().cluster_id("...").query("avg:kubernetes.cpu.usage.total{*}")
+
+# ArgoCD
+Action.argocd_sync().cluster_id("...").app_name("my-app")
 ```
 
-</CodeGroup>
+### Conditions (Branching)
 
-<Tip>
-Use environment variables instead of hardcoding credentials. The SDK reads `KESTREL_SERVER_URL`, `KESTREL_EMAIL`, and `KESTREL_PASSWORD` automatically when no parameters are provided.
-</Tip>
-
-If you're already logged in via the [Kestrel CLI](/workflows/cli), the SDK can reuse your session:
-
-<CodeGroup>
-
-```python Python
-client = KestrelClient.from_cli_config()
+```python
+wf = (
+    Workflow("Conditional RCA Response")
+    .trigger(Trigger.k8s_pod_status().reasons("CrashLoopBackOff"))
+    .then(Action.kestrel_trigger_rca())
+    .then(Condition.equals("rca_result.is_application_level_failure", "true"))
+    .on_true(Action.github_create_pr().repo("org/repo").label("Create Fix PR"))
+    .on_false(Action.slack_send_message().channel("infra").label("Notify Infra Team"))
+)
 ```
 
-```typescript TypeScript
-const client = await KestrelClient.fromCliConfig();
+Available operators: `equals`, `not_equals`, `contains`, `not_contains`, `exists`, `not_exists`.
+
+### Approvals
+
+```python
+wf = (
+    Workflow("Approved Deployment Fix")
+    .trigger(Trigger.k8s_rollout_status())
+    .then(Action.kestrel_trigger_rca())
+    .then(Approval.slack("#approvals").message("Apply the generated fix?"))
+    .on_approved(Action.kestrel_apply_yaml_fix())
+    .on_rejected(Action.slack_send_message().channel("ops").message("Fix rejected"))
+)
 ```
 
-</CodeGroup>
+Types: `Approval.manual()`, `Approval.slack(channel)`, `Approval.pr_approval()`, `Approval.pr_merge()`.
 
 ## Workflow Management
 
-### List workflows
+### List, Get, Update, Delete
 
-<CodeGroup>
-
-```python Python
+```python
+# List all workflows
 workflows = client.workflows.list()
+active = client.workflows.list(status="active")
 
-for wf in workflows:
-    print(f"{wf.id}: {wf.name} ({wf.status})")
-```
+# Get a specific workflow
+wf = client.workflows.get("workflow-id")
 
-```typescript TypeScript
-const workflows = await client.workflows.list();
+# Activate / Pause
+client.workflows.activate("workflow-id")
+client.workflows.pause("workflow-id")
 
-for (const wf of workflows) {
-  console.log(`${wf.id}: ${wf.name} (${wf.status})`);
-}
-```
-
-</CodeGroup>
-
-### Create a workflow
-
-<CodeGroup>
-
-```python Python
-workflow = client.workflows.create(
-    name="Production Incident Response",
-    description="Auto-triage production pod crashes",
-    trigger={
-        "source": "kubernetes_incident",
-        "config": {
-            "incident_types": ["pod_crash_loop"],
-            "namespaces": ["production"],
-        },
-    },
-    cooldown="24h",
-    steps=[
-        {
-            "id": "action-1",
-            "type": "kestrel-rca",
-            "name": "Run RCA",
-            "config": {"include_metrics": True, "include_logs": True},
-        },
-        {
-            "id": "action-2",
-            "type": "slack-send-message",
-            "name": "Notify team",
-            "depends_on": ["action-1"],
-            "config": {
-                "channel": "#incidents",
-                "message": "{{incident.title}} — {{step_outputs.action-1.root_cause}}",
-            },
-        },
-    ],
-)
-
-print(f"Created: {workflow.id}")
-```
-
-```typescript TypeScript
-const workflow = await client.workflows.create({
-  name: 'Production Incident Response',
-  description: 'Auto-triage production pod crashes',
-  trigger: {
-    source: 'kubernetes_incident',
-    config: {
-      incidentTypes: ['pod_crash_loop'],
-      namespaces: ['production'],
-    },
-  },
-  cooldown: '24h',
-  steps: [
-    {
-      id: 'action-1',
-      type: 'kestrel-rca',
-      name: 'Run RCA',
-      config: { includeMetrics: true, includeLogs: true },
-    },
-    {
-      id: 'action-2',
-      type: 'slack-send-message',
-      name: 'Notify team',
-      dependsOn: ['action-1'],
-      config: {
-        channel: '#incidents',
-        message: '{{incident.title}} — {{step_outputs.action-1.root_cause}}',
-      },
-    },
-  ],
-});
-
-console.log(`Created: ${workflow.id}`);
-```
-
-</CodeGroup>
-
-### Get a workflow
-
-<CodeGroup>
-
-```python Python
-workflow = client.workflows.get("workflow-id")
-print(workflow.name, workflow.status)
-```
-
-```typescript TypeScript
-const workflow = await client.workflows.get('workflow-id');
-console.log(workflow.name, workflow.status);
-```
-
-</CodeGroup>
-
-### Update a workflow
-
-<CodeGroup>
-
-```python Python
-client.workflows.update("workflow-id", name="Updated Name", cooldown="12h")
-```
-
-```typescript TypeScript
-await client.workflows.update('workflow-id', { name: 'Updated Name', cooldown: '12h' });
-```
-
-</CodeGroup>
-
-### Delete a workflow
-
-<CodeGroup>
-
-```python Python
+# Delete
 client.workflows.delete("workflow-id")
 ```
 
-```typescript TypeScript
-await client.workflows.delete('workflow-id');
-```
+### Generate from Natural Language
 
-</CodeGroup>
-
-### Activate / Pause
-
-<CodeGroup>
-
-```python Python
-client.workflows.activate("workflow-id")
-client.workflows.pause("workflow-id")
-```
-
-```typescript TypeScript
-await client.workflows.activate('workflow-id');
-await client.workflows.pause('workflow-id');
-```
-
-</CodeGroup>
-
-## Workflow Generation
-
-Use AI to generate workflows from natural language descriptions:
-
-<CodeGroup>
-
-```python Python
-workflow = client.workflows.generate(
-    "When a PagerDuty alert fires, run Kubernetes RCA, "
-    "post findings to Slack, and create a Jira ticket"
+```python
+result = client.workflows.generate(
+    "When a PagerDuty alert fires, run K8s RCA, post to Slack, and create a Jira ticket"
 )
-
-print(f"Generated: {workflow.name}")
-print(f"Steps: {len(workflow.steps)}")
+print(result.name, result.explanation)
 ```
-
-```typescript TypeScript
-const workflow = await client.workflows.generate(
-  'When a PagerDuty alert fires, run Kubernetes RCA, post findings to Slack, and create a Jira ticket'
-);
-
-console.log(`Generated: ${workflow.name}`);
-console.log(`Steps: ${workflow.steps.length}`);
-```
-
-</CodeGroup>
 
 ## Execution Management
 
-### List executions
+### List and Inspect Executions
 
-<CodeGroup>
+```python
+execs = client.workflows.executions("workflow-id", page=1, page_size=10)
+for ex in execs.executions:
+    print(f"{ex.id[:8]}... {ex.status}")
 
-```python Python
-executions = client.executions.list(workflow_id="workflow-id")
-
-for ex in executions:
-    print(f"{ex.id}: {ex.status} ({ex.started_at})")
-```
-
-```typescript TypeScript
-const executions = await client.executions.list({ workflowId: 'workflow-id' });
-
-for (const ex of executions) {
-  console.log(`${ex.id}: ${ex.status} (${ex.startedAt})`);
-}
-```
-
-</CodeGroup>
-
-### Trigger a workflow
-
-<CodeGroup>
-
-```python Python
-execution = client.workflows.trigger(
-    "workflow-id",
-    data={"environment": "production", "service": "api"},
-)
-
-print(f"Execution started: {execution.id}")
-```
-
-```typescript TypeScript
-const execution = await client.workflows.trigger('workflow-id', {
-  data: { environment: 'production', service: 'api' },
-});
-
-console.log(`Execution started: ${execution.id}`);
-```
-
-</CodeGroup>
-
-### Get execution details
-
-<CodeGroup>
-
-```python Python
+# Get a specific execution
 execution = client.executions.get("execution-id")
-
-for step in execution.steps:
-    print(f"  {step.name}: {step.status} ({step.duration_ms}ms)")
 ```
 
-```typescript TypeScript
-const execution = await client.executions.get('execution-id');
+### Test and Wait
 
-for (const step of execution.steps) {
-  console.log(`  ${step.name}: ${step.status} (${step.durationMs}ms)`);
-}
+Trigger a test execution and wait for it to complete:
+
+```python
+execution = client.workflows.test("workflow-id")
+result = client.executions.wait(execution.id, timeout=120.0)
+print(f"Final status: {result.status}")
 ```
 
-</CodeGroup>
+## Async SDK
+
+The `AsyncKestrelClient` provides the same API surface with `async/await`:
+
+```python
+import asyncio
+from kestrel import AsyncKestrelClient
+from kestrel.workflows import Workflow, Trigger, Action
+
+async def main():
+    async with AsyncKestrelClient(api_key="kestrel_sk_...") as client:
+        # List workflows
+        workflows = await client.workflows.list()
+
+        # Deploy a workflow
+        wf = (
+            Workflow("Async Example")
+            .trigger(Trigger.k8s_pod_status().reasons("OOMKilled"))
+            .then(Action.kestrel_trigger_rca())
+            .then(Action.slack_send_message().channel("incidents"))
+        )
+        created = await client.workflows.deploy(wf, activate=True)
+
+        # Test and wait for result
+        execution = await client.workflows.test(created.id)
+        result = await client.executions.wait(execution.id, timeout=60.0)
+        print(f"Result: {result.status}")
+
+asyncio.run(main())
+```
+
+## Approvals
+
+```python
+# List pending approvals
+pending = client.approvals.list_pending()
+
+# Approve or reject
+client.approvals.approve("approval-id", justification="Looks good")
+client.approvals.reject("approval-id")
+```
 
 ## Error Handling
 
-<CodeGroup>
-
-```python Python
-from kestrel.exceptions import KestrelAPIError, NotFoundError
+```python
+from kestrel import KestrelError, AuthError, NotFoundError
 
 try:
-    workflow = client.workflows.get("nonexistent-id")
+    wf = client.workflows.get("nonexistent")
 except NotFoundError:
     print("Workflow not found")
-except KestrelAPIError as e:
-    print(f"API error: {e.status_code} — {e.message}")
+except AuthError:
+    print("Authentication failed — check your API key")
+except KestrelError as e:
+    print(f"API error: {e}")
 ```
 
-```typescript TypeScript
-import { KestrelAPIError, NotFoundError } from '@kestrelai/sdk';
+## API Key Scopes
 
-try {
-  const workflow = await client.workflows.get('nonexistent-id');
-} catch (e) {
-  if (e instanceof NotFoundError) {
-    console.log('Workflow not found');
-  } else if (e instanceof KestrelAPIError) {
-    console.log(`API error: ${e.statusCode} — ${e.message}`);
-  }
-}
-```
+API keys can be scoped to specific permissions:
 
-</CodeGroup>
+| Scope | Description |
+|---|---|
+| `*` | Full access (all permissions) |
+| `workflows:read` | List and view workflows |
+| `workflows:write` | Create, update, test, duplicate workflows |
+| `workflows:activate` | Activate and pause workflows |
+| `workflows:delete` | Delete workflows |
+| `executions:read` | View execution history |
+| `executions:cancel` | Cancel running executions |
+| `approvals:read` | View pending approvals |
+| `approvals:manage` | Approve or reject gates |
+| `requests:read` | View workflow requests |
+| `requests:manage` | Approve or reject requests |
+| `catalog:read` | View signals, actions, and integrations |
+
+Create scoped keys in the platform under **Workflows > API Keys**.
