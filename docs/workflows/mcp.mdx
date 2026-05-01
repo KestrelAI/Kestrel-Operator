@@ -3,7 +3,7 @@ title: "MCP"
 description: "Manage Kestrel workflows through the Model Context Protocol for AI agent integration"
 ---
 
-The Kestrel MCP server exposes workflow management as tools that AI coding agents (Cursor, Claude Desktop, Windsurf, etc.) can call directly. This lets you create, modify, and monitor workflows through conversational AI.
+The Kestrel MCP server exposes workflow management as tools that AI coding agents (Cursor, Claude Desktop, OpenAI Codex, etc.) can call directly. This lets you create, modify, and monitor workflows through conversational AI.
 
 ## Prerequisites
 
@@ -50,19 +50,20 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
-### Windsurf
+### OpenAI Codex
 
-Add to your Windsurf MCP configuration:
+Add via the Codex CLI:
 
-```json
-{
-  "mcpServers": {
-    "kestrel": {
-      "command": "kestrel",
-      "args": ["mcp"]
-    }
-  }
-}
+```bash
+codex mcp add kestrel -- kestrel mcp
+```
+
+Or add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.kestrel]
+command = "kestrel"
+args = ["mcp"]
 ```
 
 <Tip>
