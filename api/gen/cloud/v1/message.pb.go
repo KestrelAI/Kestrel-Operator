@@ -259,6 +259,7 @@ const (
 	DatadogQueryType_ARGOCD_SYNC_APP            DatadogQueryType = 10 // POST /api/v1/applications/{name}/sync
 	DatadogQueryType_ARGOCD_GET_APP_STATUS      DatadogQueryType = 11 // GET  /api/v1/applications/{name}
 	DatadogQueryType_ARGOCD_LIST_APPS           DatadogQueryType = 12 // GET  /api/v1/applications
+	DatadogQueryType_ARGOCD_ROLLBACK_APP        DatadogQueryType = 13 // POST /api/v1/applications/{name}/rollback
 )
 
 // Enum value maps for DatadogQueryType.
@@ -277,6 +278,7 @@ var (
 		10: "ARGOCD_SYNC_APP",
 		11: "ARGOCD_GET_APP_STATUS",
 		12: "ARGOCD_LIST_APPS",
+		13: "ARGOCD_ROLLBACK_APP",
 	}
 	DatadogQueryType_value = map[string]int32{
 		"DATADOG_QUERY_UNSPECIFIED":  0,
@@ -292,6 +294,7 @@ var (
 		"ARGOCD_SYNC_APP":            10,
 		"ARGOCD_GET_APP_STATUS":      11,
 		"ARGOCD_LIST_APPS":           12,
+		"ARGOCD_ROLLBACK_APP":        13,
 	}
 )
 

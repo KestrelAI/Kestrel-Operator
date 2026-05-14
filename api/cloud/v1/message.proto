@@ -1339,6 +1339,7 @@ enum DatadogQueryType {
   ARGOCD_SYNC_APP = 10;           // POST /api/v1/applications/{name}/sync
   ARGOCD_GET_APP_STATUS = 11;     // GET  /api/v1/applications/{name}
   ARGOCD_LIST_APPS = 12;          // GET  /api/v1/applications
+  ARGOCD_ROLLBACK_APP = 13;       // POST /api/v1/applications/{name}/rollback
 }
 
 // Datadog query response from operator to server.

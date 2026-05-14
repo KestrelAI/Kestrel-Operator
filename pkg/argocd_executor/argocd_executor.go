@@ -101,6 +101,8 @@ func (e *ArgoCDExecutor) ExecuteQuery(ctx context.Context, req *v1.DatadogQueryR
 		result = e.getAppStatus(ctxTimeout, req)
 	case v1.DatadogQueryType_ARGOCD_SYNC_APP:
 		result = e.syncApp(ctxTimeout, req)
+	case v1.DatadogQueryType_ARGOCD_ROLLBACK_APP:
+		result = e.rollbackApp(ctxTimeout, req)
 	default:
 		resp.Success = false
 		resp.ErrorMessage = fmt.Sprintf("unsupported ArgoCD query type: %s", req.QueryType.String())
@@ -351,6 +353,32 @@ func (e *ArgoCDExecutor) syncApp(ctx context.Context, req *v1.DatadogQueryReques
 
 	path := fmt.Sprintf("/api/v1/applications/%s/sync", url.PathEscape(appName))
 	body, code, err := e.doPost(ctx, path, []byte(syncBody))
+	return e.makeResponse(req.RequestId, body, code, err)
+}
+
+func (e *ArgoCDExecutor) rollbackApp(ctx context.Context, req *v1.DatadogQueryRequest) *v1.DatadogQueryResponse {
+	appName := req.Filter
+	if appName == "" {
+		return &v1.DatadogQueryResponse{
+			RequestId:    req.RequestId,
+			Success:      false,
+			ErrorMessage: "filter field must contain the application name for rollback",
+			StatusCode:   http.StatusBadRequest,
+		}
+	}
+
+	rollbackBody := req.JsonBody
+	if rollbackBody == "" {
+		rollbackBody = `{"prune": true}`
+	}
+
+	e.Logger.Info("[ArgoCD] Rolling back application",
+		zap.String("request_id", req.RequestId),
+		zap.String("app_name", appName),
+		zap.String("body", rollbackBody))
+
+	path := fmt.Sprintf("/api/v1/applications/%s/rollback", url.PathEscape(appName))
+	body, code, err := e.doPost(ctx, path, []byte(rollbackBody))
 	return e.makeResponse(req.RequestId, body, code, err)
 }
 
