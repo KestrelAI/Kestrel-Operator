@@ -1,0 +1,223 @@
+---
+title: "Kubernetes Investigation"
+description: "Query pods, deployments, events, logs, and metrics across your Kubernetes clusters"
+---
+
+The copilot can answer questions about any aspect of your connected Kubernetes clusters — pod status, container logs, events, resource specifications, metrics, network policies, deployments, and more. The examples on this page illustrate common query patterns, but you can ask anything about your clusters in natural language.
+
+{/* Screenshot placeholder: Copilot answering a Kubernetes investigation query with pod details and metrics */}
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Kubernetes Cluster" icon="dharmachakra" href="/integrations/kubernetes">
+    At least one cluster connected with the Kestrel operator installed.
+  </Card>
+  <Card title="Datadog / OpenTelemetry (optional)" icon="chart-line" href="/integrations/datadog">
+    Connect Datadog or OpenTelemetry to enable metrics queries (CPU, memory, latency, error rates).
+  </Card>
+</CardGroup>
+
+## Targeting Clusters
+
+Use `@cluster-name` to direct your query to a specific Kubernetes cluster. You can target multiple clusters in a single query for cross-cluster comparisons.
+
+```
+@prod-eks-cluster show me pods in CrashLoopBackOff
+```
+
+```
+@prod-eks-cluster @staging-eks-cluster compare the resource limits for the auth-service deployment
+```
+
+If you have only one cluster connected, the copilot targets it automatically — no `@` prefix needed.
+
+<Tip>
+Find your cluster names on the **Clusters** page in the Kestrel dashboard. The name matches whatever you set when connecting the cluster.
+</Tip>
+
+## Pod Status and Logs
+
+Ask about the health, status, and logs of any pod or group of pods.
+
+```
+@prod-eks-cluster Why is the payments-api pod crashing? Show me the last 50 lines of logs from the most recent restart.
+```
+
+```
+@prod-eks-cluster Which pods in the checkout namespace have restarted more than 3 times in the last hour?
+```
+
+```
+@prod-eks-cluster Show me all OOMKilled pods across all namespaces in the last 24 hours, grouped by deployment, with their current memory limits.
+```
+
+```
+@prod-eks-cluster What's the current status of all pods in the payments namespace? Flag any that aren't Running or have high restart counts.
+```
+
+```
+@prod-eks-cluster Get the logs from the init container of the migration-job pod — it failed on startup.
+```
+
+## Events and Recent Changes
+
+Query Kubernetes events to understand what happened and when.
+
+```
+@prod-eks-cluster What events happened in the production namespace in the last 2 hours? Focus on warnings and errors.
+```
+
+```
+@prod-eks-cluster Were there any scheduling failures or evictions in the last 6 hours?
+```
+
+```
+@prod-eks-cluster What changed in the checkout namespace today? Include deployments, config maps, secrets, and any resource modifications.
+```
+
+```
+@prod-eks-cluster Show me all FailedScheduling events from the last hour and explain what's preventing the pods from being scheduled.
+```
+
+## Resource Specs and Configuration
+
+Inspect the configuration of deployments, pods, services, and other Kubernetes resources.
+
+```
+@prod-eks-cluster What are the CPU and memory requests and limits for the order-service deployment? Are any containers missing resource requests?
+```
+
+```
+@prod-eks-cluster Show me the environment variables configured on the payments-api deployment, excluding secrets.
+```
+
+```
+@prod-eks-cluster Which deployments in the production namespace don't have liveness or readiness probes configured?
+```
+
+```
+@prod-eks-cluster What's the HPA configuration for the frontend deployment? What are the current vs desired replica counts?
+```
+
+```
+@prod-eks-cluster Show me all pods running with privileged security context across the cluster.
+```
+
+## Metrics
+
+Requires [Datadog](/integrations/datadog) or [OpenTelemetry](/integrations/opentelemetry) to be connected.
+
+```
+@prod-eks-cluster What's the CPU and memory utilization for the checkout-service over the last 4 hours? Is it approaching its limits?
+```
+
+```
+@prod-eks-cluster Show me the P99 request latency for the payments-api service from Datadog. Has it degraded in the last hour?
+```
+
+```
+@prod-eks-cluster Which pods in the analytics namespace are consistently using more than 80% of their memory limit?
+```
+
+```
+@prod-eks-cluster Compare the error rate for the auth-service between today and yesterday. Did the latest deployment make it worse?
+```
+
+## Network Policies and Service Mesh
+
+Query network policies, services, and connectivity.
+
+```
+@prod-eks-cluster What network policies apply to pods in the payments namespace? Can the payments-api reach the orders-db service?
+```
+
+```
+@prod-eks-cluster Show me all ingress and egress rules for the frontend namespace. Are there any policies that could be blocking traffic to the external payment gateway?
+```
+
+```
+@prod-eks-cluster List all services in the production namespace with their types, ports, and selectors.
+```
+
+```
+@prod-eks-cluster Trace the full request path from the frontend ingress to the database for the order-service — which services are involved and what network policies apply at each hop?
+```
+
+## Deployment Status and Rollouts
+
+Inspect deployments, rollouts, and scaling operations.
+
+```
+@prod-eks-cluster Is the latest rollout for the order-service deployment healthy? Show me the rollout history.
+```
+
+```
+@prod-eks-cluster Which deployments were updated in the last 12 hours? Did any of them cause pod restart spikes?
+```
+
+```
+@prod-eks-cluster What Helm releases were upgraded in the last 24 hours across the production namespace?
+```
+
+```
+@prod-eks-cluster The checkout-api deployment is stuck at 2/5 ready replicas. Why aren't the remaining pods coming up?
+```
+
+## Cross-Cluster Comparison
+
+Compare resources and configurations across multiple connected clusters.
+
+```
+@prod-eks-cluster @staging-eks-cluster Compare the resource limits for the auth-service deployment across both clusters. Are there any discrepancies in CPU or memory requests?
+```
+
+```
+@prod-eks-cluster @staging-gke-cluster Are the same network policies applied to the payments namespace in both clusters?
+```
+
+```
+@prod-eks-cluster @staging-eks-cluster Which deployments exist in production but not in staging?
+```
+
+```
+@prod-eks-cluster @staging-eks-cluster Compare the image tags for all deployments in the checkout namespace. Which services are running different versions?
+```
+
+## Example Conversation
+
+**You:**
+> `@prod-eks-cluster` Pods in the payments namespace are throwing 5xx errors. What's going on? Cross-reference with Datadog latency and error rate metrics for the payments-api service.
+
+**Kestrel:**
+> I found 3 pods in the `payments` namespace showing issues:
+>
+> - `payments-api-7f8b9c-x4k2m` — Running but 12 container restarts in the last hour
+> - `payments-api-7f8b9c-n3j8p` — CrashLoopBackOff since 14:47 UTC
+> - `payments-worker-6d4a8b-j9n3p` — Running, 0 restarts
+>
+> Datadog metrics show the `payments-api` P99 latency spiked from 85ms to 3.8s at 14:32 UTC. Error rate jumped from 0.1% to 14.2% at the same time. The container logs from `payments-api-7f8b9c-n3j8p` show repeated `FATAL: connection pool exhausted, max_connections=10` errors. The deployment was updated at 14:30 UTC — image changed from `v2.13.2` to `v2.14.0`.
+
+**You:**
+> What changed in v2.14.0? Can you find the PR?
+
+**Kestrel:**
+> The image tag `v2.14.0` maps to PR #847 in `acme/payments-service`, merged at 14:28 UTC by @jane.doe. The PR description says "Optimize DB connection handling" — it reduced `DB_MAX_CONNECTIONS` from 50 to 10 in the deployment environment variables. This matches the `connection pool exhausted` error in the logs. The connection pool is now too small for the current request volume.
+
+**You:**
+> Roll back the deployment to v2.13.2 and increase the memory limit to 512Mi while you're at it.
+
+**Kestrel:**
+> Here's the proposed change for the `payments-api` deployment:
+>
+> 1. Revert image tag from `v2.14.0` to `v2.13.2`
+> 2. Increase memory limit from `256Mi` to `512Mi`
+>
+> *(displays diff with Safe Apply, Create PR, and Copy options)*
+
+## Next Steps
+
+- [Cloud Investigation](/copilot/cloud) — query AWS and OCI resources and security configurations
+- [Code Investigation](/copilot/code) — search and trace code changes across repositories
+- [Cost Analysis](/copilot/costs) — analyze Kubernetes and cloud spend patterns
+- [Configuration Changes](/copilot/config-changes) — generate and apply YAML and Terraform changes

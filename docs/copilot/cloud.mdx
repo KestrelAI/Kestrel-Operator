@@ -1,0 +1,237 @@
+---
+title: "Cloud Investigation"
+description: "Query AWS and OCI resources, security configurations, CloudTrail events, and network traffic"
+---
+
+The copilot can answer questions about your connected AWS and OCI accounts — resource inventory, security configurations, CloudTrail audit events, CloudWatch metrics, VPC Flow Logs, and more. The examples on this page illustrate common query patterns, but you can ask anything about your cloud accounts in natural language.
+
+{/* Screenshot placeholder: Copilot answering a cloud investigation query showing security group details */}
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="AWS Account" icon="aws" href="/integrations/aws">
+    Connect one or more AWS accounts for EC2, S3, RDS, IAM, VPC, Lambda, CloudTrail, CloudWatch, and VPC Flow Log queries.
+  </Card>
+  <Card title="OCI Account (optional)" icon="cloud" href="/integrations/oci">
+    Connect Oracle Cloud accounts for Compute, Object Storage, VCN, IAM, and Audit log queries.
+  </Card>
+</CardGroup>
+
+## Targeting Cloud Accounts
+
+Use `@cloud:connection-name` to direct your query to a specific AWS or OCI account. You can target multiple accounts in a single query for cross-account comparisons.
+
+```
+@cloud:prod-aws show me all publicly accessible S3 buckets
+```
+
+```
+@cloud:prod-aws @cloud:staging-aws compare the IAM policies attached to the EKS node group roles
+```
+
+If you have only one cloud account connected, the copilot targets it automatically.
+
+<Tip>
+Find your connection names on the **Cloud Connections** page in the Kestrel dashboard. The name matches whatever you set when connecting the account.
+</Tip>
+
+## Resource Inspection
+
+Query any cloud resource — instances, storage, databases, serverless functions, networking, and more.
+
+```
+@cloud:prod-aws Show me all EC2 instances in us-east-1 and us-west-2, grouped by instance type. Include running state and launch time.
+```
+
+```
+@cloud:prod-aws Which S3 buckets don't have versioning enabled? Flag any that also lack server-side encryption.
+```
+
+```
+@cloud:prod-aws List all RDS instances that aren't using Multi-AZ deployment. Include their storage size, engine version, and whether automated backups are enabled.
+```
+
+```
+@cloud:prod-aws Show me all Lambda functions that haven't been invoked in the last 30 days. What's the total allocated memory across them?
+```
+
+```
+@cloud:prod-aws What ECS services are running in the production cluster? Show me the task definition, desired count, and running count for each.
+```
+
+```
+@cloud:prod-aws Which ELBs have no healthy targets registered? Include the target group health check configuration.
+```
+
+## Security Configuration
+
+Inspect IAM policies, security groups, encryption settings, and access controls.
+
+```
+@cloud:prod-aws Which security groups allow inbound SSH (port 22) from 0.0.0.0/0? Show me the group name, VPC, and what resources are using each group.
+```
+
+```
+@cloud:prod-aws List all IAM users with console access that don't have MFA enabled.
+```
+
+```
+@cloud:prod-aws Show me all IAM roles that have AdministratorAccess or full S3 access policies attached. Which services or users assume these roles?
+```
+
+```
+@cloud:prod-aws Which KMS keys are scheduled for deletion? Are any of them still being used by S3 buckets or RDS instances?
+```
+
+```
+@cloud:prod-aws Are there any S3 bucket policies that grant cross-account access? Show me the principal ARNs and what permissions they have.
+```
+
+```
+@cloud:prod-aws Which EC2 instances have public IP addresses and security groups that allow inbound traffic on non-standard ports?
+```
+
+## CloudTrail and Audit Events
+
+Query who did what, when, and from where.
+
+```
+@cloud:prod-aws Who modified the IAM policy for the deploy-bot role in the last 48 hours? Show the full event details including source IP and user agent.
+```
+
+```
+@cloud:prod-aws Show me all console logins in the last 7 days. Flag any that came from unusual IP addresses or happened outside business hours.
+```
+
+```
+@cloud:prod-aws What API calls did user david@acme.com make yesterday? Focus on any destructive actions like Delete* or Terminate*.
+```
+
+```
+@cloud:prod-aws Were there any security group changes in the last 24 hours? Show me the before and after rules for each change.
+```
+
+```
+@cloud:prod-aws Which IAM roles were created or modified in the last week? Show me who made the changes and what permissions were granted.
+```
+
+## CloudWatch Metrics
+
+Query performance and health metrics from CloudWatch.
+
+```
+@cloud:prod-aws What's the CPU utilization for the prod-analytics RDS instance over the last 6 hours? Is it approaching any performance thresholds?
+```
+
+```
+@cloud:prod-aws Show me the request count and error rate for the prod-api ALB over the last 24 hours. Were there any spikes?
+```
+
+```
+@cloud:prod-aws Which EC2 instances in us-east-1 have averaged less than 10% CPU utilization over the last 30 days?
+```
+
+```
+@cloud:prod-aws What's the current queue depth for the order-processing SQS queue? How many messages are in the dead letter queue?
+```
+
+## Network Traffic
+
+Query VPC Flow Logs for network traffic analysis.
+
+```
+@cloud:prod-aws Show me all rejected traffic in the production VPC over the last hour. Group by source and destination.
+```
+
+```
+@cloud:prod-aws Is there any traffic from the application subnet to the internet that isn't going through the NAT gateway?
+```
+
+```
+@cloud:prod-aws What's the traffic volume between the production VPC and the staging VPC over the last 24 hours? Break it down by port.
+```
+
+```
+@cloud:prod-aws Are any EC2 instances sending traffic to known bad IP ranges or unusual external destinations?
+```
+
+## OCI-Specific Queries
+
+Query Oracle Cloud Infrastructure resources and audit logs.
+
+```
+@cloud:prod-oci List all compute instances in the production compartment. Include shape, state, and VNIC details.
+```
+
+```
+@cloud:prod-oci Which object storage buckets in the production tenancy are publicly accessible?
+```
+
+```
+@cloud:prod-oci Show me the audit events for the networking compartment in the last 48 hours. Were there any VCN or security list changes?
+```
+
+```
+@cloud:prod-oci What IAM policies apply to the deployment group? Are there any overly permissive statements?
+```
+
+## Cross-Account Comparison
+
+Compare configurations and resources across multiple cloud accounts.
+
+```
+@cloud:prod-aws @cloud:staging-aws Compare the security group rules for the EKS node groups. Are there any rules in staging that aren't in production?
+```
+
+```
+@cloud:prod-aws @cloud:staging-aws Which RDS instances exist in production but not in staging? Are there any configuration differences for the ones that exist in both?
+```
+
+```
+@cloud:prod-aws @cloud:staging-aws Compare the Lambda function configurations for the payment-processor functions across both accounts. Flag any differences in memory, timeout, or environment variables.
+```
+
+```
+@cloud:prod-aws @cloud:dev-aws Are the same IAM policies attached to the CI/CD role in both accounts?
+```
+
+## Example Conversation
+
+**You:**
+> `@cloud:prod-aws` We got an alert about unauthorized access. Show me all CloudTrail events from unusual source IPs in the last 12 hours.
+
+**Kestrel:**
+> I found 3 API calls from IP addresses not in your organization's known CIDR ranges:
+>
+> 1. `AssumeRole` on `arn:aws:iam::123456789012:role/deploy-bot` from `198.51.100.42` at 03:14 UTC — user agent `aws-cli/2.15.0`
+> 2. `ListBuckets` from the same IP at 03:16 UTC using the assumed `deploy-bot` session
+> 3. `GetObject` on `s3://prod-config-bucket/database.yml` at 03:17 UTC from the same session
+>
+> The `deploy-bot` role was assumed using access key `AKIA...3F7Q` which belongs to IAM user `ci-pipeline`. This key hasn't been rotated in 214 days.
+
+**You:**
+> What permissions does that deploy-bot role have? And is the access key compromised?
+
+**Kestrel:**
+> The `deploy-bot` role has the following attached policies:
+>
+> - `AmazonS3FullAccess` (AWS managed)
+> - `custom-deploy-policy` (inline) — grants `ec2:*`, `ecs:*`, and `lambda:*` on all resources
+>
+> This is significantly over-permissioned for a CI/CD role. Regarding the access key — the source IP `198.51.100.42` geolocates to a datacenter in Ashburn, VA (AWS us-east-1 region), which could be a legitimate CI runner. However, previous API calls from `ci-pipeline` all originated from `10.0.x.x` (your VPC). I'd recommend rotating the key immediately and scoping down the role permissions.
+
+**You:**
+> Generate a Terraform change to scope down that role to just the S3 and ECS permissions it actually needs.
+
+**Kestrel:**
+> Based on the CloudTrail history for this role over the last 90 days, the `deploy-bot` role actually only uses these actions: `s3:GetObject`, `s3:PutObject` on the `prod-config-bucket` and `prod-artifacts` buckets, and `ecs:UpdateService`, `ecs:DescribeServices` on the `production` cluster. Here's a least-privilege policy:
+>
+> *(displays Terraform diff replacing the over-permissioned policies with a scoped-down custom policy)*
+
+## Next Steps
+
+- [Kubernetes Investigation](/copilot/kubernetes) — query pods, deployments, events, and metrics
+- [Code Investigation](/copilot/code) — search and trace code changes across repositories
+- [Cost Analysis](/copilot/costs) — analyze AWS spend patterns and anomalies
+- [Configuration Changes](/copilot/config-changes) — generate and apply Terraform and YAML changes

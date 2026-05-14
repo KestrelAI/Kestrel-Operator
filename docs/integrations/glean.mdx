@@ -1,0 +1,66 @@
+---
+title: "Glean"
+description: "Connect Glean for enterprise-wide knowledge search during incident investigations"
+---
+
+The Glean integration connects Kestrel to your organization's Glean instance, enabling enterprise-wide knowledge search during incident root cause analysis. Glean aggregates knowledge from across your tools — Confluence, Google Drive, Slack, Notion, and more — providing a single search interface for incident context.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- Glean Enterprise plan with API access enabled
+- Glean API key with `search:read` scope
+
+## Setup
+
+<Steps>
+  <Step title="Create a Glean API key">
+    1. Contact your Glean administrator to enable API access
+    2. Go to your **Glean Admin Console → API → API Keys**
+    3. Click **Create API Key**
+    4. Select the `search:read` scope
+    5. Copy the generated API key
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Knowledge Sources** in your Kestrel dashboard
+    2. Click **Add Source** and select **Glean**
+    3. Paste the API key
+    4. Optionally enter a **Workspace ID**
+    5. Click **Add Source**
+  </Step>
+</Steps>
+
+<Note>
+  Glean API access requires an Enterprise plan. Contact your Glean account manager if you don't see the API option in the admin console.
+</Note>
+
+## How It's Used
+
+### In Incident Response
+
+- **Enterprise knowledge search** — during root cause analysis, Kestrel searches Glean for relevant documents, past incidents, runbooks, and team discussions across all of your organization's connected tools
+- **Broad context** — because Glean indexes content from multiple sources (Confluence, Drive, Slack, Notion, etc.), it often surfaces context that wouldn't be found by searching individual tools
+
+Glean results are presented alongside Kestrel's automated investigation, giving you both real-time diagnostics and historical insight.
+
+### In Cloud AI Copilot
+
+- Search your organization's knowledge base from the chat: `Search Glean for the payments service architecture`
+
+<Tip>
+  Glean is most valuable when you have knowledge spread across many tools. If your team primarily uses Confluence and Slack, connecting those directly as knowledge sources may be sufficient.
+</Tip>
+
+## Managing the Connection
+
+### Testing
+
+Click the **Test** button on the Glean source to verify credentials and connectivity.
+
+### Enabling/Disabling
+
+Use the toggle switch on the Glean source to temporarily enable or disable it without removing the configuration.
+
+### Deleting
+
+Click the delete icon and confirm to permanently remove the Glean source.

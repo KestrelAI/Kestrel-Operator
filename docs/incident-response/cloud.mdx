@@ -1,0 +1,281 @@
+---
+title: "Cloud Incident Response"
+description: "AI-powered detection and remediation for AWS and OCI cloud incidents"
+---
+
+Kestrel monitors your AWS and OCI cloud accounts for security events, misconfigurations, and anomalous activity. When an incident is detected — an IAM policy violation, an S3 bucket made public, a VPC route change, a database misconfiguration — Kestrel runs root cause analysis and generates Terraform, CloudFormation, Pulumi, or CLI fixes.
+
+{/* Screenshot placeholder: Cloud Incidents list page showing detected cloud incidents with severity, service, and affected resources */}
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="AWS Account" icon="aws" href="/integrations/aws">
+    Connect an AWS account with CloudTrail enabled.
+  </Card>
+  <Card title="OCI Tenancy" icon="cloud" href="/integrations/oci">
+    Connect an OCI tenancy with Audit logging enabled.
+  </Card>
+  <Card title="Slack (optional)" icon="slack" href="/integrations/slack">
+    Receive cloud incident notifications in your team's channels.
+  </Card>
+  <Card title="PagerDuty (optional)" icon="pager" href="/integrations/pagerduty">
+    Route cloud incidents to your on-call team.
+  </Card>
+  <Card title="GitHub / GitLab (optional)" icon="github" href="/integrations/github">
+    Enable IaC remediation workflows with PR-based fixes.
+  </Card>
+</CardGroup>
+
+## How Detection Works
+
+### AWS
+
+Kestrel analyzes your AWS environment through:
+
+- **CloudTrail events** — API call analysis for IAM changes, security group modifications, S3 policy changes, VPC route changes, KMS key operations, Secrets Manager events, and other security-relevant actions
+- **Resource monitoring** — Continuous assessment of EC2 instances, S3 buckets, RDS databases, DynamoDB tables, Lambda functions, ECS/EKS containers, and other AWS resources
+- **VPC Flow Logs** — Ingestion and analysis of network traffic patterns from VPC Flow Logs in CloudWatch for detecting suspicious traffic, unauthorized access attempts, and network anomalies
+- **CloudWatch Alarms** — Integration with CloudWatch alarms for metric-based incident detection
+- **Cost anomalies** — Detection of unusual spend patterns across services and accounts via AWS Cost Anomaly Detection
+- **AWS Config** — Monitoring for compliance rule violations across your resources
+- **Security Hub** — Integration with AWS Security Hub for aggregated security findings
+- **PagerDuty signals** — If PagerDuty is connected, Kestrel enriches PagerDuty alerts with cloud context and AI analysis
+
+### OCI
+
+Kestrel analyzes your OCI environment through:
+
+- **Audit log events** — API call analysis for IAM policy changes, compartment modifications, network security changes, and other security-relevant actions
+- **Cloud Guard problems** — Integration with OCI Cloud Guard for threat detection
+- **VCN Flow Logs** — Ingestion and analysis of network traffic from VCN Flow Logs for detecting suspicious traffic patterns and network anomalies
+- **Resource monitoring** — Continuous assessment of compute instances, object storage buckets, databases, networking configurations, load balancers, and DNS records
+
+{/* Screenshot placeholder: Cloud incident detail page showing root cause analysis with CloudTrail event timeline */}
+
+## Root Cause Analysis
+
+When a cloud incident is detected, Kestrel's AI investigates:
+
+1. **API event history** — The sequence of CloudTrail or OCI Audit events that led to the incident
+2. **Resource configuration** — Current and previous state of the affected resource
+3. **IAM context** — Who performed the action, what role they assumed, and whether it was authorized
+4. **Network context** — VPC/VCN, subnet, security group, and route table configurations
+5. **Network traffic** — VPC/VCN Flow Logs analysis for suspicious traffic patterns related to the incident
+6. **Knowledge sources** (if connected) — Historical incidents, runbooks, and organizational context from Confluence, Jira, Slack, Glean, or Linear
+
+The AI produces:
+
+- **Investigation summary** — What happened, who was involved, and the blast radius
+- **Root cause** — The specific API call or configuration change that caused the incident
+- **Timeline** — Chronological sequence of events with timestamps and principals
+- **Affected resources** — All cloud resources impacted
+- **Severity assessment** — Severity and potential downstream impact
+
+## Fix Generation
+
+Kestrel generates infrastructure-as-code fixes for cloud incidents. The fix format depends on your infrastructure tooling:
+
+| Fix Type | Description |
+|----------|-------------|
+| **Terraform** | HCL resource definitions ready to apply or commit |
+| **CloudFormation** | CloudFormation template changes |
+| **Pulumi** | Pulumi code changes |
+| **AWS CLI** | AWS CLI commands to remediate the issue directly |
+| **OCI CLI** | OCI CLI commands for OCI resource remediation |
+
+{/* Screenshot placeholder: Cloud fix section showing a Terraform diff with Create PR and Copy buttons */}
+
+Each fix includes:
+
+- **Diff view** — Before and after comparison of the resource configuration
+- **Explanation** — Why this change resolves the issue
+- **Apply options** — Create a PR to your IaC repository, apply directly via CLI, or copy to apply manually
+
+## IaC Remediation Workflow
+
+When a GitHub or GitLab integration is connected along with an IaC repository configuration, Kestrel can open pull requests with IaC fixes directly in your infrastructure repository:
+
+<Steps>
+  <Step title="Incident detected">
+    Kestrel detects a cloud security event (e.g., S3 bucket made public).
+  </Step>
+  <Step title="AI generates fix">
+    Root cause analysis runs and a Terraform/CloudFormation/Pulumi fix is generated.
+  </Step>
+  <Step title="PR created">
+    Kestrel opens a pull request in your configured IaC repository with the fix, targeting the exact file managing the resource.
+  </Step>
+  <Step title="Review and merge">
+    Your team reviews the PR. Merging applies the fix through your existing GitOps pipeline.
+  </Step>
+</Steps>
+
+Configure IaC repositories from **Integrations → CI/CD** by selecting your connected GitHub or GitLab repo, the IaC type (Terraform, CloudFormation, or Pulumi), and the target directory.
+
+## Cloud Incident Types
+
+### AWS — Security & Identity
+
+| Type | Description |
+|------|-------------|
+| IAM Compromise | Potential IAM credential compromise detected |
+| IAM Policy Violation | IAM policy change that violates security best practices |
+| IAM Role Abuse | Suspicious IAM role assumption patterns |
+| Unauthorized Access | API calls from unauthorized principals |
+| Credential Leak | Exposed credentials detected |
+| Privilege Escalation | Attempt to escalate IAM privileges |
+| Root Account Activity | AWS root account used (critical security event) |
+| KMS Key Compromise | KMS key deletion, disabling, or policy change |
+| Secrets Manager Event | Secret deletion, policy changes, or rotation changes |
+| Security Hub Finding | High or critical findings from AWS Security Hub |
+| Config Compliance Violation | AWS Config rule non-compliance |
+
+### AWS — Storage
+
+| Type | Description |
+|------|-------------|
+| S3 Public Access | S3 bucket or object made publicly accessible |
+| S3 Policy Modification | Bucket policy changed in a security-relevant way |
+| S3 Data Exfiltration | Unusual data access patterns on S3 objects |
+| S3 Encryption Disabled | Bucket encryption configuration removed or weakened |
+
+### AWS — Compute & Containers
+
+| Type | Description |
+|------|-------------|
+| EC2 Anomaly | Unusual EC2 instance behavior |
+| EC2 Instance Compromise | Potential EC2 instance compromise |
+| EC2 Unauthorized Access | Unauthorized access to EC2 instances |
+| Lambda Function Issue | Lambda function errors, configuration changes, or permission issues |
+| ECS/EKS Container Issue | Container service task failures, cluster changes, or deployment issues |
+
+### AWS — Database
+
+| Type | Description |
+|------|-------------|
+| RDS Database Issue | RDS database deletion, snapshot exposure, configuration changes, or security group modifications |
+| DynamoDB Issue | DynamoDB table deletion, backup issues, or policy changes |
+
+### AWS — Network & VPC
+
+| Type | Description |
+|------|-------------|
+| Security Group Modification | Security group rules changed |
+| VPC Modification | VPC configuration changed |
+| VPC Route Change | Route table entry added, modified, or deleted |
+| VPC Route Table Change | Route table associated or disassociated |
+| VPC Flow Logs Disabled | VPC Flow Logs disabled |
+| VPC Peering Change | VPC peering connection modified |
+| VPC Gateway Change | Internet or NAT gateway configuration changed |
+| VPC Subnet Change | Subnet configuration changed |
+| VPC Deletion | VPC deleted |
+| Network Traffic Anomaly | Unusual network traffic patterns detected via VPC Flow Logs |
+| Network Traffic Blocked | Traffic blocked by security groups or NACLs |
+
+### AWS — Service Health & Operations
+
+| Type | Description |
+|------|-------------|
+| Service Health Degradation | Degraded performance of AWS services |
+| API Throttling | API throttling across AWS services |
+| Resource Exhaustion | Service limit or quota exhaustion |
+| CloudWatch Alarm | CloudWatch alarm entered ALARM state |
+| Application Log Errors | Application errors detected in CloudWatch Logs |
+
+### AWS — Cost & Billing
+
+| Type | Description |
+|------|-------------|
+| Cost Anomaly Detected | AWS Cost Anomaly Detection identified unexpected spend increases |
+| Budget Threshold Exceeded | AWS Budget threshold breached |
+
+### OCI — IAM & Access
+
+| Type | Description |
+|------|-------------|
+| OCI IAM Compromise | Potential OCI IAM compromise detected |
+| OCI IAM User Change | IAM user created, modified, or deleted |
+| OCI IAM Group Change | IAM group membership changed |
+| OCI Dynamic Group Change | Dynamic group matching rules changed |
+| OCI Policy Change | OCI IAM policy statement modified |
+| OCI Compartment Change | Compartment created, moved, or deleted |
+| OCI Credential Change | API key or auth token modified |
+| OCI Privilege Escalation | Privilege escalation attempt detected |
+| OCI IAM Security Change | General IAM security configuration change |
+
+### OCI — Network
+
+| Type | Description |
+|------|-------------|
+| OCI Security List Change | Security list ingress/egress rules changed |
+| OCI Network Security Group Change | Network security group rules modified |
+| OCI VCN Change | VCN configuration changed |
+| OCI Subnet Change | Subnet configuration modified |
+| OCI Route Table Change | Route table rules changed |
+| OCI Internet Gateway Change | Internet gateway created or modified |
+| OCI NAT Gateway Change | NAT gateway configuration changed |
+| OCI Service Gateway Change | Service gateway configuration changed |
+| OCI Load Balancer Change | Load balancer configuration modified |
+| OCI Network Load Balancer Change | Network load balancer modified |
+| OCI DRG Change | Dynamic Routing Gateway modified |
+| OCI DRG Attachment Change | DRG attachment modified |
+| OCI Local Peering Gateway Change | Local peering gateway modified |
+| OCI Remote Peering Connection Change | Remote peering connection modified |
+| OCI Public IP Change | Public IP address changed |
+| OCI Private IP Change | Private IP address changed |
+| OCI VNIC Change | Virtual NIC configuration changed |
+| OCI DHCP Options Change | DHCP options modified |
+| OCI WAF Change | Web Application Firewall configuration changed |
+| OCI DNS Change | DNS zone or record modified |
+| OCI API Gateway Change | API Gateway configuration changed |
+| OCI Network Security Change | General network security configuration change |
+
+### OCI — Storage
+
+| Type | Description |
+|------|-------------|
+| OCI Bucket Public Access | Object Storage bucket made publicly accessible |
+| OCI Bucket Policy Change | Bucket policy modified |
+| OCI Object Storage Change | Object Storage configuration changed |
+
+### OCI — Compute
+
+| Type | Description |
+|------|-------------|
+| OCI Compute Anomaly | Unusual compute instance behavior |
+| OCI Console Connection | Console connection to a compute instance |
+
+### OCI — Database & KMS
+
+| Type | Description |
+|------|-------------|
+| OCI Database Security Change | Database security configuration changed |
+| OCI KMS Key Compromise | Potential KMS key compromise |
+| OCI KMS Security Change | KMS vault or key security configuration changed |
+
+### OCI — Logging & Cloud Guard
+
+| Type | Description |
+|------|-------------|
+| OCI Logging Tampering | Audit or logging configuration tampered with |
+| OCI Cloud Guard Problem | Cloud Guard detected a security problem |
+
+## Custom Workflows
+
+Build custom cloud incident response workflows that trigger on cloud events. For example:
+
+- Notify a security channel when an S3 bucket is made public
+- Auto-create a Jira ticket for every IAM policy violation
+- Escalate VPC route changes to PagerDuty during change-freeze windows
+- Run a custom remediation script when a Security Hub finding is detected
+
+See [Workflows](/workflows/create-workflows) to build custom cloud incident response automation.
+
+## Next Steps
+
+- [Connect an AWS account](/integrations/aws) to start detecting cloud incidents
+- [Connect an OCI tenancy](/integrations/oci) for Oracle Cloud monitoring
+- [Set up GitHub or GitLab](/integrations/github) for IaC remediation PRs
+- [Configure Slack notifications](/integrations/slack) for real-time cloud alerts
+- [Build custom workflows](/workflows/create-workflows) for automated cloud incident response

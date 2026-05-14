@@ -1,0 +1,111 @@
+---
+title: "OpenTelemetry"
+description: "Receive and store OpenTelemetry metrics from your collectors for incident root cause analysis"
+---
+
+The OpenTelemetry integration enables the Kestrel Operator to receive and store OTLP metrics from your OpenTelemetry Collectors. These metrics are used during incident root cause analysis to correlate infrastructure and application performance data with Kubernetes events.
+
+## Prerequisites
+
+- Kestrel Operator deployed in your cluster (see [Kubernetes](/integrations/kubernetes))
+- OpenTelemetry Collector deployed in your cluster with the `k8sattributes` processor
+
+<Warning>
+  The `k8sattributes` processor is required for metrics to include Kubernetes context (namespace, workload, pod names). Without it, the operator cannot map metrics to workloads and RCA agents cannot correlate metrics with Kubernetes resources.
+</Warning>
+
+## Setup
+
+<Steps>
+  <Step title="Enable OpenTelemetry in the operator">
+    During cluster onboarding, select **OpenTelemetry** as the Metrics Source in the Kestrel Dashboard.
+
+    Alternatively, configure via Helm values:
+    ```yaml
+    operator:
+      otel:
+        enabled: true
+        receiverPort: 4317
+      metricsStore:
+        retention: "30m"
+        maxSeries: 100000
+        ringSize: 60
+    ```
+  </Step>
+  <Step title="Configure the k8sattributes processor">
+    Ensure your OTEL Collector has the `k8sattributes` processor configured:
+    ```yaml
+    processors:
+      k8sattributes:
+        auth_type: "serviceAccount"
+        passthrough: false
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.deployment.name
+            - k8s.statefulset.name
+            - k8s.daemonset.name
+            - k8s.replicaset.name
+            - k8s.container.name
+            - k8s.node.name
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.ip
+              - from: resource_attribute
+                name: ip
+              - from: connection
+    ```
+  </Step>
+  <Step title="Point the collector at the Kestrel Operator">
+    Add a Kestrel exporter to your OTEL Collector config:
+    ```yaml
+    exporters:
+      otlp/kestrel:
+        endpoint: kestrel-operator.kestrel-ai.svc.cluster.local:4317
+        tls:
+          insecure: true
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [k8sattributes, batch]
+          exporters: [otlp/kestrel]
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  The operator supports gzip compression. The OTEL Collector enables gzip by default. If using the Go SDK directly, enable it via `OTEL_EXPORTER_OTLP_COMPRESSION=gzip`.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+- **Action blocks**: Query stored OTEL metrics as workflow steps to check thresholds, compare metric values, or enrich workflow context with performance data
+
+### In Incident Response
+
+- **Metrics correlation** — during root cause analysis, Kestrel queries stored OTEL metrics for CPU, memory, network, and application-level metrics around the incident timeframe
+- **Workload-aware queries** — thanks to `k8sattributes`, metrics are queryable by namespace, deployment, pod, and container
+
+### In Cloud AI Copilot
+
+Ask questions that leverage your OpenTelemetry metrics:
+- `What was the request latency for the API service in the last 30 minutes?`
+- `Show me CPU usage trends for the payments namespace`
+- `Are there any workloads with high error rates right now?`
+
+## Configuration Reference
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `operator.otel.enabled` | boolean | `false` | Enable OTLP gRPC receiver |
+| `operator.otel.receiverPort` | integer | `4317` | OTLP gRPC receiver port |
+| `operator.metricsStore.retention` | string | `"30m"` | Rolling retention window |
+| `operator.metricsStore.maxSeries` | integer | `100000` | Max unique metric series |
+| `operator.metricsStore.ringSize` | integer | `60` | Data points per series |

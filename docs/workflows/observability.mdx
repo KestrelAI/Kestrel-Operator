@@ -1,0 +1,146 @@
+---
+title: "Workflow Observability"
+description: "Monitor workflow execution metrics, performance, and health"
+---
+
+The Workflow Observability dashboard gives you visibility into how your workflows are performing — execution counts, success rates, integration usage, step durations, and full execution history with step-by-step output inspection.
+
+Navigate to **Workflows → Observability** in the Kestrel dashboard.
+
+{/* Screenshot placeholder: Workflow observability dashboard overview showing summary cards and charts */}
+
+## Dashboard Overview
+
+The top of the dashboard shows aggregate metrics across all workflows:
+
+| Metric | Description |
+|--------|-------------|
+| **Total Executions** | Number of workflow runs in the selected time range |
+| **Success Rate** | Percentage of executions that completed without errors |
+| **Active Workflows** | Number of enabled workflows |
+| **Trigger Sources** | Breakdown of executions by trigger type (K8s, Cloud, Slack, PagerDuty, PostHog, Vercel, Webhook) |
+
+Use the date range picker in the top-right corner to adjust the time window. Defaults to the last 7 days.
+
+{/* Screenshot placeholder: Dashboard summary cards with execution count, success rate, active workflows, and trigger source breakdown */}
+
+---
+
+## Integration Usage
+
+The integration usage chart shows which integrations are used most frequently across all workflow executions. Each bar represents an integration (Slack, GitHub, Jira, Kestrel RCA, etc.) with the total number of action executions.
+
+- Paginated — use the navigation controls to browse through all integrations
+- Sorted by usage count (highest first)
+- Hover over a bar to see the exact count and percentage of total
+
+This chart helps identify which integrations are central to your automation and where to focus reliability efforts.
+
+{/* Screenshot placeholder: Integration usage bar chart showing top integrations by execution count */}
+
+---
+
+## Execution Duration by Workflow
+
+A paginated bar chart showing the average execution duration for each workflow. Identifies slow workflows that may need optimization.
+
+- Each bar represents one workflow, labeled by name
+- Duration is the average end-to-end time from trigger to final step completion
+- Color-coded: green for fast (under 30s), yellow for moderate (30s–2min), red for slow (over 2min)
+- Paginated for organizations with many workflows
+
+{/* Screenshot placeholder: Execution duration bar chart with workflows sorted by average duration */}
+
+<Tip>
+If a workflow's average duration is high, check the Slowest Steps analysis to find the bottleneck.
+</Tip>
+
+---
+
+## Slowest Steps
+
+A ranked list of the slowest individual steps across all workflows, based on average execution time. Each entry shows:
+
+| Field | Description |
+|-------|-------------|
+| **Step Name** | The action name and type (e.g., "RCA Analysis — Kestrel RCA") |
+| **Workflow** | The parent workflow |
+| **Avg Duration** | Average execution time |
+| **P95 Duration** | 95th percentile execution time |
+| **Executions** | Total number of times this step has run |
+
+Use this to identify steps that slow down your workflows — whether it's a slow external API, a long-running AI analysis, or a blocking approval gate.
+
+---
+
+## Execution History
+
+The execution history table lists every workflow run with filtering and search.
+
+### Filters
+
+| Filter | Options |
+|--------|---------|
+| **Workflow** | Select a specific workflow or view all |
+| **Status** | Success, Failed, Running, Pending Approval, Timed Out |
+| **Trigger Source** | K8s Incident, Cloud Signal, Slack, PagerDuty, PostHog, Vercel, Webhook |
+| **Date Range** | Custom start and end dates |
+
+{/* Screenshot placeholder: Execution history table with filter controls and status badges */}
+
+### Table Columns
+
+| Column | Description |
+|--------|-------------|
+| **Workflow** | Workflow name |
+| **Trigger** | What triggered the execution (with source details) |
+| **Status** | Execution status with color-coded badge |
+| **Duration** | End-to-end execution time |
+| **Steps** | Number of completed steps / total steps |
+| **Started** | Timestamp of execution start |
+
+Click any row to open the execution detail view.
+
+---
+
+## Execution Detail View
+
+The detail view shows the full step-by-step breakdown of a single workflow execution.
+
+{/* Screenshot placeholder: Execution detail view showing step timeline with expand/collapse for each step */}
+
+Each step displays:
+
+- **Status**: Success, failed, skipped, or pending
+- **Duration**: How long the step took
+- **Input**: The resolved template variables passed to the step
+- **Output**: The full output returned by the step (API responses, AI analysis results, created resource IDs)
+- **Error**: If the step failed, the error message and details
+
+<Note>
+Step outputs are retained for 30 days. After that, execution metadata (status, duration, timestamps) is kept but outputs are purged.
+</Note>
+
+### Debugging Failed Executions
+
+When a workflow fails:
+
+1. Open the execution detail view
+2. Find the step with a **Failed** status badge
+3. Expand the step to see the error message
+4. Check the **Input** section to verify the template variables resolved correctly
+5. Check the **Output** section for the raw error response from the integration
+
+Common failure causes:
+
+- **Authentication expired** — Reconnect the integration on the Integrations page
+- **Rate limiting** — The external API returned a 429. Increase the cooldown period or reduce workflow frequency
+- **Invalid template variable** — A referenced variable was null or malformed. Check the upstream step's output
+- **Approval timeout** — An approval gate was not responded to within the configured timeout
+
+---
+
+## Next Steps
+
+- [Create Workflows](/workflows/create-workflows) — Build new workflows or optimize existing ones
+- [Custom Integrations](/workflows/custom-integrations) — Add HTTP actions and webhook triggers

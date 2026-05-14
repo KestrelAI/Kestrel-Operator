@@ -1,0 +1,71 @@
+---
+title: "GitLab"
+description: "Connect GitLab for GitOps deployments and IaC remediation via merge requests"
+---
+
+The GitLab integration connects Kestrel to your GitLab projects, enabling GitOps deployments and Infrastructure-as-Code remediation through merge requests.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- GitLab account with access to the target projects
+
+## Setup
+
+<Steps>
+  <Step title="Connect GitLab via OAuth">
+    1. Navigate to **Integrations → CI/CD** in your Kestrel dashboard
+    2. Click **Connect GitLab**
+    3. Authorize Kestrel in the GitLab OAuth page
+    4. You're redirected back to the Kestrel dashboard
+  </Step>
+  <Step title="Sync projects">
+    1. Click the GitLab card to expand it
+    2. Click **Add Projects**
+    3. Select the GitLab projects you want to manage
+    4. Click **Sync Projects**
+  </Step>
+  <Step title="Configure IaC repositories (optional)">
+    1. Click **Configure IaC** on a synced GitLab project
+    2. Select the IaC type: **Terraform**, **CloudFormation**, or **Pulumi**
+    3. Set the root path
+    4. Optionally link a cloud account (AWS or OCI)
+    5. Click **Enable IaC**
+  </Step>
+</Steps>
+
+## How It's Used
+
+### In Workflows
+
+**Action blocks:**
+- **Create Merge Request** — open a merge request with specified source branch, title, and description
+- **Create Issue** — create a GitLab issue with labels, assignees, and description
+- **Trigger Pipeline** — trigger a CI/CD pipeline run on a specified branch
+- **Wait for Pipeline** — block workflow execution until a pipeline run completes
+- **Get Pipeline Status** — retrieve the current status of a CI/CD pipeline
+- **Wait for MR Approval** — block workflow execution until a merge request is approved
+- **Wait for MR Merge** — block workflow execution until a merge request is merged
+
+Example: A workflow triggered by an incident creates a merge request with a fix, triggers the CI pipeline, waits for it to pass, and then waits for MR approval before notifying the team.
+
+### In Incident Response
+
+- **YAML fix MRs** — click **Create Merge Request** on any AI-generated Kubernetes fix to open an MR with the change
+- **IaC remediation** — when Kestrel detects a cloud misconfiguration, it identifies the Terraform file managing that resource and opens an MR with the fix
+- **Knowledge source** — repository content provides context during incident investigation
+
+### In Cloud AI Copilot
+
+- Deploy AI-generated configurations via merge request from the chat interface
+- Browse repository contents for IaC and Kubernetes manifests
+
+## Disconnecting
+
+<Warning>
+  Disconnecting GitLab removes all synced projects and their IaC configurations. This action cannot be undone.
+</Warning>
+
+1. Click the GitLab card to expand it
+2. Click **Disconnect**
+3. Confirm the disconnection

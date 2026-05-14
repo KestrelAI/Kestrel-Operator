@@ -1,5 +1,5 @@
 ---
-title: "PagerDuty Integration"
+title: "PagerDuty"
 description: "Route Kestrel incidents to PagerDuty with full root cause analysis, severity mapping, and service routing"
 ---
 
@@ -10,109 +10,98 @@ The PagerDuty integration connects Kestrel's automated incident detection to you
 - **Organization Admin** role in Kestrel
 - PagerDuty account with admin access
 
-## Features
-
-- **Kubernetes Incident Alerts** - Trigger PagerDuty alerts when K8s incidents are detected
-- **Cloud Incident Alerts** - Trigger PagerDuty alerts for AWS/OCI security incidents
-- **Auto-Resolution** - When incidents are resolved in Kestrel, PagerDuty incidents are automatically resolved
-- **Service Routing**  - Route alerts to specific PagerDuty services based on namespace or cloud resource
-- **Severity Mapping** - Map Kestrel severity levels to PagerDuty severity levels
-- **Bidirectional Sync**  - PagerDuty incidents are updated as Kestrel's investigation progresses
-
-## Setup Instructions
+## Setup
 
 Kestrel supports two connection methods:
 
 ### Method 1: API Token (Recommended)
 
-The API Token method enables full service management, namespace routing, and cloud resource routing.
+Enables full service management, namespace routing, and cloud resource routing.
 
-1. Navigate to **Integrations → PagerDuty** in your Kestrel dashboard
-2. Ensure **Use API Token** is checked (default)
-3. Create an API token in PagerDuty:
-   - Click your user icon → **My Profile**
-   - Go to the **User Settings** tab
-   - Click **Create API User Token**
-   - Copy the token
-4. Paste the token in the **PagerDuty API Token** field
-5. Set up the webhook for bidirectional sync:
-   - Copy the **Webhook URL** shown in the setup dialog
-   - In PagerDuty, go to **Integrations → Generic Webhooks (V3)**
-   - Create a new webhook subscription using the copied URL
-   - Copy the **Signing Secret** from the webhook configuration
-6. Paste the signing secret in the **Webhook Signing Secret** field
-7. Click **Connect PagerDuty**
-
-After connecting, click **Sync Services** to import your PagerDuty services.
+<Steps>
+  <Step title="Create a PagerDuty API token">
+    In PagerDuty: **User Icon → My Profile → User Settings → Create API User Token**. Copy the token.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → PagerDuty** in your Kestrel dashboard
+    2. Ensure **Use API Token** is checked
+    3. Paste the API token
+  </Step>
+  <Step title="Set up the webhook for bidirectional sync">
+    1. Copy the **Webhook URL** shown in the setup dialog
+    2. In PagerDuty, go to **Integrations → Generic Webhooks (V3)** and create a subscription using the URL
+    3. Copy the **Signing Secret** from the webhook configuration
+    4. Paste the signing secret in Kestrel
+  </Step>
+  <Step title="Sync services">
+    Click **Connect PagerDuty**, then click **Sync Services** to import your PagerDuty services.
+  </Step>
+</Steps>
 
 ### Method 2: Routing Key (Legacy)
 
-For simple setups that only need to send alerts to a single service:
+For simple setups that route alerts to a single service:
 
 1. Uncheck **Use API Token**
-2. In PagerDuty, go to **Services → Select a Service → Integrations**
-3. Add a new **Events API v2** integration
-4. Copy the **Integration Key** (routing key)
-5. Paste it in the **Integration/Routing Key** field
-6. Enter a **Service Name** (e.g., "Kestrel Security Alerts")
-7. Click **Connect PagerDuty**
+2. In PagerDuty, add an **Events API v2** integration to your service
+3. Copy the **Integration Key** (routing key)
+4. Paste it in the **Integration/Routing Key** field
+5. Enter a **Service Name** and click **Connect PagerDuty**
 
-## Configuring Services
+## How It's Used
 
-After connecting with an API token:
+### In Workflows
 
-1. Go to the **Services** tab
-2. Click **Sync Services** to import your PagerDuty services
-3. Click **Configure** on each service you want to receive alerts
-4. Set one service as the **Default** - unmatched incidents are routed here
+**Trigger blocks:**
+- **Incident Triggered** — fires when a new PagerDuty incident is created
+- **Incident Acknowledged** — fires when a PagerDuty incident is acknowledged by a responder
+- **Incident Resolved** — fires when a PagerDuty incident is resolved
+- **Any PagerDuty Incident** — fires on any PagerDuty incident state change
+- **High Urgency Incident** — fires when a high-urgency PagerDuty incident is triggered
 
-## Namespace Routing
+**Action blocks:**
+- **Create Alert** — create a new PagerDuty alert on a specified service
+- **Acknowledge Alert** — acknowledge an existing PagerDuty alert
+- **Add Note to Alert** — attach a note with investigation context to a PagerDuty alert
+- **Resolve Alert** — resolve a PagerDuty alert
+- **Escalate** — escalate a PagerDuty incident to the next escalation level
 
-Route Kubernetes incidents to specific PagerDuty services based on the affected namespace:
+Example: A workflow triggers on a high-urgency incident, runs an automated root cause analysis, adds the findings as a note, and escalates if the issue matches a known critical pattern.
+
+### In Incident Response
+
+- **Automatic alerting** — when Kestrel detects an incident, a PagerDuty incident is created with full RCA context
+- **Auto-resolution** — when incidents resolve in Kestrel, PagerDuty incidents are automatically resolved
+- **Bidirectional sync** — PagerDuty incidents are updated as Kestrel's investigation progresses
+- **Service routing** — route alerts to specific PagerDuty services based on namespace or cloud resource
+- **Severity mapping** — map Kestrel severity levels (Low, Medium, High, Critical) to PagerDuty severity levels
+
+### In Cloud AI Copilot
+
+- Query PagerDuty incident status from the chat: `What PagerDuty incidents are open for the payments service?`
+- Trigger PagerDuty incidents from the copilot for manual escalation
+
+## Configuration
+
+### Namespace Routing
+
+Route Kubernetes incidents to specific PagerDuty services based on affected namespace:
 
 1. Go to the **Namespaces** tab
-2. Click **Add Assignment**
-3. Select a **Cluster** and **Namespace**
-4. Select the target **PagerDuty Service**
-5. Click **Create Assignment**
+2. Click **Add Assignment** → select a **Cluster**, **Namespace**, and target **PagerDuty Service**
 
-For example, route all incidents in the `payments` namespace to the Payments team's PagerDuty service.
+### Cloud Resource Routing
 
-## Cloud Resource Routing
-
-Route cloud incidents to specific PagerDuty services based on the affected resource:
+Route cloud incidents to specific PagerDuty services:
 
 1. Go to the **Cloud Resources** tab
-2. Click **Add Assignment**
-3. Search and select a **Cloud Resource** (e.g., an S3 bucket, EC2 instance)
-4. Select the target **PagerDuty Service**
-5. Click **Create Assignment**
+2. Click **Add Assignment** → select a **Cloud Resource** and target **PagerDuty Service**
 
-## Notification Settings
+### Notification Settings
 
-Configure which incidents trigger PagerDuty alerts:
+Configure which incidents trigger PagerDuty alerts in the **Overview** tab:
 
-1. Go to the **Overview** tab
-2. Click **Configure** on the Severity Filtering card
-3. Set your preferences:
-   - **Notify on Kubernetes incidents**  - Enable/disable K8s alerts
-   - **Notify on Cloud incidents** - Enable/disable AWS/OCI alerts
-   - **Skip transient incidents**  - Filter out auto-resolving incidents
-   - **Minimum severity** - Set the threshold (Low, Medium, High, Critical)
-4. Click **Save Changes**
-
-## Testing the Connection
-
-Click **Test Connection** to send a test event to PagerDuty and verify your setup is working correctly.
-
-## Disconnecting
-
-1. Click **Disconnect** on the Overview tab
-2. Confirm the disconnection
-
-This immediately stops all alerts to PagerDuty. You can reconnect at any time.
-
-## Next Steps
-
-- [Set up Slack for additional notifications](/integrations/slack)
-- [Configure namespace routing for targeted alerting](#namespace-routing)
+- **Notify on Kubernetes incidents** — enable/disable K8s alerts
+- **Notify on Cloud incidents** — enable/disable AWS/OCI alerts
+- **Skip transient incidents** — filter out auto-resolving incidents
+- **Minimum severity** — set the threshold (Low, Medium, High, Critical)

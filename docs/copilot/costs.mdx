@@ -1,0 +1,195 @@
+---
+title: "Cost Analysis"
+description: "Query AWS costs, identify spend patterns, and surface anomalies"
+---
+
+The copilot can query AWS Cost Explorer data to break down spend by service, region, and account, identify cost trends, detect anomalies, drill into resource-level costs, and forecast future spend. Use it to answer billing questions, investigate cost spikes, and find optimization opportunities without leaving the chat interface.
+
+{/* Screenshot placeholder: Copilot answering a cost analysis query with spend breakdown and trend data */}
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="AWS Account with Cost Access" icon="aws" href="/integrations/aws">
+    Connect an AWS account with Cost Explorer API access enabled. The IAM role used by Kestrel needs `ce:GetCostAndUsage`, `ce:GetCostForecast`, and related Cost Explorer permissions.
+  </Card>
+</CardGroup>
+
+<Warning>
+AWS Cost Explorer data is typically delayed by 24–48 hours. The copilot returns the most recent data available, but today's costs may not be fully reflected yet.
+</Warning>
+
+## Targeting Accounts
+
+Use `@cloud:connection-name` to query costs for a specific AWS account. You can target multiple accounts for cross-account comparisons.
+
+```
+@cloud:prod-aws What are our top 10 services by cost this month?
+```
+
+```
+@cloud:prod-aws @cloud:staging-aws Compare total spend across both accounts for the last 3 months.
+```
+
+If you have only one AWS account connected, the copilot targets it automatically.
+
+## Spend Breakdown
+
+Query costs by service, region, account, or any combination.
+
+```
+@cloud:prod-aws What are our top 10 most expensive AWS services this month? Compare to last month and flag any that increased by more than 20%.
+```
+
+```
+@cloud:prod-aws Break down our EC2 costs by region for the last 30 days. Which region is the most expensive?
+```
+
+```
+@cloud:prod-aws How much are we spending on data transfer this month? Break it down by service and transfer type (inter-region, internet, etc.).
+```
+
+```
+@cloud:prod-aws What's our total RDS spend? Break it down by instance, and include the instance type and engine for each.
+```
+
+```
+@cloud:prod-aws Show me a cost breakdown for the last month grouped by the "team" cost allocation tag. Which team is spending the most?
+```
+
+## Cost Trends Over Time
+
+Track how costs change over days, weeks, and months.
+
+```
+@cloud:prod-aws How has our total AWS spend changed month-over-month for the last 6 months? What's the growth rate?
+```
+
+```
+@cloud:prod-aws Show me the daily EC2 spend for the last 30 days. Were there any days with unusual spikes?
+```
+
+```
+@cloud:prod-aws Compare our Lambda costs between Q4 last year and Q1 this year. Did the migration to ARM functions reduce costs?
+```
+
+```
+@cloud:prod-aws What's the trend for our S3 storage costs over the last 3 months? Is it growing linearly or accelerating?
+```
+
+## Anomaly Detection
+
+Identify unusual cost patterns and unexpected charges.
+
+```
+@cloud:prod-aws Are there any unusual cost spikes in the last 7 days? What services are driving them?
+```
+
+```
+@cloud:prod-aws Which services had the biggest percentage increase in cost compared to the previous month? Flag anything over 30% growth.
+```
+
+```
+@cloud:prod-aws Did anything unexpected happen with our NAT Gateway costs last week? They seem higher than usual.
+```
+
+```
+@cloud:prod-aws Show me any new services or regions that appeared on our bill this month that weren't there last month.
+```
+
+## Resource-Level Costs
+
+Drill into specific resources to understand cost drivers.
+
+```
+@cloud:prod-aws Which RDS instances cost the most? Include instance type, storage, and whether they're Multi-AZ.
+```
+
+```
+@cloud:prod-aws Estimate how much we'd save if we right-sized all EC2 instances in us-east-1 that have averaged less than 15% CPU utilization over the last 30 days.
+```
+
+```
+@cloud:prod-aws Which Elastic IPs are allocated but not associated with a running instance? How much are they costing us?
+```
+
+```
+@cloud:prod-aws What are the most expensive EBS volumes? Flag any that are unattached or over-provisioned relative to their utilization.
+```
+
+```
+@cloud:prod-aws How much are we spending on idle or underutilized load balancers?
+```
+
+## Forecasting
+
+Project future costs based on current trends.
+
+```
+@cloud:prod-aws What's our projected total AWS spend for next month based on current usage patterns?
+```
+
+```
+@cloud:prod-aws At the current growth rate, what will our EC2 costs be in 3 months? What about 6 months?
+```
+
+```
+@cloud:prod-aws What's our projected EKS spend for the next quarter based on current trends? Break it down by cluster if possible.
+```
+
+```
+@cloud:prod-aws If we continue at the current data transfer rate, what will our CloudFront costs be next month?
+```
+
+## Cross-Account Comparison
+
+Compare costs across multiple AWS accounts.
+
+```
+@cloud:prod-aws @cloud:staging-aws Compare total monthly spend across both accounts for the last 3 months. How much is staging costing relative to production?
+```
+
+```
+@cloud:prod-aws @cloud:staging-aws @cloud:dev-aws What's the cost per environment for EC2 and RDS? Are non-production environments disproportionately expensive?
+```
+
+```
+@cloud:prod-aws @cloud:staging-aws Are we running the same instance types in staging as production? If staging is using larger instances, how much would we save by right-sizing?
+```
+
+## Example Conversation
+
+**You:**
+> `@cloud:prod-aws` Our AWS bill jumped 30% this month. What's going on?
+
+**Kestrel:**
+> Your total AWS spend for the current month is $47,200, up from $36,300 last month (+30%). The top 3 drivers of the increase:
+>
+> 1. **EC2** — up $5,800 (+28%). Three new `m5.2xlarge` instances were launched in `us-west-2` on the 15th. They're running in the `analytics` account and aren't part of any Auto Scaling group.
+> 2. **RDS** — up $3,100 (+41%). The `prod-analytics` instance had a storage auto-scaling event that grew it from 500GB to 1.2TB. There was also a class change from `db.r5.large` to `db.r5.2xlarge` on the 8th.
+> 3. **NAT Gateway** — up $2,000 (+62%). Data processing through the NAT gateway in `us-east-1` doubled compared to last month, likely from the new batch processing jobs.
+
+**You:**
+> Can we save money on those EC2 instances? They might be over-provisioned.
+
+**Kestrel:**
+> Based on CloudWatch metrics for the last 2 weeks, the three `m5.2xlarge` instances in `us-west-2` average 12% CPU utilization and 4.2GB of memory usage (out of 32GB available). You have a few options:
+>
+> - **Right-size to `m5.large`**: Saves ~$4,200/month. The instances would still have headroom at 48% average CPU and 8GB memory.
+> - **Switch to Spot**: These aren't in an ASG but could tolerate interruption if they're batch analytics jobs. Spot pricing for `m5.2xlarge` in `us-west-2` is currently 67% cheaper.
+> - **Reserved Instances**: If you need them long-term, a 1-year no-upfront RI for `m5.large` would save an additional 30% on top of right-sizing.
+
+**You:**
+> Let's right-size them to `m5.large`. Can you find the Terraform code?
+
+**Kestrel:**
+> The instances are defined in `acme/infrastructure/terraform/analytics/ec2.tf`. Here's the proposed change to update all three from `m5.2xlarge` to `m5.large`:
+>
+> *(displays Terraform diff with Create PR and Copy options)*
+
+## Next Steps
+
+- [Kubernetes Investigation](/copilot/kubernetes) — query pods, deployments, events, and metrics
+- [Cloud Investigation](/copilot/cloud) — inspect AWS and OCI resources and security configurations
+- [Code Investigation](/copilot/code) — search and trace code changes across repositories
+- [Configuration Changes](/copilot/config-changes) — generate and apply YAML and Terraform changes

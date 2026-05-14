@@ -1,0 +1,101 @@
+---
+title: "Incident Response Quickstart"
+description: "Set up AI-powered incident detection and response"
+---
+
+Kestrel monitors your Kubernetes clusters and cloud infrastructure 24/7, detecting incidents as they happen. When something goes wrong, AI agents automatically investigate the root cause, generate production-ready YAML or Terraform fixes, identify the causal PR, and create postmortems — with optional auto-remediation.
+
+{/* Screenshot placeholder: Incident detail page showing RCA, fix, and causal PR */}
+
+## What You Get
+
+- **24/7 Monitoring** — continuous detection across K8s and cloud resources
+- **Automatic Root Cause Analysis** — AI traces the full causal chain, not just symptoms
+- **Production-Ready Fixes** — YAML manifests and Terraform changes you can apply directly or merge as PRs
+- **Causal PR Detection** — identifies the code change that introduced the issue
+- **Postmortem Generation** — structured incident summaries for your team
+- **Auto-Remediation** — optionally apply fixes automatically (disabled by default)
+
+## Setup
+
+<Steps>
+  <Step title="Connect a Kubernetes cluster or cloud account">
+    Kestrel needs visibility into your infrastructure to detect incidents.
+
+    **For Kubernetes:** Install the Kestrel Operator via Helm. See the [Kubernetes integration guide](/integrations/kubernetes) for full instructions.
+
+    ```bash
+    helm install kestrel-operator \
+      oci://ghcr.io/kestrelai/charts/kestrel-operator \
+      --version 1.0.0 \
+      --namespace kestrel-ai --create-namespace \
+      -f kestrel-ai-operator-values.yaml
+    ```
+
+    **For AWS:** Connect your account with a read-only IAM role. See the [AWS integration guide](/integrations/aws).
+
+    **For OCI:** Connect your Oracle Cloud tenancy. See the [OCI integration guide](/integrations/oci).
+
+    <Tip>
+    You can connect multiple clusters and cloud accounts. Kestrel monitors all of them from a single dashboard.
+    </Tip>
+  </Step>
+  <Step title="(Optional) Connect observability tools">
+    Adding observability context improves root cause analysis by giving Kestrel access to metrics, traces, and monitor alerts.
+
+    - **[Datadog](/integrations/datadog)** — pull metrics, monitors, and APM traces into incident investigations
+    - **[OpenTelemetry](/integrations/opentelemetry)** — ingest traces and metrics from your OTel pipeline
+
+    <Note>
+    Observability integrations are optional. Kestrel performs RCA using Kubernetes and cloud signals alone, but metrics context produces more precise root causes.
+    </Note>
+  </Step>
+  <Step title="Connect notification channels">
+    Route incident alerts to the tools your team already uses.
+
+    - **[Slack](/integrations/slack)** — receive incident notifications in a channel, ask follow-up questions in threads, and get @mentioned as a namespace owner
+    - **[PagerDuty](/integrations/pagerduty)** — trigger on-call alerts with full RCA context and automatic resolution when the incident clears
+  </Step>
+  <Step title="Connect code repositories">
+    Linking your repositories enables causal PR detection and GitOps-based remediation.
+
+    - **[GitHub](/integrations/github)** — detect which PR introduced the issue; create fix PRs automatically
+    - **[GitLab](/integrations/gitlab)** — same capabilities via merge requests
+
+    When Kestrel generates a fix, it can open a PR against your repository so the change goes through your existing review and deployment pipeline.
+  </Step>
+  <Step title="Add knowledge sources">
+    Knowledge sources give Kestrel historical and organizational context to produce better root cause analysis and more relevant fixes.
+
+    - **[Confluence](/integrations/confluence)** — runbooks, architecture docs, past incident writeups
+    - **[Jira](/integrations/jira)** — related tickets and known issues
+    - **[Glean](/integrations/glean)** — enterprise knowledge search across all your tools
+    - **[Slack history](/integrations/slack)** — past conversations and tribal knowledge
+
+    See [Knowledge Sources](/integrations/knowledge-sources) for setup details.
+  </Step>
+</Steps>
+
+## Your First Incident
+
+Once your integrations are connected, Kestrel begins monitoring immediately. Here's what happens when an incident is detected:
+
+1. **Detection** — Kestrel identifies an anomaly (pod crash, deployment failure, cloud resource issue, etc.)
+2. **Investigation** — AI agents gather context from your cluster, cloud APIs, metrics, logs, and knowledge sources
+3. **Root Cause Analysis** — a structured RCA is generated with the full causal chain
+4. **Fix Generation** — production-ready YAML or Terraform changes are proposed
+5. **Causal PR** — if a recent code change caused the issue, the specific PR is identified
+6. **Notification** — alerts are sent to Slack, PagerDuty, or both — with the RCA, fix, and causal PR attached
+7. **Remediation** — apply the fix from the dashboard, merge the generated PR, or let auto-remediation handle it
+
+{/* Screenshot placeholder: Incident timeline showing detection → RCA → fix → notification flow */}
+
+<Warning>
+Auto-remediation is disabled by default. Enable it per-cluster from **Settings → Incident Response** only after you've reviewed and trusted Kestrel's fixes in your environment.
+</Warning>
+
+## Build Custom Incident Response Workflows
+
+For more complex incident response scenarios — escalation chains, multi-step remediation, cross-team coordination — use [Workflows](/quickstart/workflows) to build custom automation that triggers on Kestrel incidents.
+
+**Example:** When a critical incident is detected in production, run RCA, post to Slack, page the on-call engineer via PagerDuty, create a Jira ticket, and if unacknowledged after 15 minutes, escalate to the engineering manager.

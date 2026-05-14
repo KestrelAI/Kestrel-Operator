@@ -89,7 +89,10 @@ func (e *DatadogExecutor) ExecuteQuery(ctx context.Context, req *v1.DatadogQuery
 	e.mu.RLock()
 	hasAppKey := e.appKey != ""
 	e.mu.RUnlock()
-	if !hasAppKey {
+
+	// sendEvent only needs the API key; all other operations require the app key
+	needsAppKey := req.QueryType != v1.DatadogQueryType_DATADOG_SEND_EVENT
+	if needsAppKey && !hasAppKey {
 		e.Logger.Warn("Datadog query requires app key but none available",
 			zap.String("request_id", req.RequestId),
 			zap.String("query_type", req.QueryType.String()))
@@ -120,6 +123,14 @@ func (e *DatadogExecutor) ExecuteQuery(ctx context.Context, req *v1.DatadogQuery
 		result = e.queryLogs(ctxTimeout, req)
 	case v1.DatadogQueryType_DATADOG_QUERY_LIST_METRICS:
 		result = e.queryListMetrics(ctxTimeout, req)
+	case v1.DatadogQueryType_DATADOG_CREATE_MONITOR:
+		result = e.createMonitor(ctxTimeout, req)
+	case v1.DatadogQueryType_DATADOG_SEND_EVENT:
+		result = e.sendEvent(ctxTimeout, req)
+	case v1.DatadogQueryType_DATADOG_MUTE_MONITOR:
+		result = e.muteMonitor(ctxTimeout, req)
+	case v1.DatadogQueryType_DATADOG_LIST_MONITORS:
+		result = e.listMonitors(ctxTimeout, req)
 	default:
 		resp.Success = false
 		resp.ErrorMessage = fmt.Sprintf("unsupported query type: %s", req.QueryType.String())
@@ -708,6 +719,83 @@ func (e *DatadogExecutor) queryListMetrics(ctx context.Context, req *v1.DatadogQ
 		zap.Int64("from", from))
 
 	body, code, err := e.doGet(ctx, "/api/v1/metrics", params, true)
+	return e.makeResponse(req.RequestId, body, code, err)
+}
+
+// ---------------------------------------------------------------------------
+// Write methods (create monitor, send event, mute monitor)
+// ---------------------------------------------------------------------------
+
+func (e *DatadogExecutor) createMonitor(ctx context.Context, req *v1.DatadogQueryRequest) *v1.DatadogQueryResponse {
+	if req.JsonBody == "" {
+		return &v1.DatadogQueryResponse{
+			RequestId:    req.RequestId,
+			Success:      false,
+			ErrorMessage: "json_body is required for create-monitor",
+			StatusCode:   http.StatusBadRequest,
+		}
+	}
+
+	e.Logger.Info("[Datadog] Creating monitor",
+		zap.String("request_id", req.RequestId),
+		zap.Int("body_bytes", len(req.JsonBody)))
+
+	body, code, err := e.doPost(ctx, "/api/v1/monitor", []byte(req.JsonBody), true)
+	return e.makeResponse(req.RequestId, body, code, err)
+}
+
+func (e *DatadogExecutor) sendEvent(ctx context.Context, req *v1.DatadogQueryRequest) *v1.DatadogQueryResponse {
+	if req.JsonBody == "" {
+		return &v1.DatadogQueryResponse{
+			RequestId:    req.RequestId,
+			Success:      false,
+			ErrorMessage: "json_body is required for send-event",
+			StatusCode:   http.StatusBadRequest,
+		}
+	}
+
+	e.Logger.Info("[Datadog] Sending event",
+		zap.String("request_id", req.RequestId),
+		zap.Int("body_bytes", len(req.JsonBody)))
+
+	body, code, err := e.doPost(ctx, "/api/v1/events", []byte(req.JsonBody), false)
+	return e.makeResponse(req.RequestId, body, code, err)
+}
+
+func (e *DatadogExecutor) muteMonitor(ctx context.Context, req *v1.DatadogQueryRequest) *v1.DatadogQueryResponse {
+	monitorID := req.Filter
+	if monitorID == "" {
+		return &v1.DatadogQueryResponse{
+			RequestId:    req.RequestId,
+			Success:      false,
+			ErrorMessage: "filter field must contain the monitor ID for mute-monitor",
+			StatusCode:   http.StatusBadRequest,
+		}
+	}
+
+	muteBody := req.JsonBody
+	if muteBody == "" {
+		muteBody = "{}"
+	}
+
+	apiPath := fmt.Sprintf("/api/v1/monitor/%s/mute", url.PathEscape(monitorID))
+	e.Logger.Info("[Datadog] Muting monitor",
+		zap.String("request_id", req.RequestId),
+		zap.String("monitor_id", monitorID))
+
+	body, code, err := e.doPost(ctx, apiPath, []byte(muteBody), true)
+	return e.makeResponse(req.RequestId, body, code, err)
+}
+
+func (e *DatadogExecutor) listMonitors(ctx context.Context, req *v1.DatadogQueryRequest) *v1.DatadogQueryResponse {
+	params := url.Values{}
+	params.Set("page", "0")
+	params.Set("per_page", "200")
+
+	e.Logger.Info("[Datadog] Listing monitors",
+		zap.String("request_id", req.RequestId))
+
+	body, code, err := e.doGet(ctx, "/api/v1/monitor", params, true)
 	return e.makeResponse(req.RequestId, body, code, err)
 }
 

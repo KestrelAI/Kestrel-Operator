@@ -1,0 +1,403 @@
+---
+title: "Create Workflows"
+description: "Build automated workflows using natural language, drag-and-drop, CLI, SDK, or MCP"
+---
+
+Kestrel workflows let you chain AI-powered actions across 15+ integrations into automated pipelines. Workflows are triggered by events — Kubernetes incidents, cloud alerts, Slack messages, PagerDuty alerts, and more — and execute a sequence of steps that investigate, fix, and notify.
+
+## Creation Methods
+
+You can create workflows five ways:
+
+| Method | Best For |
+|--------|----------|
+| **Workflow Agent** | Fastest way to build — describe what you want in natural language, the Workflow Agent builds it |
+| **Drag-and-Drop Canvas** | Visual construction with full control over step configuration |
+| **CLI** | Scripting and automation — see [CLI reference](/workflows/cli) |
+| **SDK** | Programmatic workflow management — see [SDK reference](/workflows/sdk) |
+| **MCP** | AI agent orchestration (Cursor, Claude, etc.) — see [MCP reference](/workflows/mcp) |
+
+---
+
+## Workflow Agent
+
+Describe the workflow you want in plain English. The Workflow Agent interprets your intent, selects the right triggers and actions, wires up template variables, and generates a complete workflow on the canvas.
+
+<Steps>
+  <Step title="Open the workflow builder">
+    Navigate to **Workflows → All Workflows** in the Kestrel dashboard and click **Create Workflow**.
+  </Step>
+  <Step title="Describe your workflow">
+    Type a natural language description of what you want automated. Be specific about the trigger, the actions, and where results should go.
+  </Step>
+  <Step title="Review and adjust">
+    The Workflow Agent generates the workflow on the canvas. Review each step and iterate the prompt to adjust configuration, add, or remove steps as needed.
+  </Step>
+  <Step title="Save and enable">
+    Click **Save** to activate the workflow. It will begin responding to its configured trigger immediately.
+  </Step>
+</Steps>
+
+**Example prompts:**
+
+- *"When a K8s incident is detected, run root cause analysis, send the RCA to #incidents in Slack, and create a Jira ticket with the details."*
+- *"When someone requests a new service in Slack, generate the K8s manifests, open a GitOps PR in GitHub, and sync with ArgoCD."*
+- *"When a Vercel deployment fails, pull the build logs, run an AI investigation, and notify the team in Slack."*
+- *"When AWS costs spike, run a cost anomaly analysis and post a report to #finops in Slack."*
+
+{/* Screenshot placeholder: Workflow Agent with example prompt and generated workflow */}
+
+<Tip>
+The more specific your description, the better the generated workflow. Include the trigger source, desired actions, and output destinations.
+</Tip>
+
+---
+
+## Drag-and-Drop Canvas
+
+The visual canvas gives you full control over workflow construction. Add triggers and actions from the sidebar, connect them into a pipeline, and configure each step individually.
+
+{/* Screenshot placeholder: Drag-and-drop canvas with a multi-step workflow */}
+
+### Adding a Trigger
+
+Every workflow starts with a trigger. Drag a trigger block from the sidebar onto the canvas and configure it:
+
+1. Select the trigger type (e.g., Pod CrashLoopBackOff, IAM Security Event, Slack Request)
+2. Configure trigger-specific settings (clusters, namespaces, AWS accounts, severity thresholds)
+3. The trigger's output variables become available to all downstream steps
+
+### Adding Actions
+
+Drag action blocks onto the canvas and connect them to the trigger or to previous actions:
+
+1. Select the action type (e.g., Kestrel RCA, Slack Message, GitHub PR)
+2. Configure action parameters — use the **variable picker** to reference data from previous steps
+3. Connect the action's output port to the next step's input port
+
+### Connecting Steps
+
+Click an output port and drag to an input port to create a connection. Data flows top-to-bottom through the connections you define.
+
+---
+
+## Trigger Types
+
+### Kubernetes Signals
+
+Triggered when Kestrel detects a K8s incident in a connected cluster. Configure filters by cluster, namespace, or incident type.
+
+| Trigger Block | Description |
+|---|---|
+| Deployment Replicas Failing | Triggers when a Deployment has unavailable replicas |
+| Nodes Unavailable | Triggers when a node enters NotReady or unreachable state |
+| Pod CrashLoopBackOff | Triggers when a pod enters CrashLoopBackOff |
+| Pod ImagePullBackOff | Triggers when a pod cannot pull its container image |
+| Pod OOMKilled | Triggers when a container is killed due to out-of-memory |
+| Pods Failing | Triggers when a pod exits with a non-zero code |
+| Pods Restarting | Triggers when pod restart count exceeds threshold |
+| StatefulSet Replicas Failing | Triggers when a StatefulSet has unavailable replicas |
+| Node Memory Pressure | Triggers when a node reports memory pressure |
+| Node Disk Pressure | Triggers when a node reports disk pressure |
+| DaemonSet Failing | Triggers when a DaemonSet has failing replicas |
+| Any Kubernetes Incident | Triggers on any Kubernetes incident signal |
+
+### AWS Cloud Signals
+
+Triggered when Kestrel detects a cloud infrastructure incident. Filter by AWS account, region, or incident type.
+
+| Trigger Block | Description |
+|---|---|
+| IAM Security Event | Triggers on IAM compromise, privilege escalation, or unauthorized access |
+| Root Account Activity | Triggers when the AWS root account is used |
+| KMS Key Change | Triggers on KMS key deletion, disabling, or scheduled deletion |
+| Secrets Manager Event | Triggers on secret deletion, policy changes, or rotation failures |
+| Security Hub Finding | Triggers on high or critical findings from Security Hub |
+| S3 Bucket Change | Triggers on S3 public access changes, policy modifications, or encryption changes |
+| EC2 Instance Issue | Triggers on EC2 instance termination, state changes, or status check failures |
+| Lambda Function Issue | Triggers on Lambda function errors, configuration issues, or throttling |
+| ECS/EKS Container Issue | Triggers on container service task failures or deployment issues |
+| RDS Database Issue | Triggers on RDS database deletion, snapshot issues, or availability problems |
+| DynamoDB Issue | Triggers on DynamoDB table deletion, throttling, or capacity issues |
+| VPC/Network Change | Triggers on VPC, security group, NACL, or route table modifications |
+| CloudWatch Alarm | Triggers when a CloudWatch alarm enters ALARM state |
+| Application Log Errors | Triggers when application errors are detected in CloudWatch Logs |
+| Config Rule Non-Compliant | Triggers when an AWS Config rule finds a non-compliant resource |
+| AWS Service Health Event | Triggers on AWS service health events affecting your resources |
+| Any AWS Cloud Incident | Triggers on any AWS cloud incident |
+| Cost Anomaly Detected | Triggers when AWS Cost Anomaly Detection finds an anomaly |
+| Budget Threshold Exceeded | Triggers when an AWS Budget threshold is breached |
+
+### Slack Requests
+
+Triggered when a user sends a `/kestrel-workflow` command in Slack. The user's message is available as `{{request.prompt}}`.
+
+| Trigger Block | Description |
+|---|---|
+| Create K8s Resource | Triggered when someone requests a new Kubernetes resource |
+| Edit K8s Resource | Triggered when someone requests changes to a Kubernetes resource |
+| General Kubernetes Request | Triggered when someone asks a Kubernetes-related question or task |
+| Create AWS Resource | Triggered when someone requests a new AWS resource |
+| Edit AWS Resource | Triggered when someone requests changes to an AWS resource |
+| General Cloud Request | Triggered when someone asks a cloud-related question or task |
+| Any Slack /kestrel-workflow Request | Triggers on any /kestrel-workflow request (catch-all) |
+
+### PagerDuty
+
+Triggered when a PagerDuty incident is created or updated. Filter by service, urgency, or severity.
+
+| Trigger Block | Description |
+|---|---|
+| Incident Triggered | Triggers when a new PagerDuty incident is created |
+| Incident Acknowledged | Triggers when a PagerDuty incident is acknowledged |
+| Incident Resolved | Triggers when a PagerDuty incident is resolved |
+| Any PagerDuty Incident | Triggers on any PagerDuty incident event |
+| High Urgency Incident | Triggers only on high-urgency PagerDuty incidents |
+
+### PostHog
+
+Triggered by PostHog product analytics events. Filter by event type and properties.
+
+| Trigger Block | Description |
+|---|---|
+| Session Error/Exception | Triggers when PostHog captures a frontend exception |
+| Console Error | Triggers when PostHog captures a console error |
+| Rage Click | Triggers when PostHog detects rage clicks in a session |
+| Any PostHog Event | Triggers on any PostHog event sent via webhook |
+| Log Error Alert | Triggers when PostHog Logs detects error patterns |
+
+### Vercel
+
+Triggered by Vercel deployment and platform events. Filter by project and event type.
+
+| Trigger Block | Description |
+|---|---|
+| Deployment Failed | Triggers when a Vercel deployment build fails |
+| Deployment Succeeded | Triggers when a Vercel deployment succeeds |
+| Deployment Created | Triggers when a new Vercel deployment is created |
+| Error Anomaly | Triggers when Vercel detects a 5xx error rate anomaly |
+| Usage Anomaly | Triggers when Vercel detects abnormal usage patterns |
+| Domain Issue | Triggers when a Vercel project domain has configuration issues |
+| Firewall Attack Detected | Triggers when Vercel's WAF detects an attack |
+| Deployment Checks Failed | Triggers when post-deployment checks fail |
+| Production Rollback | Triggers when a production deployment is rolled back |
+
+### Custom Webhook
+
+Triggered by an HTTP POST to a unique webhook URL. Accepts any JSON payload with optional HMAC signature verification. See [Custom Integrations](/workflows/custom-integrations) for details.
+
+---
+
+## Action Types
+
+Actions are grouped by integration. Each action produces output variables that downstream steps can reference.
+
+<CardGroup cols={2}>
+  <Card title="Kestrel" icon="/logo/icon.svg">
+    Trigger K8s RCA & Generate Fix, Apply YAML Fix, Find Causal PRs/MRs, Trigger Cloud RCA & Generate Fix, Wait, Generate K8s Manifest, Apply K8s Manifest, Create GitOps PR, Generate Helm Values, Generate Cloud Resource, Execute Cloud CLI, Create IaC PR, Investigate Cloud, Investigate Kubernetes, AI Cost Analysis
+  </Card>
+  <Card title="GitHub" icon="github">
+    Create Pull Request, Create Issue, Trigger GitHub Action, Wait for GitHub Action Run, Get GitHub Action Status, Read File, Search Code, AI Code Investigation, AI Code Fix, Wait for PR Approval, Wait for PR Merge
+  </Card>
+  <Card title="GitLab" icon="gitlab">
+    Create Merge Request, Create Issue, Trigger Pipeline, Wait for Pipeline, Get Pipeline Status, Wait for MR Approval, Wait for MR Merge
+  </Card>
+  <Card title="Slack" icon="slack">
+    Send Message, Update Message, Request Justification
+  </Card>
+  <Card title="Confluence" icon="confluence">
+    Publish RCA, Publish Postmortem, Publish Runbook Entry, Update Page
+  </Card>
+  <Card title="Jira" icon="jira">
+    Create Ticket, Add Comment, Transition Ticket
+  </Card>
+  <Card title="PagerDuty" icon="pager">
+    Create Alert, Acknowledge Alert, Add Note to Alert, Resolve Alert, Escalate
+  </Card>
+  <Card title="ArgoCD" icon="rotate">
+    Trigger ArgoCD Sync, Wait for ArgoCD Sync, Get ArgoCD App Status
+  </Card>
+  <Card title="Datadog" icon="chart-line">
+    Query Metrics, Create Monitor, Send Event, Mute Monitor
+  </Card>
+  <Card title="Cloud Cost" icon="dollar-sign">
+    Query Cost Explorer, Get Cost Anomalies, Get Cost Forecast, Get Budget Status
+  </Card>
+  <Card title="PostHog" icon="chart-bar">
+    Get Session Summary, Get Session Recording, Query Events, List Session Recordings, Get Error Issue
+  </Card>
+  <Card title="Vercel" icon="triangle">
+    Get Deployment, Get Build Logs, Rollback Production, Promote to Production, List Deployments, Investigate Vercel
+  </Card>
+  <Card title="Approval Gates" icon="shield-check">
+    Wait for Manual Approval, Wait for Slack Approval, Wait for PR/MR Approval
+  </Card>
+  <Card title="Custom HTTP & Webhooks" icon="globe">
+    Create custom action blocks to call any API endpoint, and custom webhook triggers to start workflows from external systems. See [Custom Integrations](/workflows/custom-integrations).
+  </Card>
+</CardGroup>
+
+---
+
+## Template Variables
+
+Template variables let you pass data between workflow steps. Use double curly braces to reference outputs from triggers and previous actions.
+
+### Variable Syntax
+
+```
+{{incident.title}}                  — Data from the trigger event
+{{rca_result.root_cause}}           — Promoted field from RCA actions
+{{step_outputs.action-1.summary}}   — Output from a specific action step
+{{request.prompt}}                  — User input (for Slack request triggers)
+```
+
+### Common Variables
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| `{{incident.title}}` | K8s/Cloud trigger | Incident title |
+| `{{incident.namespace}}` | K8s trigger | Kubernetes namespace |
+| `{{incident.resource_name}}` | K8s/Cloud trigger | Affected resource |
+| `{{rca_result.root_cause}}` | Kestrel RCA action | Root cause summary |
+| `{{rca_result.recommended_fix}}` | Kestrel RCA action | Recommended remediation |
+| `{{fix.description}}` | Kestrel RCA action | Generated fix description |
+| `{{step_outputs.action-1.summary}}` | Any action step | Summary output of the step |
+| `{{request.prompt}}` | Slack request trigger | The user's original message |
+| `{{request.requester}}` | Slack request trigger | The requesting user |
+| `{{signal.deployment_id}}` | Vercel trigger | Vercel deployment ID |
+| `{{signal.session_id}}` | PostHog trigger | PostHog session ID |
+
+### Variable Picker
+
+When configuring an action step, click the **Variables** button on any text field to open the variable picker. It shows all available variables from the trigger and preceding steps, grouped by source. The picker is DAG-aware — it only shows variables that will be available at runtime based on the step's position in the workflow.
+
+{/* Screenshot placeholder: Variable picker UI showing available variables grouped by step */}
+
+<Tip>
+The variable picker only shows variables that are available at the current step's position in the workflow. Move a step earlier or later to change which variables it can access.
+</Tip>
+
+---
+
+## Cooldown Configuration
+
+Cooldowns prevent a workflow from firing repeatedly for the same event. Configure the cooldown period per workflow.
+
+| Preset | Duration | Default For |
+|--------|----------|-------------|
+| No cooldown | 0 | — |
+| 5 minutes | 5m | — |
+| 10 minutes | 10m | Slack, PostHog, Vercel, custom webhook triggers |
+| 30 minutes | 30m | — |
+| 1 hour | 1h | — |
+| 3 hours | 3h | — |
+| 12 hours | 12h | — |
+| 24 hours | 24h | K8s incidents, cloud incidents, PagerDuty alerts |
+
+<Note>
+Cooldowns are scoped to the specific trigger event. For K8s incidents, the cooldown applies per workload. For Slack requests, it applies per request.
+</Note>
+
+---
+
+## Approval Gates
+
+Insert approval gates between steps to require human sign-off before the workflow continues. Three approval methods are available:
+
+### Wait for Manual Approval
+
+The workflow pauses and shows a pending approval in the Kestrel dashboard. An authorized user clicks **Approve** or **Reject**.
+
+### Wait for Slack Approval
+
+The workflow posts an approval request to a configured Slack channel with **Approve** and **Reject** buttons. Any member of the channel can respond.
+
+### Wait for PR/MR Approval
+
+The workflow waits for the associated pull request or merge request to be approved or merged (webhook-driven). Merging the PR approves the step; closing it rejects it.
+
+---
+
+## Testing Workflows
+
+Before relying on a workflow in production, test it with a simulated trigger:
+
+1. Open the workflow on the canvas
+2. Click **Test Workflow**
+3. Kestrel generates a sample trigger payload based on the trigger type
+4. Click **Run Test** to execute the workflow with the sample data
+5. Inspect the output of each step in the execution detail view
+
+{/* Screenshot placeholder: Test workflow dialog with sample payload editor */}
+
+<Tip>
+Test executions are marked as test runs in the [Observability dashboard](/workflows/observability) and do not count toward cooldowns.
+</Tip>
+
+---
+
+## Example Workflows
+
+### K8s Incident → RCA → Slack → Jira
+
+**Workflow Agent prompt:** *"When a Kubernetes incident is detected in any cluster, run root cause analysis, send the root cause and recommended fix to #incidents in Slack, and create a Jira ticket in the INFRA project with the full investigation summary."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Any Kubernetes Incident | All clusters |
+| **Action 1** | Trigger K8s RCA & Generate Fix | Include metrics and logs |
+| **Action 2** | Slack Send Message | Channel: `#incidents`, message: `{{incident.title}}` — `{{rca_result.root_cause}}` |
+| **Action 3** | Jira Create Ticket | Project: INFRA, summary: `{{incident.title}}`, body: `{{rca_result.investigation_summary}}` |
+
+### Slack Request → K8s Manifest → GitOps PR → ArgoCD Sync
+
+**Workflow Agent prompt:** *"When someone requests a new Kubernetes resource via /kestrel-workflow in Slack, generate the K8s manifests based on their request, create a pull request in acme/k8s-manifests on GitHub, wait for the PR to be merged, then trigger an ArgoCD sync."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Any Slack /kestrel-workflow Request | Catch-all |
+| **Action 1** | Generate K8s Manifest | Prompt: `{{request.prompt}}` |
+| **Action 2** | Create GitOps PR | Repo: `acme/k8s-manifests` |
+| **Approval** | Wait for PR/MR Approval | Wait for PR merge |
+| **Action 3** | Trigger ArgoCD Sync | Auto-detected from PR |
+
+### Vercel Deployment Failure → Build Logs → Investigation → Slack
+
+**Workflow Agent prompt:** *"When a Vercel deployment fails, fetch the build logs, run an AI investigation to identify the root cause of the build failure, and send the findings to #deploys in Slack."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Vercel Deployment Failed | All projects |
+| **Action 1** | Get Build Logs | Deployment: `{{signal.deployment_id}}` |
+| **Action 2** | Investigate Vercel | Query: analyze build logs from `{{step_outputs.action-1.summary}}` |
+| **Action 3** | Slack Send Message | Channel: `#deploys`, message: `{{step_outputs.action-2.summary}}` |
+
+### PostHog Exception → Session Summary → Slack Alert
+
+**Workflow Agent prompt:** *"When PostHog captures a frontend exception, generate an AI summary of the user's session including what they were doing before the error, and send the summary with the replay URL to #product-alerts in Slack."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | PostHog Session Error/Exception | All events |
+| **Action 1** | Get Session Summary | Session: `{{signal.session_id}}` |
+| **Action 2** | Slack Send Message | Channel: `#product-alerts`, message: `{{step_outputs.action-1.summary}}` with replay URL |
+
+### Cloud Cost Anomaly → AI Analysis → Slack Report
+
+**Workflow Agent prompt:** *"When an AWS cost anomaly is detected, query the cost breakdown for the affected account over the last 7 days, run an AI cost analysis to identify the root cause and recommend optimizations, and post the analysis to #finops in Slack."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Cost Anomaly Detected | All AWS accounts |
+| **Action 1** | Query Cost Explorer | Account: `{{signal.aws_account_id}}`, time range: 7 days |
+| **Action 2** | AI Cost Analysis | Type: anomaly |
+| **Action 3** | Slack Send Message | Channel: `#finops`, message: `{{step_outputs.action-2.summary}}` |
+
+---
+
+## Next Steps
+
+- [Custom Integrations](/workflows/custom-integrations) — Build custom HTTP action blocks and webhook triggers for services not covered by built-in integrations
+- [Workflow Integrations Setup](/workflows/setup-integrations) — Connect the integrations your workflows need
+- [Workflow Observability](/workflows/observability) — Monitor execution metrics and debug failed runs
