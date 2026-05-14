@@ -277,10 +277,10 @@ Action.argocd_get_status().cluster_id("...").app_name("my-app")
 Action.argocd_rollback().cluster_id("...").app_name("my-app")
 
 # AWS Cost
-Action.aws_query_cost_explorer().aws_account("380983552929").time_range("30d")
-Action.aws_get_cost_anomalies().aws_account("380983552929")
-Action.aws_get_cost_forecast().aws_account("380983552929")
-Action.aws_get_budget_status().aws_account("380983552929")
+Action.aws_query_cost_explorer().aws_account("123456789012").time_range("30d")
+Action.aws_get_cost_anomalies().aws_account("123456789012")
+Action.aws_get_cost_forecast().aws_account("123456789012")
+Action.aws_get_budget_status().aws_account("123456789012")
 
 # PostHog
 Action.posthog_get_session_summary().session_ids("{{signal.session_id}}")
