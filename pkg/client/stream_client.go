@@ -776,6 +776,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	podStatusChan := make(chan *v1.PodStatusChange, 2000)
 	nodeConditionChan := make(chan *v1.NodeConditionChange, 500)
 	rolloutStatusChan := make(chan *v1.WorkloadRolloutStatus, 1000)
+	datadogMonitorAlertChan := make(chan *v1.DatadogMonitorAlert, 100)
 	// Pod log streaming disabled.
 	var podLogsChan chan *v1.PodLogs
 
@@ -873,7 +874,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		// Start sending incident detection data (separate from inventory)
 		incidentDone := make(chan error, 1)
-		go s.sendIncidentData(ctx, stream, eventChan, podStatusChan, nodeConditionChan, rolloutStatusChan, podLogsChan, s.operatorLogBatchCh, incidentDone)
+		go s.sendIncidentData(ctx, stream, eventChan, podStatusChan, nodeConditionChan, rolloutStatusChan, podLogsChan, s.operatorLogBatchCh, datadogMonitorAlertChan, incidentDone)
 
 		// Create channels to signal when initial inventory sync is complete
 		workloadSyncDone := make(chan error, 1)
@@ -1199,6 +1200,13 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			probeCtx, probeCancel := context.WithTimeout(ctx, 10*time.Second)
 			hasDatadog = s.datadogExecutor.Probe(probeCtx)
 			probeCancel()
+		}
+
+		// Start Datadog monitor poller if Datadog is available
+		if hasDatadog && s.datadogExecutor != nil {
+			monitorPoller := datadog_executor.NewMonitorPoller(s.datadogExecutor, datadogMonitorAlertChan, s.Logger)
+			monitorPoller.Start(ctx)
+			defer monitorPoller.Stop()
 		}
 
 		// Probe for ArgoCD before sending inventory commit
@@ -2673,7 +2681,7 @@ func (s *StreamClient) sendPodLogsOrFallback(dataStream v1.StreamService_StreamD
 }
 
 // sendIncidentData collects incident detection data and sends it to the server
-func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, operatorLogsChan <-chan *v1.PodLogs, done chan<- error) {
+func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, operatorLogsChan <-chan *v1.PodLogs, datadogMonitorAlertChan <-chan *v1.DatadogMonitorAlert, done chan<- error) {
 	// Operator log send gating: start with nil channel (select ignores nil channels).
 	// When operatorLogEnabled becomes true, activeOperatorLogsChan is set to the real channel.
 	// This prevents consuming buffered logs before the stream is ready.
@@ -2804,6 +2812,26 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 					default:
 					}
 					return
+				}
+			}
+		case ddAlert, ok := <-datadogMonitorAlertChan:
+			if !ok {
+				continue
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendEventOrFallback(stream, func(es v1.StreamService_StreamEventsClient) error {
+					return es.Send(&v1.StreamEventsRequest{
+						Request: &v1.StreamEventsRequest_DatadogMonitorAlert{DatadogMonitorAlert: ddAlert},
+					})
+				}, func() error {
+					return stream.Send(&v1.StreamDataRequest{
+						Request: &v1.StreamDataRequest_DatadogMonitorAlert{DatadogMonitorAlert: ddAlert},
+					})
+				}); err != nil {
+					s.Logger.Error("Failed to send Datadog monitor alert", zap.Error(err))
 				}
 			}
 		case podLogs, ok := <-podLogsChan:

@@ -4,7 +4,7 @@ package cloud.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "operator/api/cloud/v1";
+option go_package = "operator/api/gen/cloud/v1";
 
 // Action types for resource operations
 enum Action {
@@ -46,6 +46,8 @@ message StreamDataRequest {
     OperatorStats operator_stats = 25;
     // Datadog query response (fallback when sent on data stream)
     DatadogQueryResponse datadog_query_response = 26;
+    // Datadog monitor alert (emitted when a monitor transitions state)
+    DatadogMonitorAlert datadog_monitor_alert = 27;
   }
 }
 
@@ -1433,6 +1435,19 @@ message StreamFlowsResponse {
   }
 }
 
+// DatadogMonitorAlert is emitted by the operator when a Datadog monitor transitions state.
+message DatadogMonitorAlert {
+  string monitor_id = 1;
+  string monitor_name = 2;
+  string current_status = 3;   // "Alert", "Warn", "OK", "No Data"
+  string previous_status = 4;
+  string monitor_type = 5;     // "metric alert", "service check", etc.
+  string query = 6;
+  string message = 7;
+  repeated string tags = 8;
+  int64 timestamp = 9;
+}
+
 // StreamEventsRequest carries event/status/condition data from operator to server.
 message StreamEventsRequest {
   oneof request {
@@ -1440,6 +1455,7 @@ message StreamEventsRequest {
     PodStatusChange pod_status_change = 2;
     NodeConditionChange node_condition_change = 3;
     WorkloadRolloutStatus workload_rollout_status = 4;
+    DatadogMonitorAlert datadog_monitor_alert = 5;
   }
 }
 
