@@ -286,6 +286,13 @@ Action.argocd_get_status().cluster_id("...").app_name("my-app")
 Action.argocd_rollback().cluster_id("...").app_name("my-app")
 Action.argocd_find_app().cluster_id("...").workload_name("{{incident.workload_name}}").namespace("{{incident.namespace}}")
 
+# Helm
+Action.helm_upgrade().cluster_id("...").release_name("my-app").namespace("production").chart("oci://ghcr.io/org/app").values_set("image.tag={{signal.commit_sha}}")
+Action.helm_install().cluster_id("...").release_name("my-app").namespace("production").chart("bitnami/nginx").create_namespace(True)
+Action.helm_rollback().cluster_id("...").release_name("my-app").namespace("production")
+Action.helm_uninstall().cluster_id("...").release_name("my-app").namespace("production")
+Action.helm_status().cluster_id("...").release_name("my-app").namespace("production")
+
 # AWS Cost
 Action.aws_query_cost_explorer().aws_account("123456789012").time_range("30d")
 Action.aws_get_cost_anomalies().aws_account("123456789012")
