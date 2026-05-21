@@ -64,13 +64,22 @@ operator:
 
 ### In Workflows
 
+**Trigger blocks:**
+- **Datadog Monitor Alert** — triggers a workflow when a Datadog monitor enters Alert state
+- **Datadog Monitor Warning** — triggers when a monitor enters Warn state
+- **Datadog Monitor Recovered** — triggers when a monitor returns to OK state
+- **Datadog Monitor No Data** — triggers when a monitor reports No Data
+- **Datadog Monitor (Any Transition)** — triggers on any monitor state change
+
+The operator polls Datadog monitor statuses every 60 seconds and detects transitions automatically. No webhook configuration needed — the operator uses its existing Datadog API credentials.
+
 **Action blocks:**
 - **Query Metrics** — query Datadog time-series metrics with custom queries and time ranges
 - **Create Monitor** — create a new Datadog monitor with specified thresholds and alerting conditions
 - **Send Event** — post a custom event to the Datadog event stream
 - **Mute Monitor** — mute a Datadog monitor for a specified duration
 
-Example: A workflow triggered by a Kubernetes incident queries Datadog for CPU and memory metrics around the incident timeframe, and if resource exhaustion is detected, creates a Datadog monitor to track the recovery.
+Example: A workflow triggered by a Datadog monitor entering Alert state queries additional metrics for context, runs an AI investigation, and posts the findings to Slack with remediation steps.
 
 ### In Incident Response
 

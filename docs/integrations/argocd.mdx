@@ -49,8 +49,10 @@ ArgoCD is auto-detected by the Kestrel Operator when it is installed in the same
 - **Trigger ArgoCD Sync** — trigger an ArgoCD sync for a specific application
 - **Wait for ArgoCD Sync** — block workflow execution until a sync operation completes (with configurable timeout)
 - **Get ArgoCD App Status** — retrieve the current sync and health status of an ArgoCD application
+- **Rollback ArgoCD App** — roll back an ArgoCD application to its previous deployment version
+- **Find ArgoCD App for Workload** — dynamically discover which ArgoCD application manages a given Kubernetes workload (by name/namespace matching)
 
-Example: A workflow triggered by a merged PR can automatically sync the corresponding ArgoCD application, wait for the sync to complete, verify health status, and notify the team on Slack.
+Example: A workflow triggered by a pod crash uses "Find ArgoCD App for Workload" to identify the managing ArgoCD application, checks its status, and if unhealthy, triggers a rollback to the last known good version.
 
 ## Disconnecting
 

@@ -55,6 +55,7 @@ Repository access is managed through your GitHub App installation settings:
 - **AI Code Fix** — generate an AI-powered code fix and commit it to a branch
 - **Wait for PR Approval** — block workflow execution until a pull request is approved
 - **Wait for PR Merge** — block workflow execution until a pull request is merged
+- **Investigate GitHub Action Failure** — fetch failed job logs from a GitHub Actions run and use AI to analyze the root cause, providing a summary of what failed and suggested fixes
 
 Example: A workflow triggered by a Kubernetes incident searches the repo for the affected service code, runs an AI investigation, creates a fix PR, and waits for approval before merging.
 
