@@ -38,13 +38,13 @@ rules:
     resources: ["deployments", "statefulsets", "daemonsets", "replicasets", "controllerrevisions"]
     verbs: ["get", "list", "watch"]
 
-  # Allow scaling and restarting workloads (for workflow automation actions)
+  # Allow scaling, restarting, and managing workloads (for workflow automation and Helm)
   - apiGroups: ["apps"]
     resources: ["deployments/scale", "statefulsets/scale", "replicasets/scale"]
     verbs: ["get", "patch", "update"]
   - apiGroups: ["apps"]
-    resources: ["deployments", "statefulsets", "daemonsets"]
-    verbs: ["patch"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["create", "update", "patch", "delete"]
   
   # Allow reading batch workloads for ingestion 
   - apiGroups: ["batch"]
@@ -138,12 +138,9 @@ rules:
     verbs: ["get", "list", "watch"]
 
   # Allow Helm release management (workflow automation)
-  # Helm stores release metadata in secrets, and manages deployments, services, etc.
+  # Helm stores release metadata in secrets, and manages services, configmaps, etc.
   - apiGroups: [""]
     resources: ["secrets", "configmaps", "services", "serviceaccounts", "persistentvolumeclaims"]
-    verbs: ["create", "update", "patch", "delete"]
-  - apiGroups: ["apps"]
-    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
     verbs: ["create", "update", "patch", "delete"]
   - apiGroups: ["batch"]
     resources: ["jobs", "cronjobs"]
