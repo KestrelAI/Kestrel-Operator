@@ -1,4 +1,4 @@
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -22,10 +22,10 @@ RUN apk --no-cache add \
     gzip \
     jq
 
-# Install kubectl (multi-arch)
+# Install kubectl (multi-arch) - pinned to v1.31.0 for reliability
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; elif [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi && \
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl" && \
+    curl -LO "https://dl.k8s.io/release/v1.31.0/bin/linux/${ARCH}/kubectl" && \
     chmod +x kubectl && \
     mv kubectl /usr/local/bin/
 
@@ -47,6 +47,14 @@ RUN ARCH=$(uname -m) && \
     mv trivy /usr/local/bin/ && \
     rm trivy_${TRIVY_VERSION}_Linux-${TRIVY_ARCH}.tar.gz
 
+# Install Helm (multi-arch)
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; elif [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi && \
+    curl -fsSL https://get.helm.sh/helm-v3.16.3-linux-${ARCH}.tar.gz -o helm.tar.gz && \
+    tar xzf helm.tar.gz && \
+    mv linux-${ARCH}/helm /usr/local/bin/ && \
+    rm -rf helm.tar.gz linux-${ARCH}
+
 # Pre-download Trivy vulnerability database during build
 # This ensures the operator doesn't need internet access at runtime
 RUN mkdir -p /root/.cache/trivy && \
@@ -66,6 +74,7 @@ COPY --from=builder /app/bin/client .
 # Verify tools are installed and Trivy database is ready
 RUN kubectl version --client=true && \
     cilium version --client && \
+    helm version --short && \
     trivy --version && \
     echo "Testing Trivy offline mode..." && \
     trivy image --offline-scan --skip-db-update alpine:latest || echo "Trivy offline test completed (exit code expected for test image)" && \
