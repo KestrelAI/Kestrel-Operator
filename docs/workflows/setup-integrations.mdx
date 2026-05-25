@@ -1,0 +1,116 @@
+---
+title: "Workflow Integrations Setup"
+description: "Connect the integrations your workflows need"
+---
+
+Workflows chain actions across multiple integrations. Before using an integration in a workflow, connect it on the **Integrations** page in the Kestrel dashboard. This page links to the setup guide for each supported integration.
+
+<Note>
+You only need to connect an integration once. All workflows in your organization share the same integration connections.
+</Note>
+
+## Infrastructure
+
+<CardGroup cols={2}>
+  <Card title="Kubernetes" icon="dharmachakra" href="/integrations/kubernetes">
+    **Triggers:** Deployment Replicas Failing, Pod CrashLoopBackOff, Pod ImagePullBackOff, Pod OOMKilled, Pods Failing, Pods Restarting, StatefulSet Replicas Failing, Node Memory/Disk Pressure, DaemonSet Failing, and more. **Actions:** Trigger K8s RCA & Generate Fix, Apply YAML Fix, Generate K8s Manifest, Apply K8s Manifest, Investigate Kubernetes.
+  </Card>
+  <Card title="AWS" icon="aws" href="/integrations/aws">
+    **Triggers:** IAM Security Event, Root Account Activity, S3 Bucket Change, EC2/Lambda/RDS/DynamoDB Issues, VPC/Network Change, CloudWatch Alarm, Cost Anomaly, Budget Threshold, and more. **Actions:** Trigger Cloud RCA & Generate Fix, Generate Cloud Resource (Terraform/CloudFormation/CLI), Execute Cloud CLI, Query Cost Explorer, Get Cost Anomalies/Forecast/Budget Status, Investigate Cloud.
+  </Card>
+  <Card title="OCI" icon="cloud" href="/integrations/oci">
+    Connect Oracle Cloud Infrastructure for resource inventory and incident detection.
+  </Card>
+</CardGroup>
+
+## Source Control & CI/CD
+
+<CardGroup cols={2}>
+  <Card title="GitHub" icon="github" href="/integrations/github">
+    **Actions:** Create Pull Request, Create Issue, Trigger GitHub Action, Wait for GitHub Action Run, Get GitHub Action Status, Read File, Search Code, AI Code Investigation, AI Code Fix, Wait for PR Approval, Wait for PR Merge.
+  </Card>
+  <Card title="GitLab" icon="gitlab" href="/integrations/gitlab">
+    **Actions:** Create Merge Request, Create Issue, Trigger Pipeline, Wait for Pipeline, Get Pipeline Status, Wait for MR Approval, Wait for MR Merge.
+  </Card>
+  <Card title="ArgoCD" icon="rotate" href="/integrations/argocd">
+    **Actions:** Trigger ArgoCD Sync, Wait for ArgoCD Sync, Get ArgoCD App Status.
+  </Card>
+</CardGroup>
+
+## Notifications & Chat
+
+<CardGroup cols={2}>
+  <Card title="Slack" icon="slack" href="/integrations/slack">
+    **Triggers:** Create K8s Resource, Edit K8s Resource, General Kubernetes Request, Create AWS Resource, Edit AWS Resource, General Cloud Request, Any /kestrel-workflow Request. **Actions:** Send Message, Update Message, Request Justification.
+  </Card>
+  <Card title="PagerDuty" icon="pager" href="/integrations/pagerduty">
+    **Triggers:** Incident Triggered, Incident Acknowledged, Incident Resolved, Any PagerDuty Incident, High Urgency Incident. **Actions:** Create Alert, Acknowledge Alert, Add Note to Alert, Resolve Alert, Escalate.
+  </Card>
+</CardGroup>
+
+## Project Management & Documentation
+
+<CardGroup cols={2}>
+  <Card title="Jira" icon="jira" href="/integrations/jira">
+    **Actions:** Create Ticket, Add Comment, Transition Ticket.
+  </Card>
+  <Card title="Confluence" icon="confluence" href="/integrations/confluence">
+    **Actions:** Publish RCA, Publish Postmortem, Publish Runbook Entry, Update Page.
+  </Card>
+</CardGroup>
+
+## Monitoring
+
+<CardGroup cols={2}>
+  <Card title="Datadog" icon="chart-area" href="/integrations/datadog">
+    **Actions:** Query Metrics, Create Monitor, Send Event, Mute Monitor. Also provides metrics context for AI RCA and copilot investigations.
+  </Card>
+  <Card title="OpenTelemetry" icon="signal" href="/integrations/opentelemetry">
+    Collects traces and metrics for infrastructure observability. Provides metrics context for AI RCA and copilot investigations.
+  </Card>
+</CardGroup>
+
+## Product Analytics
+
+<CardGroup cols={1}>
+  <Card title="PostHog" icon="chart-bar" href="/integrations/posthog">
+    **Triggers:** Session Error/Exception, Console Error, Rage Click, Any PostHog Event, Log Error Alert. **Actions:** Get Session Summary, Get Session Recording, Query Events, List Session Recordings, Get Error Issue.
+  </Card>
+</CardGroup>
+
+## Deployment
+
+<CardGroup cols={1}>
+  <Card title="Vercel" icon="triangle" href="/integrations/vercel">
+    **Triggers:** Deployment Failed, Deployment Succeeded, Deployment Created, Error Anomaly, Usage Anomaly, Domain Issue, Firewall Attack Detected, Deployment Checks Failed, Production Rollback. **Actions:** Get Deployment, Get Build Logs, Rollback Production, Promote to Production, List Deployments, Investigate Vercel.
+  </Card>
+</CardGroup>
+
+## Cost Management
+
+AWS Cost features (Query Cost Explorer, Get Cost Anomalies, Get Cost Forecast, Get Budget Status, AI Cost Analysis) are available through the [AWS integration](/integrations/aws). No separate setup is required — cost management actions are enabled when you connect an AWS account.
+
+## Knowledge Sources
+
+During AI-powered steps like RCA and investigation, Kestrel's AI agents search your team's knowledge bases for historical context — past incidents, runbooks, and documentation. Connect knowledge sources on the **Knowledge Sources** page in the dashboard.
+
+<CardGroup cols={3}>
+  <Card title="Confluence" icon="confluence" href="/integrations/confluence">
+    Runbooks and postmortems
+  </Card>
+  <Card title="Jira" icon="jira" href="/integrations/jira">
+    Past incident tickets
+  </Card>
+  <Card title="Slack" icon="slack" href="/integrations/slack">
+    Historical conversations
+  </Card>
+</CardGroup>
+
+For details on how knowledge sources enhance AI actions, see [Knowledge Sources](/integrations/knowledge-sources).
+
+---
+
+## Next Steps
+
+- [Create Workflows](/workflows/create-workflows) — Build your first workflow after connecting integrations
+- [Custom Integrations](/workflows/custom-integrations) — Connect services not listed here using HTTP actions and webhooks

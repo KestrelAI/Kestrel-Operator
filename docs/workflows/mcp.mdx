@@ -1,0 +1,146 @@
+---
+title: "MCP"
+description: "Manage Kestrel workflows through the Model Context Protocol for AI agent integration"
+---
+
+The Kestrel MCP server exposes workflow management as tools that AI coding agents (Cursor, Claude Desktop, OpenAI Codex, etc.) can call directly. This lets you create, modify, and monitor workflows through conversational AI.
+
+## Prerequisites
+
+Install the [Kestrel CLI](/workflows/cli) and authenticate:
+
+```bash
+brew install KestrelAI/tap/kestrel
+kestrel auth kestrel_sk_...
+```
+
+The MCP server uses your CLI credentials stored at `~/.kestrel/config.json`.
+
+## Setup
+
+The MCP server runs as a subcommand of the CLI. Configure your AI tool to run `kestrel mcp`.
+
+### Cursor
+
+Add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "kestrel": {
+      "command": "kestrel",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "kestrel": {
+      "command": "kestrel",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### OpenAI Codex
+
+Add via the Codex CLI:
+
+```bash
+codex mcp add kestrel -- kestrel mcp
+```
+
+Or add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.kestrel]
+command = "kestrel"
+args = ["mcp"]
+```
+
+<Tip>
+If `kestrel` isn't on your PATH, use the full path (e.g., `/usr/local/bin/kestrel`).
+</Tip>
+
+## Available Tools
+
+### Workflow Management
+
+| Tool | Description |
+|------|-------------|
+| `list_workflows` | List all workflows, optionally filtered by status |
+| `get_workflow` | Get workflow details including definition and trigger config |
+| `create_workflow` | Create a new workflow from a definition |
+| `update_workflow` | Update a workflow's name, description, or definition |
+| `delete_workflow` | Delete a workflow |
+| `activate_workflow` | Activate a workflow |
+| `pause_workflow` | Pause an active workflow |
+| `duplicate_workflow` | Copy a workflow as a new draft |
+
+### Workflow Generation
+
+| Tool | Description |
+|------|-------------|
+| `generate_workflow` | Generate a workflow from natural language |
+| `request_workflow` | Submit a request to trigger a matching workflow |
+| `list_suggested_workflows` | Get AI-suggested workflows |
+
+### Execution Management
+
+| Tool | Description |
+|------|-------------|
+| `list_executions` | List executions for a workflow |
+| `get_execution` | Get execution details including step results |
+| `cancel_execution` | Cancel a running execution |
+| `get_workflow_stats` | Aggregate execution statistics |
+
+### Approval Management
+
+| Tool | Description |
+|------|-------------|
+| `list_pending_approvals` | List pending approval gates |
+| `approve_step` | Approve a gate (with optional justification) |
+| `reject_step` | Reject a gate |
+
+### Request Management
+
+| Tool | Description |
+|------|-------------|
+| `list_unmatched_requests` | List unmatched workflow requests |
+| `approve_workflow_request` | Approve a request |
+| `reject_workflow_request` | Reject a request |
+
+### Catalog and Integrations
+
+| Tool | Description |
+|------|-------------|
+| `get_catalog` | Available signal triggers and action blocks |
+| `get_integrations_status` | Integration connection status |
+
+## Example Conversations
+
+**Creating a workflow:**
+
+> "Create a workflow that triggers when a PagerDuty alert fires, runs K8s RCA, and posts results to #incidents on Slack"
+
+The AI agent calls `generate_workflow`, reviews the result, then `create_workflow` and `activate_workflow`.
+
+**Checking executions:**
+
+> "Show me the last 5 failed workflow executions and what went wrong"
+
+The agent calls `list_workflows`, `list_executions`, then `get_execution` for failed ones.
+
+**Approving a gate:**
+
+> "Are there any pending approvals? Approve the production deployment one"
+
+The agent calls `list_pending_approvals`, identifies the right one, and calls `approve_step`.

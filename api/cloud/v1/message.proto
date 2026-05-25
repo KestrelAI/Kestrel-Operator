@@ -4,7 +4,7 @@ package cloud.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "operator/api/cloud/v1";
+option go_package = "operator/api/gen/cloud/v1";
 
 // Action types for resource operations
 enum Action {
@@ -44,6 +44,10 @@ message StreamDataRequest {
     MetricsQueryResponse metrics_query_response = 24;
     // Operator resource usage stats for Grafana dashboards
     OperatorStats operator_stats = 25;
+    // Datadog query response (fallback when sent on data stream)
+    DatadogQueryResponse datadog_query_response = 26;
+    // Datadog monitor alert (emitted when a monitor transitions state)
+    DatadogMonitorAlert datadog_monitor_alert = 27;
   }
 }
 
@@ -139,6 +143,8 @@ message StreamDataResponse {
     MetricsQueryRequest metrics_query_request = 9;
     // Heartbeat keepalive to prevent LB idle-stream timeouts
     Heartbeat heartbeat = 10;
+    // Datadog query request (fallback for operators without control stream)
+    DatadogQueryRequest datadog_query_request = 11;
   }
 }
 
@@ -236,6 +242,8 @@ message InventoryCommit {
   // True if the operator detected a Datadog installation in the cluster.
   // Old operators send false (default) — the server treats it as "no Datadog".
   bool has_datadog = 1;
+  // True if the operator detected an ArgoCD installation in the cluster.
+  bool has_argocd = 2;
 }
 
 // Network policy definition matching Kubernetes NetworkPolicy format
@@ -1313,15 +1321,27 @@ message DatadogQueryRequest {
   int32 max_results = 8;      // limit returned items (0 = API default)
 
   int32 timeout_seconds = 9;
+
+  // JSON body for write operations (create-monitor, send-event, mute-monitor).
+  // Ignored for read queries.
+  string json_body = 10;
 }
 
 enum DatadogQueryType {
   DATADOG_QUERY_UNSPECIFIED = 0;
-  DATADOG_QUERY_METRICS = 1;    // GET /api/v1/query
-  DATADOG_QUERY_EVENTS = 2;     // GET /api/v1/events
-  DATADOG_QUERY_HOSTS = 3;      // GET /api/v1/hosts
-  DATADOG_QUERY_LOGS = 4;       // POST /api/v2/logs/events/search
-  DATADOG_QUERY_LIST_METRICS = 5; // GET /api/v1/metrics — list available metric names
+  DATADOG_QUERY_METRICS = 1;      // GET  /api/v1/query
+  DATADOG_QUERY_EVENTS = 2;       // GET  /api/v1/events
+  DATADOG_QUERY_HOSTS = 3;        // GET  /api/v1/hosts
+  DATADOG_QUERY_LOGS = 4;         // POST /api/v2/logs/events/search
+  DATADOG_QUERY_LIST_METRICS = 5; // GET  /api/v1/metrics
+  DATADOG_CREATE_MONITOR = 6;     // POST /api/v1/monitor
+  DATADOG_SEND_EVENT = 7;         // POST /api/v1/events
+  DATADOG_MUTE_MONITOR = 8;       // POST /api/v1/monitor/{id}/mute
+  DATADOG_LIST_MONITORS = 9;      // GET  /api/v1/monitor
+  ARGOCD_SYNC_APP = 10;           // POST /api/v1/applications/{name}/sync
+  ARGOCD_GET_APP_STATUS = 11;     // GET  /api/v1/applications/{name}
+  ARGOCD_LIST_APPS = 12;          // GET  /api/v1/applications
+  ARGOCD_ROLLBACK_APP = 13;       // POST /api/v1/applications/{name}/rollback
 }
 
 // Datadog query response from operator to server.
@@ -1415,6 +1435,19 @@ message StreamFlowsResponse {
   }
 }
 
+// DatadogMonitorAlert is emitted by the operator when a Datadog monitor transitions state.
+message DatadogMonitorAlert {
+  string monitor_id = 1;
+  string monitor_name = 2;
+  string current_status = 3;   // "Alert", "Warn", "OK", "No Data"
+  string previous_status = 4;
+  string monitor_type = 5;     // "metric alert", "service check", etc.
+  string query = 6;
+  string message = 7;
+  repeated string tags = 8;
+  int64 timestamp = 9;
+}
+
 // StreamEventsRequest carries event/status/condition data from operator to server.
 message StreamEventsRequest {
   oneof request {
@@ -1422,6 +1455,7 @@ message StreamEventsRequest {
     PodStatusChange pod_status_change = 2;
     NodeConditionChange node_condition_change = 3;
     WorkloadRolloutStatus workload_rollout_status = 4;
+    DatadogMonitorAlert datadog_monitor_alert = 5;
   }
 }
 

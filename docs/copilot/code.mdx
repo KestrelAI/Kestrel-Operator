@@ -1,0 +1,183 @@
+---
+title: "Code Investigation"
+description: "Search, read, and analyze code across connected GitHub and GitLab repositories"
+---
+
+The copilot can search files, read source code, trace change history, and look up infrastructure-as-code definitions across your connected GitHub and GitLab repositories. Use it to find where things are configured, who changed what, and how infrastructure definitions map to running resources.
+
+{/* Screenshot placeholder: Copilot answering a code investigation query with file contents and PR details */}
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="GitHub" icon="github" href="/integrations/github">
+    Connect GitHub to search repositories, read files, and query PR history.
+  </Card>
+  <Card title="GitLab" icon="gitlab" href="/integrations/gitlab">
+    Connect GitLab to search repositories, read files, and query MR history.
+  </Card>
+</CardGroup>
+
+<Info>
+Code investigation queries don't require the `@` targeting syntax. The copilot searches across all connected repositories automatically. Mention a specific repository name in your query to narrow the search.
+</Info>
+
+## File Search and Reading
+
+Find and read files across your connected repositories.
+
+```
+Find the Dockerfile for the payments-api service
+```
+
+```
+Show me the Kubernetes deployment manifest for the auth-service in the infrastructure repo
+```
+
+```
+Where is the database connection string configured in acme/checkout-service?
+```
+
+```
+Find all files named values.yaml across our connected repos
+```
+
+```
+Show me the contents of acme/infrastructure/terraform/modules/eks/main.tf
+```
+
+## Code Search
+
+Search for specific functions, configurations, patterns, and definitions across repositories.
+
+```
+Search for all usages of the STRIPE_SECRET_KEY environment variable across our repos
+```
+
+```
+Where is the rate limiting middleware defined in the API gateway service?
+```
+
+```
+Find all Golang functions that call the database.Query method in acme/payments-service
+```
+
+```
+Search for any hardcoded AWS account IDs across all connected repositories
+```
+
+```
+Where is the MAX_CONNECTIONS environment variable set? Check both application code and Kubernetes manifests.
+```
+
+## Change History
+
+Query recent PRs, commits, blame information, and diffs to understand what changed and why.
+
+```
+What PRs were merged to the main branch of acme/infrastructure in the last 48 hours?
+```
+
+```
+Show me the git blame for the resource limits in the auth-service deployment manifest. When were they last changed and what was the reasoning?
+```
+
+```
+What changed in the Dockerfile for acme/payments-service in the last week? Show me the diff.
+```
+
+```
+Who last modified the Terraform module for the production RDS instance? What was the PR description?
+```
+
+```
+Show me all commits to acme/checkout-service/src/config/ in the last 7 days. Did any of them change database or cache settings?
+```
+
+```
+What open PRs are there in acme/infrastructure that touch IAM policies or security group rules?
+```
+
+## Infrastructure-as-Code Lookup
+
+Find and read Terraform, Helm, CloudFormation, and Pulumi definitions that manage your running infrastructure.
+
+```
+Find the Terraform code that manages our production RDS instances. What module is it in?
+```
+
+```
+Show me the Helm values file for the payments-service chart. What are the current replica count and resource limits?
+```
+
+```
+Where is the S3 bucket policy for prod-data-lake defined in Terraform? Show me the access rules.
+```
+
+```
+Find the CloudFormation template that creates our VPC and subnets. What CIDR ranges are configured?
+```
+
+```
+Search across all repos for Terraform code that references security group sg-0a1b2c3d4e5f6g7h8
+```
+
+```
+Show me the Helm chart templates for the auth-service. What environment variables are templated in?
+```
+
+## Cross-Repository Search
+
+Search across multiple repositories to trace configurations and dependencies.
+
+```
+Search across all connected repos for any code that references the prod-vpc VPC ID. I need to understand all resources deployed into it.
+```
+
+```
+Find all repositories that contain a reference to the payments-db.internal hostname. Which services depend on this database?
+```
+
+```
+Search for any Terraform, Kubernetes, or application code that references the elasticache-prod Redis cluster endpoint
+```
+
+```
+Which repos have GitHub Actions workflows that deploy to the production EKS cluster?
+```
+
+## Example Conversation
+
+**You:**
+> The payments-api is failing with `connection refused` errors when trying to reach the orders database. Can you find how the database host is configured?
+
+**Kestrel:**
+> I searched across your connected repositories and found the database configuration in two places:
+>
+> 1. **Application code** — `acme/payments-service/src/config/database.ts` reads the `ORDERS_DB_HOST` environment variable, falling back to `localhost:5432` if unset.
+> 2. **Kubernetes manifest** — `acme/infrastructure/k8s/payments/deployment.yaml` sets `ORDERS_DB_HOST` to `orders-db.payments.svc.cluster.local:5432` via a ConfigMap reference (`payments-db-config`).
+>
+> The ConfigMap `payments-db-config` is defined in `acme/infrastructure/k8s/payments/configmap.yaml`. The current value on the `main` branch is `orders-db.payments.svc.cluster.local:5432`.
+
+**You:**
+> Was this ConfigMap changed recently?
+
+**Kestrel:**
+> Yes. PR #312 in `acme/infrastructure` was merged 3 hours ago by @alex.kim. The PR changed the `ORDERS_DB_HOST` value from `orders-db.payments.svc.cluster.local:5432` to `orders-db-v2.payments.svc.cluster.local:5432` as part of a database migration. The PR description mentions: "Point payments-api to the new PostgreSQL 16 instance."
+>
+> However, I don't see a corresponding Kubernetes Service named `orders-db-v2` in the `payments` namespace — the service may not have been created yet, which would explain the `connection refused` errors.
+
+**You:**
+> Show me the Terraform code for the new database instance. Is it fully provisioned?
+
+**Kestrel:**
+> The new RDS instance is defined in `acme/infrastructure/terraform/modules/rds/orders-db-v2.tf`. It was added in PR #308, merged last week. The Terraform config provisions a `db.r6g.large` PostgreSQL 16.2 instance in `us-east-1a` with Multi-AZ enabled.
+>
+> The Terraform output `orders_db_v2_endpoint` is referenced in the Kubernetes Service definition in `acme/infrastructure/k8s/payments/service-orders-db-v2.yaml` — but this file was added in PR #313, which is still open and hasn't been merged yet. That's why the Service doesn't exist in the cluster.
+
+## Next Steps
+
+- [Kubernetes Investigation](/copilot/kubernetes) — query pods, deployments, events, and metrics
+- [Cloud Investigation](/copilot/cloud) — inspect AWS and OCI resources and security configurations
+- [Cost Analysis](/copilot/costs) — analyze AWS spend patterns and anomalies
+- [Configuration Changes](/copilot/config-changes) — generate and apply YAML and Terraform changes

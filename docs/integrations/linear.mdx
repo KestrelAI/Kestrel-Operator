@@ -1,0 +1,65 @@
+---
+title: "Linear"
+description: "Connect Linear for issue creation, tracking, and historical context during incident investigations"
+---
+
+The Linear integration connects Kestrel to your Linear workspace, enabling automated issue creation from workflows and historical issue search during incident investigations.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- Linear account with workspace access
+
+## Setup
+
+<Steps>
+  <Step title="Connect via OAuth">
+    1. Navigate to **Integrations → Linear** in your Kestrel dashboard
+    2. Click **Connect**
+    3. Authorize Kestrel in the Linear OAuth popup
+    4. The popup closes and your Linear workspace appears as connected
+  </Step>
+</Steps>
+
+## How It's Used
+
+### In Workflows
+
+- **Action blocks**:
+  - **Create Issue** — create Linear issues with customizable team, project, title, description, priority, labels, and assignee
+  - **Update Issue** — modify fields on existing issues
+  - **Search Issues** — query Linear for related issues
+  - **Add Comment** — add comments to existing issues with workflow context
+
+Example: A workflow triggered by a deployment failure can automatically create a Linear issue assigned to the owning team with incident context and logs.
+
+### In Incident Response
+
+- **Knowledge source** — during root cause analysis, Kestrel searches Linear for similar past issues, related bugs, and historical context about affected services (see [Knowledge Sources](/integrations/knowledge-sources))
+- **Issue creation** — create Linear issues directly from incident detail pages to track remediation work
+
+### In Cloud AI Copilot
+
+- Create issues from the chat: `Create a Linear issue for the API latency regression`
+- Search for related issues: `Find Linear issues related to database connection timeouts`
+
+## Configuration
+
+### Knowledge Source Setup
+
+To use Linear as a knowledge source during incident investigations:
+
+1. Navigate to **Integrations → Knowledge Sources**
+2. Click **Add Source** and select **Linear**
+3. Your connected Linear workspace is auto-detected
+4. Click **Enable**
+
+Kestrel will search Linear issues and comments for relevant historical context during incident RCA.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Linear**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all Linear workflow actions and removes Linear as a knowledge source. You can reconnect at any time.

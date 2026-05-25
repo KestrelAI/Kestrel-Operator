@@ -32,6 +32,14 @@ rules:
       - "daemonsets"
       - "replicasets"
     verbs: ["create", "update", "patch", "delete"]
+
+  # Allow scaling workloads (sub-resource needed for kubectl scale)
+  - apiGroups: ["apps"]
+    resources:
+      - "deployments/scale"
+      - "statefulsets/scale"
+      - "replicasets/scale"
+    verbs: ["get", "patch", "update"]
   
   # Allow creating, updating, and deleting batch resources for safe-apply
   - apiGroups: ["batch"]

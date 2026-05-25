@@ -15,6 +15,7 @@ import (
 	"operator/pkg/metrics_store"
 	"operator/pkg/otel_receiver"
 	"operator/pkg/datadog_executor"
+	"operator/pkg/argocd_executor"
 	"operator/pkg/shell_executor"
 	smartcache "operator/pkg/smart_cache"
 	"os"
@@ -78,6 +79,7 @@ type StreamClient struct {
 	apiExecutor      *k8s_api.APIExecutor
 	shellExecutor    *shell_executor.ShellExecutor
 	datadogExecutor  *datadog_executor.DatadogExecutor
+	argoCDExecutor   *argocd_executor.ArgoCDExecutor
 
 	// OTEL Metrics Store for local metrics storage and querying
 	metricsStore *metrics_store.MetricsStore
@@ -516,6 +518,21 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		logger.Info("Datadog integration not configured (DD_NAMESPACE and DD_API_KEY not set)")
 	}
 
+	// Initialize ArgoCD executor — only when ARGOCD_NAMESPACE is set.
+	// The Helm chart sets ARGOCD_NAMESPACE when operator.argocd.enabled=true.
+	// Without it, skip executor creation to avoid unnecessary service scans.
+	var argoExecutor *argocd_executor.ArgoCDExecutor
+	if os.Getenv("ARGOCD_NAMESPACE") != "" {
+		argoExecutor = argocd_executor.NewArgoCDExecutor(
+			logger, k8sClient,
+			os.Getenv("ARGOCD_NAMESPACE"),
+		)
+		logger.Info("ArgoCD executor initialized",
+			zap.String("namespace", os.Getenv("ARGOCD_NAMESPACE")))
+	} else {
+		logger.Info("ArgoCD integration not configured (ARGOCD_NAMESPACE not set)")
+	}
+
 	// Initialize metrics store, pod resolver, and OTEL receiver if enabled
 	var metricsStoreInstance *metrics_store.MetricsStore
 	var otelReceiverInstance *otel_receiver.OTelReceiverServer
@@ -561,6 +578,7 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		apiExecutor:     apiExecutor,
 		shellExecutor:   shellExecutor,
 		datadogExecutor: ddExecutor,
+		argoCDExecutor:  argoExecutor,
 		metricsStore:  metricsStoreInstance,
 		podResolver:   podResolver,
 		otelReceiver:  otelReceiverInstance,
@@ -758,6 +776,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 	podStatusChan := make(chan *v1.PodStatusChange, 2000)
 	nodeConditionChan := make(chan *v1.NodeConditionChange, 500)
 	rolloutStatusChan := make(chan *v1.WorkloadRolloutStatus, 1000)
+	datadogMonitorAlertChan := make(chan *v1.DatadogMonitorAlert, 100)
 	// Pod log streaming disabled.
 	var podLogsChan chan *v1.PodLogs
 
@@ -855,7 +874,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		// Start sending incident detection data (separate from inventory)
 		incidentDone := make(chan error, 1)
-		go s.sendIncidentData(ctx, stream, eventChan, podStatusChan, nodeConditionChan, rolloutStatusChan, podLogsChan, s.operatorLogBatchCh, incidentDone)
+		go s.sendIncidentData(ctx, stream, eventChan, podStatusChan, nodeConditionChan, rolloutStatusChan, podLogsChan, s.operatorLogBatchCh, datadogMonitorAlertChan, incidentDone)
 
 		// Create channels to signal when initial inventory sync is complete
 		workloadSyncDone := make(chan error, 1)
@@ -1183,13 +1202,30 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			probeCancel()
 		}
 
+		// Start Datadog monitor poller if Datadog is available
+		if hasDatadog && s.datadogExecutor != nil {
+			monitorPoller := datadog_executor.NewMonitorPoller(s.datadogExecutor, datadogMonitorAlertChan, s.Logger)
+			monitorPoller.Start(ctx)
+			defer monitorPoller.Stop()
+		}
+
+		// Probe for ArgoCD before sending inventory commit
+		hasArgoCD := false
+		if s.argoCDExecutor != nil {
+			probeCtx, probeCancel := context.WithTimeout(ctx, 10*time.Second)
+			hasArgoCD = s.argoCDExecutor.Probe(probeCtx)
+			probeCancel()
+		}
+
 		// Send inventory commit message to signal that initial inventory is complete
 		s.Logger.Info("Sending inventory commit message to server",
-			zap.Bool("has_datadog", hasDatadog))
+			zap.Bool("has_datadog", hasDatadog),
+			zap.Bool("has_argocd", hasArgoCD))
 		commitMsg := &v1.StreamDataRequest{
 			Request: &v1.StreamDataRequest_InventoryCommit{
 				InventoryCommit: &v1.InventoryCommit{
 					HasDatadog: hasDatadog,
+					HasArgocd:  hasArgoCD,
 				},
 			},
 		}
@@ -1676,6 +1712,8 @@ func (s *StreamClient) handleServerMessages(ctx context.Context, stream v1.Strea
 				s.handleCertificateRenewalRequestOnDataStream(ctx, stream, resp.CertificateRenewalRequest)
 			case *v1.StreamDataResponse_OperatorRestartRequest:
 				s.handleOperatorRestartRequestOnDataStream(ctx, stream, resp.OperatorRestartRequest)
+			case *v1.StreamDataResponse_DatadogQueryRequest:
+				go s.handleDatadogQueryRequestOnDataStream(ctx, stream, resp.DatadogQueryRequest)
 			default:
 				s.Logger.Warn("Received unhandled message type on data stream",
 					zap.String("message_type", fmt.Sprintf("%T", response.Response)))
@@ -1881,6 +1919,12 @@ func (s *StreamClient) handleDatadogQueryRequest(
 	s.Logger.Info("Received Datadog query request from server",
 		zap.String("request_id", ddRequest.RequestId),
 		zap.String("query_type", ddRequest.QueryType.String()))
+
+	// ArgoCD query types (>= 10) are dispatched to the ArgoCD executor
+	if ddRequest.QueryType >= 10 {
+		s.handleArgoCDQueryOnControlStream(ctx, stream, ddRequest)
+		return
+	}
 
 	if s.datadogExecutor == nil {
 		s.Logger.Warn("Datadog query received but Datadog integration is not configured",
@@ -2637,7 +2681,7 @@ func (s *StreamClient) sendPodLogsOrFallback(dataStream v1.StreamService_StreamD
 }
 
 // sendIncidentData collects incident detection data and sends it to the server
-func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, operatorLogsChan <-chan *v1.PodLogs, done chan<- error) {
+func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamService_StreamDataClient, eventChan <-chan *v1.KubernetesEvent, podStatusChan <-chan *v1.PodStatusChange, nodeConditionChan <-chan *v1.NodeConditionChange, rolloutStatusChan <-chan *v1.WorkloadRolloutStatus, podLogsChan <-chan *v1.PodLogs, operatorLogsChan <-chan *v1.PodLogs, datadogMonitorAlertChan <-chan *v1.DatadogMonitorAlert, done chan<- error) {
 	// Operator log send gating: start with nil channel (select ignores nil channels).
 	// When operatorLogEnabled becomes true, activeOperatorLogsChan is set to the real channel.
 	// This prevents consuming buffered logs before the stream is ready.
@@ -2768,6 +2812,26 @@ func (s *StreamClient) sendIncidentData(ctx context.Context, stream v1.StreamSer
 					default:
 					}
 					return
+				}
+			}
+		case ddAlert, ok := <-datadogMonitorAlertChan:
+			if !ok {
+				continue
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.sendEventOrFallback(stream, func(es v1.StreamService_StreamEventsClient) error {
+					return es.Send(&v1.StreamEventsRequest{
+						Request: &v1.StreamEventsRequest_DatadogMonitorAlert{DatadogMonitorAlert: ddAlert},
+					})
+				}, func() error {
+					return stream.Send(&v1.StreamDataRequest{
+						Request: &v1.StreamDataRequest_DatadogMonitorAlert{DatadogMonitorAlert: ddAlert},
+					})
+				}); err != nil {
+					s.Logger.Error("Failed to send Datadog monitor alert", zap.Error(err))
 				}
 			}
 		case podLogs, ok := <-podLogsChan:
@@ -3775,6 +3839,137 @@ func (s *StreamClient) handleMetricsQueryRequestOnDataStream(ctx context.Context
 		Request: &v1.StreamDataRequest_MetricsQueryResponse{MetricsQueryResponse: response},
 	}); err != nil {
 		s.Logger.Error("Failed to send metrics query response on data stream", zap.String("request_id", queryRequest.RequestId), zap.Error(err))
+	}
+}
+
+// handleDatadogQueryRequestOnDataStream handles Datadog queries on the data stream
+// for operators that don't have a separate control stream.
+func (s *StreamClient) handleDatadogQueryRequestOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, ddRequest *v1.DatadogQueryRequest) {
+	s.Logger.Info("Handling Datadog query on data stream (fallback)",
+		zap.String("request_id", ddRequest.RequestId),
+		zap.String("query_type", ddRequest.QueryType.String()))
+
+	// ArgoCD query types (>= 10) are dispatched to the ArgoCD executor
+	if ddRequest.QueryType >= 10 {
+		s.handleArgoCDQueryOnDataStream(ctx, stream, ddRequest)
+		return
+	}
+
+	if s.datadogExecutor == nil {
+		resp := &v1.DatadogQueryResponse{
+			RequestId:    ddRequest.RequestId,
+			Success:      false,
+			ErrorMessage: "Datadog executor not configured on this operator",
+			StatusCode:   503,
+		}
+		if err := s.protectedSend(stream, &v1.StreamDataRequest{
+			Request: &v1.StreamDataRequest_DatadogQueryResponse{DatadogQueryResponse: resp},
+		}); err != nil {
+			s.Logger.Error("Failed to send Datadog error response on data stream", zap.String("request_id", ddRequest.RequestId), zap.Error(err))
+		}
+		return
+	}
+
+	ddResponse := s.datadogExecutor.ExecuteQuery(ctx, ddRequest)
+
+	const maxResponseBytes = 8 * 1024 * 1024
+	if len(ddResponse.ResponseData) > maxResponseBytes {
+		ddResponse.ResponseData = ""
+		ddResponse.Success = false
+		ddResponse.ErrorMessage = "Response too large (>8MB)"
+		ddResponse.StatusCode = 413
+	}
+
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_DatadogQueryResponse{DatadogQueryResponse: ddResponse},
+	}); err != nil {
+		s.Logger.Error("Failed to send Datadog response on data stream", zap.String("request_id", ddRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleArgoCDQueryOnControlStream(
+	ctx context.Context,
+	stream v1.StreamService_StreamControlClient,
+	ddRequest *v1.DatadogQueryRequest,
+) {
+	s.Logger.Info("Dispatching ArgoCD query on control stream",
+		zap.String("request_id", ddRequest.RequestId),
+		zap.String("query_type", ddRequest.QueryType.String()))
+
+	if s.argoCDExecutor == nil {
+		ddResponse := &v1.DatadogQueryResponse{
+			RequestId:    ddRequest.RequestId,
+			Success:      false,
+			ErrorMessage: "ArgoCD integration is not available on this operator",
+			StatusCode:   503,
+		}
+		responseMsg := &v1.StreamControlRequest{
+			Request: &v1.StreamControlRequest_DatadogQueryResponse{
+				DatadogQueryResponse: ddResponse,
+			},
+		}
+		if err := s.protectedControlSend(stream, responseMsg); err != nil {
+			s.Logger.Error("Failed to send ArgoCD not-configured response",
+				zap.String("request_id", ddRequest.RequestId), zap.Error(err))
+		}
+		return
+	}
+
+	ddResponse := s.argoCDExecutor.ExecuteQuery(ctx, ddRequest)
+
+	const maxResponseBytes = 8 * 1024 * 1024
+	if len(ddResponse.ResponseData) > maxResponseBytes {
+		ddResponse.Success = false
+		ddResponse.ErrorMessage = fmt.Sprintf("Response too large (%d bytes, max %d). Try a narrower query.",
+			len(ddResponse.ResponseData), maxResponseBytes)
+		ddResponse.ResponseData = ""
+	}
+
+	responseMsg := &v1.StreamControlRequest{
+		Request: &v1.StreamControlRequest_DatadogQueryResponse{
+			DatadogQueryResponse: ddResponse,
+		},
+	}
+	if err := s.protectedControlSend(stream, responseMsg); err != nil {
+		s.Logger.Error("Failed to send ArgoCD query response",
+			zap.String("request_id", ddRequest.RequestId), zap.Error(err))
+	}
+}
+
+func (s *StreamClient) handleArgoCDQueryOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, ddRequest *v1.DatadogQueryRequest) {
+	s.Logger.Info("Dispatching ArgoCD query on data stream (fallback)",
+		zap.String("request_id", ddRequest.RequestId),
+		zap.String("query_type", ddRequest.QueryType.String()))
+
+	if s.argoCDExecutor == nil {
+		resp := &v1.DatadogQueryResponse{
+			RequestId:    ddRequest.RequestId,
+			Success:      false,
+			ErrorMessage: "ArgoCD executor not available on this operator",
+			StatusCode:   503,
+		}
+		if err := s.protectedSend(stream, &v1.StreamDataRequest{
+			Request: &v1.StreamDataRequest_DatadogQueryResponse{DatadogQueryResponse: resp},
+		}); err != nil {
+			s.Logger.Error("Failed to send ArgoCD error response on data stream", zap.String("request_id", ddRequest.RequestId), zap.Error(err))
+		}
+		return
+	}
+
+	ddResponse := s.argoCDExecutor.ExecuteQuery(ctx, ddRequest)
+
+	const maxResponseBytes = 8 * 1024 * 1024
+	if len(ddResponse.ResponseData) > maxResponseBytes {
+		ddResponse.ResponseData = ""
+		ddResponse.Success = false
+		ddResponse.ErrorMessage = "Response too large (>8MB)"
+		ddResponse.StatusCode = 413
+	}
+
+	if err := s.protectedSend(stream, &v1.StreamDataRequest{
+		Request: &v1.StreamDataRequest_DatadogQueryResponse{DatadogQueryResponse: ddResponse},
+	}); err != nil {
+		s.Logger.Error("Failed to send ArgoCD response on data stream", zap.String("request_id", ddRequest.RequestId), zap.Error(err))
 	}
 }
 

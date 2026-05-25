@@ -1,0 +1,481 @@
+---
+title: "Python SDK"
+description: "Programmatically create, manage, and monitor workflows with the Kestrel Python SDK"
+---
+
+The Kestrel Python SDK provides a typed, fluent API for building and managing workflows programmatically. It supports both synchronous and asynchronous usage with API key authentication.
+
+## Installation
+
+```bash
+pip install kestrel-workflows
+```
+
+## Authentication
+
+Create an API key in the Kestrel platform under **Workflows > API Keys**, then use it to authenticate:
+
+```python
+from kestrel import KestrelClient
+
+client = KestrelClient(api_key="kestrel_sk_...")
+```
+
+For async usage:
+
+```python
+from kestrel import AsyncKestrelClient
+
+async with AsyncKestrelClient(api_key="kestrel_sk_...") as client:
+    workflows = await client.workflows.list()
+```
+
+<Tip>
+If you're logged in via the [CLI](/workflows/cli), the SDK can reuse your session:
+
+```python
+client = KestrelClient.from_config()
+```
+</Tip>
+
+## Workflow Builder
+
+Build workflows using typed classes with full IDE autocompletion:
+
+```python
+from kestrel import KestrelClient
+from kestrel.workflows import Workflow, Trigger, Action, Condition, Approval
+
+wf = (
+    Workflow("Pod Crash RCA + Jira")
+    .description("Run RCA on pod crash, create Jira ticket")
+    .trigger(
+        Trigger.k8s_pod_status()
+        .reasons("CrashLoopBackOff")
+        .cluster("my-cluster-id")
+        .namespace("production")
+    )
+    .cooldown(hours=24)
+    .then(Action.kestrel_trigger_rca().label("Run RCA"))
+    .then(Action.jira_create_ticket()
+        .project("KAN")
+        .title("{{incident.title}}")
+        .priority("High")
+        .assignee("Raman Varma")
+        .label("Create Jira Ticket")
+    )
+    .then(Action.confluence_publish_rca()
+        .space_key("SD")
+        .title("RCA: {{incident.title}}")
+        .label("Publish RCA")
+    )
+    .alert_on_failure(channel="alerts-channel-id")
+)
+
+client = KestrelClient(api_key="kestrel_sk_...")
+created = client.workflows.deploy(wf, activate=True)
+print(f"Deployed: {created.id} ({created.status})")
+```
+
+### Triggers
+
+Create triggers for different signal sources:
+
+```python
+# Kubernetes — Pod Status
+Trigger.k8s_pod_status().reasons("CrashLoopBackOff")
+Trigger.k8s_pod_status().reasons("ImagePullBackOff", "ErrImagePull")
+Trigger.k8s_pod_status().reasons("OOMKilled")  # uses terminated_reasons
+Trigger.k8s_pod_status().reasons("Error")  # pod exits non-zero
+Trigger.k8s_pod_status().restart_threshold(5)  # pods restarting excessively
+
+# Kubernetes — Workload Rollout
+Trigger.k8s_rollout_status().reasons("ProgressDeadlineExceeded").resource_kinds("Deployment")
+Trigger.k8s_rollout_status().reasons("ReplicasNotReady").resource_kinds("StatefulSet")
+Trigger.k8s_rollout_status().reasons("PodsUnavailable").resource_kinds("DaemonSet")
+
+# Kubernetes — Node Conditions
+Trigger.k8s_node_condition().conditions("NotReady")
+Trigger.k8s_node_condition().conditions("MemoryPressure")
+Trigger.k8s_node_condition().conditions("DiskPressure")
+
+# Kubernetes — Catch-all
+Trigger.k8s_any()
+
+# AWS — CloudTrail (infrastructure events)
+Trigger.aws_cloudtrail().service_names("iam", "sts")
+Trigger.aws_cloudtrail().service_names("s3")
+Trigger.aws_cloudtrail().service_names("ec2")
+Trigger.aws_cloudtrail().service_names("rds")
+Trigger.aws_cloudtrail().service_names("lambda")
+Trigger.aws_cloudtrail().service_names("dynamodb")
+Trigger.aws_cloudtrail().service_names("kms")
+Trigger.aws_cloudtrail().service_names("secretsmanager")
+Trigger.aws_cloudtrail().incident_types("RootAccountActivity")
+
+# AWS — Application Errors
+Trigger.aws_cloudwatch_log().incident_types("ApplicationLogErrors").service_names("ec2")
+
+# AWS — CloudWatch Alarms
+Trigger.aws_cloudwatch_metric()
+
+# AWS — Security & Compliance
+Trigger.aws_security_hub().severities("CRITICAL", "HIGH")
+Trigger.aws_config_rule()
+Trigger.aws_service_health()
+
+# AWS — Cost & Budget
+Trigger.aws_cost_anomaly()
+Trigger.aws_budget_alert()
+
+# AWS — Catch-all
+Trigger.aws_any()
+
+# PagerDuty
+Trigger.pagerduty_triggered()
+Trigger.pagerduty_acknowledged()
+Trigger.pagerduty_resolved()
+Trigger.pagerduty_any()
+Trigger.pagerduty_triggered().urgency("high")
+
+# GitHub
+Trigger.github_pr_opened()
+Trigger.github_pr_merged()
+Trigger.github_pr_approved()
+Trigger.github_action_completed()
+Trigger.github_action_failed()
+
+# PostHog
+Trigger.posthog_exception()
+Trigger.posthog_rage_click()
+Trigger.posthog_log_alert()
+Trigger.posthog_console_error()
+Trigger.posthog_any()
+
+# Vercel
+Trigger.vercel_deployment_failed()
+Trigger.vercel_deployment_ready()
+Trigger.vercel_deployment_created()
+Trigger.vercel_checks_failed()
+Trigger.vercel_rollback()
+Trigger.vercel_firewall_attack()
+Trigger.vercel_error_anomaly()
+Trigger.vercel_usage_anomaly()
+Trigger.vercel_domain_issue()
+
+# Slack Requests (on-demand via /kestrel-workflow)
+Trigger.request_k8s_provision()
+Trigger.request_k8s_edit()
+Trigger.request_k8s_investigate()
+Trigger.request_cloud_provision()
+Trigger.request_cloud_edit()
+Trigger.request_cloud_investigate()
+Trigger.request_any()
+
+# Custom Webhook
+Trigger.custom_webhook("my-event-type")
+
+# Datadog Monitor
+Trigger.datadog_monitor_alert()
+Trigger.datadog_monitor_warn()
+Trigger.datadog_monitor_recovered()
+Trigger.datadog_monitor_no_data()
+Trigger.datadog_monitor_any()
+Trigger.datadog_monitor_alert().monitor_names("High CPU").datadog_tags("env:production")
+```
+
+All triggers support filter chaining:
+
+```python
+trigger = (
+    Trigger.k8s_pod_status()
+    .reasons("CrashLoopBackOff")
+    .cluster("cluster-id-1", "cluster-id-2")
+    .namespace("production", "staging")
+    .workload("api-server", "worker")
+)
+```
+
+### Actions
+
+Every integration has typed factory methods:
+
+```python
+# Kestrel — RCA & Investigation
+Action.kestrel_trigger_rca()
+Action.kestrel_trigger_cloud_rca()
+Action.kestrel_investigate_k8s().query("Why is {{incident.workload_name}} crashing?")
+Action.kestrel_investigate_cloud().query("Investigate IAM event")
+Action.kestrel_find_causal_prs()
+Action.kestrel_find_service_deps().cluster_id("...").ns("default").workload_name("api")
+Action.kestrel_analyze_costs().analysis_type("anomaly")
+
+# Kestrel — K8s Operations
+Action.kestrel_apply_yaml_fix()
+Action.kestrel_restart_workload().workload_name("{{incident.workload_name}}").namespace("{{incident.namespace}}")
+Action.kestrel_scale_workload().workload_name("{{incident.workload_name}}").namespace("{{incident.namespace}}").replicas(0)
+Action.kestrel_generate_k8s_manifest().resource_type("Deployment").query("Create a deployment for nginx")
+Action.kestrel_generate_helm_values().chart_name("nginx-ingress")
+Action.kestrel_apply_k8s_manifest()
+Action.kestrel_create_gitops_pr().repo("org/k8s-manifests")
+
+# Kestrel — Cloud Operations
+Action.kestrel_generate_cloud_resource().cloud_service("rds").output_format("terraform")
+Action.kestrel_execute_cloud_cli()
+Action.kestrel_create_iac_pr().repo("org/infra-repo")
+
+# Kestrel — Flow Control
+Action.kestrel_wait().duration(5).unit("minutes")
+
+# Slack
+Action.slack_send_message().channel("incidents").message("{{incident.title}}").include_rca(True)
+Action.slack_update_message()
+Action.slack_request_justification().channel("approvals")
+
+# Jira
+Action.jira_create_ticket().project("KAN").title("{{incident.title}}").priority("High")
+Action.jira_add_comment().ticket_key("KAN-123").comment("Update: {{rca_result.root_cause}}")
+Action.jira_transition_ticket().ticket_key("KAN-123").status("Done")
+
+# GitHub
+Action.github_create_pr().repo("org/repo").title("Fix: {{incident.title}}")
+Action.github_create_issue().repo("org/repo").title("Bug: {{incident.title}}")
+Action.github_investigate_code().query("{{rca_result.root_cause}}").repo("org/repo")
+Action.github_generate_code_fix().context("{{rca_result.root_cause}}").repo("org/repo")
+Action.github_trigger_workflow().repo("org/repo").workflow_file("deploy.yml")
+Action.github_wait_for_run().repo("org/repo").workflow_file("deploy.yml")
+Action.github_get_run_status().repo("org/repo").workflow_file("ci.yml")
+Action.github_read_file().repo("org/repo").path("src/config.yaml")
+Action.github_search_code().repo("org/repo").query("handleError")
+Action.github_wait_pr_approval()
+Action.github_wait_pr_merge()
+Action.github_investigate_action_failure().repo("org/repo").run_id("{{signal.run_id}}")
+
+# GitLab
+Action.gitlab_create_mr().repo("org/repo").title("Fix: {{incident.title}}")
+Action.gitlab_create_issue().repo("org/repo").title("Bug: {{incident.title}}")
+Action.gitlab_trigger_pipeline().repo("org/repo").ref("main")
+Action.gitlab_wait_for_pipeline().repo("org/repo")
+Action.gitlab_get_pipeline_status().repo("org/repo")
+Action.gitlab_wait_mr_approval()
+Action.gitlab_wait_mr_merge()
+
+# Confluence
+Action.confluence_publish_rca().space_key("ENG")
+Action.confluence_publish_postmortem().space_key("ENG")
+Action.confluence_publish_runbook().space_key("ENG")
+Action.confluence_update_page().page_id("123456")
+
+# PagerDuty
+Action.pagerduty_create_alert().service("service-id").severity("critical")
+Action.pagerduty_acknowledge_alert()
+Action.pagerduty_resolve_alert()
+Action.pagerduty_add_note().note("RCA: {{rca_result.root_cause}}")
+Action.pagerduty_escalate()
+
+# Datadog
+Action.datadog_query_metrics().cluster_id("...").query("avg:kubernetes.cpu.usage.total{*}")
+Action.datadog_create_monitor().cluster_id("...").name("High CPU")
+Action.datadog_send_event().cluster_id("...").title("Incident resolved")
+Action.datadog_mute_monitor().cluster_id("...").monitor_id("12345")
+
+# ArgoCD
+Action.argocd_sync().cluster_id("...").app_name("my-app")
+Action.argocd_wait_sync().cluster_id("...").app_name("my-app")
+Action.argocd_get_status().cluster_id("...").app_name("my-app")
+Action.argocd_rollback().cluster_id("...").app_name("my-app")
+Action.argocd_find_app().cluster_id("...").workload_name("{{incident.workload_name}}").namespace("{{incident.namespace}}")
+
+# Helm
+Action.helm_upgrade().cluster_id("...").release_name("my-app").namespace("production").chart("oci://ghcr.io/org/app").values_set("image.tag={{signal.commit_sha}}")
+Action.helm_install().cluster_id("...").release_name("my-app").namespace("production").chart("bitnami/nginx").create_namespace(True)
+Action.helm_rollback().cluster_id("...").release_name("my-app").namespace("production")
+Action.helm_uninstall().cluster_id("...").release_name("my-app").namespace("production")
+Action.helm_status().cluster_id("...").release_name("my-app").namespace("production")
+
+# AWS Cost
+Action.aws_query_cost_explorer().aws_account("123456789012").time_range("30d")
+Action.aws_get_cost_anomalies().aws_account("123456789012")
+Action.aws_get_cost_forecast().aws_account("123456789012")
+Action.aws_get_budget_status().aws_account("123456789012")
+
+# PostHog
+Action.posthog_get_session_summary().session_ids("{{signal.session_id}}")
+Action.posthog_get_session_recording().session_id("{{signal.session_id}}")
+Action.posthog_query_events().query("SELECT event FROM events WHERE ...")
+Action.posthog_list_session_recordings().limit(10)
+Action.posthog_get_error_issue().issue_id("{{signal.properties.$exception_issue_id}}")
+
+# Vercel
+Action.vercel_get_deployment().deployment_id("{{signal.deployment_id}}")
+Action.vercel_get_build_logs().deployment_id("{{signal.deployment_id}}")
+Action.vercel_rollback().project_id("{{signal.project_id}}")
+Action.vercel_promote().deployment_id("{{signal.deployment_id}}")
+Action.vercel_list_deployments().project_id("{{signal.project_id}}")
+Action.vercel_investigate().query("Why did the build fail?")
+
+# Approval Gates
+Action.approval_manual()
+Action.approval_slack().channel("approvals")
+Action.approval_pr()
+```
+
+### Conditions (Branching)
+
+```python
+wf = (
+    Workflow("Conditional RCA Response")
+    .trigger(Trigger.k8s_pod_status().reasons("CrashLoopBackOff"))
+    .then(Action.kestrel_trigger_rca())
+    .then(Condition.equals("rca_result.is_application_level_failure", "true"))
+    .on_true(Action.github_create_pr().repo("org/repo").label("Create Fix PR"))
+    .on_false(Action.slack_send_message().channel("infra").label("Notify Infra Team"))
+)
+```
+
+Available operators: `equals`, `not_equals`, `contains`, `not_contains`, `exists`, `not_exists`.
+
+### Approvals
+
+```python
+wf = (
+    Workflow("Approved Deployment Fix")
+    .trigger(Trigger.k8s_rollout_status())
+    .then(Action.kestrel_trigger_rca())
+    .then(Approval.slack("#approvals").message("Apply the generated fix?"))
+    .on_approved(Action.kestrel_apply_yaml_fix())
+    .on_rejected(Action.slack_send_message().channel("ops").message("Fix rejected"))
+)
+```
+
+Types: `Approval.manual()`, `Approval.slack(channel)`, `Approval.pr_approval()`, `Approval.pr_merge()`.
+
+## Workflow Management
+
+### List, Get, Update, Delete
+
+```python
+# List all workflows
+workflows = client.workflows.list()
+active = client.workflows.list(status="active")
+
+# Get a specific workflow
+wf = client.workflows.get("workflow-id")
+
+# Activate / Pause
+client.workflows.activate("workflow-id")
+client.workflows.pause("workflow-id")
+
+# Delete
+client.workflows.delete("workflow-id")
+```
+
+### Generate from Natural Language
+
+```python
+result = client.workflows.generate(
+    "When a PagerDuty alert fires, run K8s RCA, post to Slack, and create a Jira ticket"
+)
+print(result.name, result.explanation)
+```
+
+## Execution Management
+
+### List and Inspect Executions
+
+```python
+execs = client.workflows.executions("workflow-id", page=1, page_size=10)
+for ex in execs.executions:
+    print(f"{ex.id[:8]}... {ex.status}")
+
+# Get a specific execution
+execution = client.executions.get("execution-id")
+```
+
+### Test and Wait
+
+Trigger a test execution and wait for it to complete:
+
+```python
+execution = client.workflows.test("workflow-id")
+result = client.executions.wait(execution.id, timeout=120.0)
+print(f"Final status: {result.status}")
+```
+
+## Async SDK
+
+The `AsyncKestrelClient` provides the same API surface with `async/await`:
+
+```python
+import asyncio
+from kestrel import AsyncKestrelClient
+from kestrel.workflows import Workflow, Trigger, Action
+
+async def main():
+    async with AsyncKestrelClient(api_key="kestrel_sk_...") as client:
+        # List workflows
+        workflows = await client.workflows.list()
+
+        # Deploy a workflow
+        wf = (
+            Workflow("Async Example")
+            .trigger(Trigger.k8s_pod_status().reasons("OOMKilled"))
+            .then(Action.kestrel_trigger_rca())
+            .then(Action.slack_send_message().channel("incidents"))
+        )
+        created = await client.workflows.deploy(wf, activate=True)
+
+        # Test and wait for result
+        execution = await client.workflows.test(created.id)
+        result = await client.executions.wait(execution.id, timeout=60.0)
+        print(f"Result: {result.status}")
+
+asyncio.run(main())
+```
+
+## Approvals
+
+```python
+# List pending approvals
+pending = client.approvals.list_pending()
+
+# Approve or reject
+client.approvals.approve("approval-id", justification="Looks good")
+client.approvals.reject("approval-id")
+```
+
+## Error Handling
+
+```python
+from kestrel import KestrelError, AuthError, NotFoundError
+
+try:
+    wf = client.workflows.get("nonexistent")
+except NotFoundError:
+    print("Workflow not found")
+except AuthError:
+    print("Authentication failed — check your API key")
+except KestrelError as e:
+    print(f"API error: {e}")
+```
+
+## API Key Scopes
+
+API keys can be scoped to specific permissions:
+
+| Scope | Description |
+|---|---|
+| `*` | Full access (all permissions) |
+| `workflows:read` | List and view workflows |
+| `workflows:write` | Create, update, test, duplicate workflows |
+| `workflows:activate` | Activate and pause workflows |
+| `workflows:delete` | Delete workflows |
+| `executions:read` | View execution history |
+| `executions:cancel` | Cancel running executions |
+| `approvals:read` | View pending approvals |
+| `approvals:manage` | Approve or reject gates |
+| `requests:read` | View workflow requests |
+| `requests:manage` | Approve or reject requests |
+| `catalog:read` | View signals, actions, and integrations |
+
+Create scoped keys in the platform under **Workflows > API Keys**.

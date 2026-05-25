@@ -1,0 +1,133 @@
+---
+title: "Cloud AI Copilot"
+description: "Investigate your infrastructure and applications with conversational AI"
+---
+
+The Kestrel Cloud AI Copilot lets you ask questions about your Kubernetes clusters, cloud accounts, code repositories, metrics, and costs in plain English. Query resources, investigate incidents, analyze spend, and generate configuration changes — all through a conversational interface in the Kestrel dashboard or the `/kestrel` Slack command.
+
+{/* Screenshot placeholder: Copilot chat interface showing a multi-turn investigation */}
+
+## What the Copilot Can Do
+
+<CardGroup cols={2}>
+  <Card title="Kubernetes Investigation" icon="dharmachakra" href="/copilot/kubernetes">
+    Query pod logs, events, resource specs, deployments, metrics, and network policies across your clusters.
+  </Card>
+  <Card title="Cloud Investigation" icon="aws" href="/copilot/cloud">
+    Inspect AWS and OCI resources, security configurations, CloudTrail events, CloudWatch metrics, and VPC Flow Logs.
+  </Card>
+  <Card title="Code Investigation" icon="code" href="/copilot/code">
+    Search files, read source code, trace change history, and look up IaC definitions across GitHub and GitLab repositories.
+  </Card>
+  <Card title="Cost Analysis" icon="chart-line" href="/copilot/costs">
+    Query AWS spend breakdowns, identify cost trends, detect anomalies, and forecast future costs.
+  </Card>
+  <Card title="Configuration Changes" icon="pen-to-square" href="/copilot/config-changes">
+    Generate Kubernetes YAML, Terraform, Helm, and CloudFormation changes with an approval workflow before applying.
+  </Card>
+</CardGroup>
+
+## Getting Started
+
+<Steps>
+  <Step title="Open the copilot">
+    Navigate to **Cloud AI Copilot → Chat** in the Kestrel dashboard sidebar. Alternatively, use the `/kestrel` slash command in any Slack channel if the [Slack integration](/integrations/slack) is connected.
+  </Step>
+  <Step title="Target your infrastructure">
+    Use `@cluster-name` to target a specific Kubernetes cluster and `@cloud:connection-name` to target a specific AWS or OCI account. You can mention multiple targets in a single query.
+  </Step>
+  <Step title="Ask a question">
+    Type your question in plain English and press Enter. The copilot maintains conversation context, so follow-up questions work naturally.
+  </Step>
+</Steps>
+
+**Examples:**
+
+```
+@prod-eks-cluster Why are pods in the payments namespace restarting?
+```
+
+```
+@cloud:prod-aws Show me all S3 buckets that are publicly accessible
+```
+
+```
+@prod-eks-cluster @cloud:prod-aws What changed in the last 2 hours that could explain the spike in 5xx errors?
+```
+
+## Targeting Syntax
+
+The copilot needs to know which infrastructure to query. Use the `@` prefix to target specific clusters and cloud accounts.
+
+| Syntax | Target | Example |
+|--------|--------|---------|
+| `@cluster-name` | Kubernetes cluster | `@prod-eks-cluster show me crashing pods` |
+| `@cloud:connection-name` | AWS or OCI account | `@cloud:prod-aws list EC2 instances in us-east-1` |
+| Multiple targets | Cross-resource queries | `@prod-eks @staging-eks compare memory limits for auth-service` |
+
+<Tip>
+You can find your cluster and connection names on the **Clusters** and **Cloud Connections** pages in the Kestrel dashboard.
+</Tip>
+
+## Integration Prerequisites
+
+The copilot answers are only as good as the integrations connected. Each integration unlocks additional capabilities:
+
+| Integration | Copilot Capabilities |
+|-------------|---------------------|
+| [Kubernetes](/integrations/kubernetes) | Pod logs, events, resource specs, deployments, namespaces, network policies |
+| [AWS](/integrations/aws) | EC2, S3, RDS, IAM, VPC, Lambda, CloudTrail, CloudWatch, Cost Explorer, VPC Flow Logs |
+| [OCI](/integrations/oci) | Compute, Object Storage, VCN, IAM, Audit logs, VCN Flow Logs |
+| [Datadog](/integrations/datadog) | Metrics, monitors, dashboards, APM traces |
+| [OpenTelemetry](/integrations/opentelemetry) | Traces, metrics, and spans |
+| [GitHub](/integrations/github) | Code search, file reading, commit history, PRs |
+| [GitLab](/integrations/gitlab) | Code search, file reading, commit history, MRs |
+| [Knowledge Sources](/integrations/knowledge-sources) | Confluence, Jira, Slack history, Glean, Linear context |
+
+<Info>
+The more integrations you connect, the more context the copilot has. Connecting observability, code, and knowledge sources alongside your clusters and cloud accounts produces significantly richer answers.
+</Info>
+
+## Using via Slack
+
+With the [Slack integration](/integrations/slack) connected, use the `/kestrel` slash command anywhere in your workspace:
+
+```
+/kestrel @prod-eks-cluster what pods are crashing in the checkout namespace?
+```
+
+```
+/kestrel @cloud:prod-aws who modified the IAM policy for the deploy role yesterday?
+```
+
+Kestrel responds in-thread so conversations stay organized. Other team members can see the answers and ask follow-ups in the same thread. The copilot also works inside Kestrel incident notification threads, where it automatically has the incident context.
+
+## Example Conversation
+
+**You:**
+> `@prod-eks-cluster` Why are pods in the checkout namespace restarting? Cross-reference with Datadog metrics.
+
+**Kestrel:**
+> Two pods in the `checkout` namespace are in CrashLoopBackOff: `checkout-api-7f8b9c-x4k2m` and `checkout-worker-6d4a8b-j9n3p`. Both started crashing 23 minutes ago after deployment `checkout-api` was updated to image tag `v2.14.0`. Datadog shows P99 latency spiked from 120ms to 4.2s at 14:32 UTC, coinciding with the deployment. The container logs show `FATAL: too many connections for role "checkout_svc"` — the connection pool was exhausted.
+
+**You:**
+> What PR caused that deployment change?
+
+**Kestrel:**
+> The deployment was updated via ArgoCD sync at 14:32 UTC. The change originated from PR #847 in `acme/checkout-service`, authored by @jane.doe and approved by @john.smith. The PR modified the database connection pool settings, reducing `maxConnections` from 50 to 10. This matches the `too many connections` error in the logs.
+
+**You:**
+> Roll back the deployment to the previous image tag.
+
+**Kestrel:**
+> Here's the proposed change to roll back `checkout-api` to image tag `v2.13.2`:
+>
+> *(displays diff with Apply, Create PR, and Copy options)*
+
+## Next Steps
+
+- [Kubernetes Investigation](/copilot/kubernetes) — query pods, deployments, events, logs, and metrics
+- [Cloud Investigation](/copilot/cloud) — inspect AWS and OCI resources and security configurations
+- [Code Investigation](/copilot/code) — search and read code across connected repositories
+- [Cost Analysis](/copilot/costs) — analyze AWS spend patterns and anomalies
+- [Configuration Changes](/copilot/config-changes) — generate and apply YAML and Terraform changes

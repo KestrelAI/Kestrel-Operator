@@ -1,0 +1,133 @@
+---
+title: "Helm"
+description: "Install, upgrade, rollback, and manage Helm releases as part of automated workflows"
+---
+
+The Helm integration enables workflow blocks that manage Helm releases on your Kubernetes clusters. The operator executes Helm commands directly using the `helm` binary installed in the operator pod.
+
+No additional setup is required — Helm is available on all clusters where the Kestrel Operator is deployed.
+
+## Prerequisites
+
+- Kestrel Operator deployed in your cluster (see [Kubernetes](/integrations/kubernetes))
+- For private chart repositories: Helm repo credentials configured in the operator (via init container or Helm values)
+
+## Setup
+
+Helm is automatically available when the Kestrel Operator is deployed. No manual configuration is needed for public charts.
+
+For private Helm repositories or OCI registries, configure access via the operator's Helm values:
+
+```yaml
+operator:
+  helm:
+    repositories:
+      - name: my-private-repo
+        url: https://charts.example.com
+        username: "${HELM_USER}"
+        password: "${HELM_PASS}"
+```
+
+## Workflow Blocks
+
+### Helm Upgrade
+
+Deploy a new version of an existing release with updated chart version or values. The most common use case for CI/CD automation.
+
+**Fields:**
+- **Cluster** — target cluster
+- **Release Name** — name of the Helm release (e.g., `my-app`)
+- **Namespace** — Kubernetes namespace
+- **Chart** — chart reference (e.g., `bitnami/nginx`, `oci://ghcr.io/org/chart`)
+- **Set Values** — inline `--set` values (e.g., `image.tag={{signal.commit_sha}},replicas=3`)
+- **Values YAML** — full YAML values content (from previous step output or inline)
+- **Chart Version** — version constraint (leave empty for latest)
+- **Wait for Rollout** — wait until all resources are ready (default: true)
+- **Timeout** — max time to wait (default: 5m)
+
+**Outputs:** `release_name`, `namespace`, `revision`, `status`, `summary`
+
+### Helm Install
+
+Install a new Helm release from a chart repository or OCI registry.
+
+**Fields:** Same as Upgrade, plus:
+- **Create Namespace** — create the namespace if it doesn't exist (default: true)
+
+**Outputs:** `release_name`, `namespace`, `revision`, `status`, `summary`
+
+### Helm Rollback
+
+Rollback a Helm release to a previous revision.
+
+**Fields:**
+- **Cluster** — target cluster
+- **Release Name** — name of the release to rollback
+- **Namespace** — Kubernetes namespace
+- **Revision** — revision number (leave empty to rollback to previous)
+- **Wait** / **Timeout**
+
+**Outputs:** `release_name`, `revision`, `status`, `summary`
+
+### Helm Uninstall
+
+Remove a Helm release and all associated Kubernetes resources.
+
+**Fields:**
+- **Cluster** — target cluster
+- **Release Name** — name of the release to remove
+- **Namespace** — Kubernetes namespace
+
+**Outputs:** `release_name`, `status`, `summary`
+
+### Helm Status
+
+Get the current status of a Helm release. Useful for condition gates and health checks.
+
+**Fields:**
+- **Cluster** — target cluster
+- **Release Name** — name of the release
+- **Namespace** — Kubernetes namespace
+
+**Outputs:** `release_name`, `namespace`, `revision`, `status`, `chart`, `app_version`, `summary`
+
+## Example Workflows
+
+### Deploy on GitHub Action Success
+
+When a CI build completes, upgrade the Helm release with the new image tag:
+
+```
+Trigger: GitHub Action Completed (workflow: build-and-push)
+→ Helm Upgrade (release: my-app, chart: oci://ghcr.io/org/app, set: image.tag={{signal.commit_sha}})
+→ Slack Notify (#deploys, "Deployed {{signal.commit_sha}} to production")
+```
+
+### Rollback on Pod Crash
+
+When pods start crashing after a deploy, automatically rollback:
+
+```
+Trigger: Pod CrashLoopBackOff
+→ Helm Status (release: my-app) 
+→ Condition: status == "deployed" (only rollback if it was a Helm-managed deploy)
+  → True: Helm Rollback (release: my-app)
+  → True: Slack Notify (#incidents, "Rolled back my-app due to crashes")
+```
+
+## Supported Chart Sources
+
+| Source | Example | Notes |
+|--------|---------|-------|
+| Public repos | `bitnami/nginx` | Must be added with `helm repo add` first |
+| OCI registries | `oci://ghcr.io/org/chart` | Requires registry access from operator pod |
+| Inline values | Via "Values YAML" field | YAML content piped to `helm ... -f -` |
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "release not found" | Verify the release name and namespace are correct |
+| "chart not found" | Ensure the chart repository is accessible from the operator pod |
+| "timeout waiting for condition" | Increase the timeout or check pod health separately |
+| OCI registry auth errors | Ensure the operator pod has registry credentials (imagePullSecrets or helm registry login) |

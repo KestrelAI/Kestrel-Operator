@@ -1,0 +1,64 @@
+---
+title: "ArgoCD"
+description: "Connect ArgoCD for GitOps sync actions, deployment tracking, and status monitoring in workflows"
+---
+
+The ArgoCD integration connects Kestrel to your in-cluster ArgoCD installation, enabling AI agents to sync applications, monitor deployment status, and track GitOps operations as part of automated workflows and incident investigation.
+
+## Prerequisites
+
+- Kestrel Operator deployed in your cluster (see [Kubernetes](/integrations/kubernetes))
+- ArgoCD installed in the same cluster
+
+## Setup
+
+ArgoCD is auto-detected by the Kestrel Operator when it is installed in the same cluster. No manual connection is required.
+
+<Steps>
+  <Step title="Enable ArgoCD in cluster configuration">
+    During cluster onboarding or in the cluster settings page:
+    1. Navigate to **Integrations → Kubernetes**
+    2. Select your cluster
+    3. Enable **ArgoCD Integration** in the cluster configuration
+
+    Alternatively, configure via Helm values:
+    ```yaml
+    operator:
+      argocd:
+        enabled: true
+        namespace: "argocd"
+    ```
+  </Step>
+  <Step title="Verify detection">
+    Check the operator logs for ArgoCD discovery:
+    ```bash
+    kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "ArgoCD"
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  The Kestrel Operator discovers ArgoCD by looking for the ArgoCD Application CRDs and API server in the cluster. If ArgoCD is installed in a non-default namespace, specify it in the Helm values.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Action blocks:**
+- **Trigger ArgoCD Sync** — trigger an ArgoCD sync for a specific application
+- **Wait for ArgoCD Sync** — block workflow execution until a sync operation completes (with configurable timeout)
+- **Get ArgoCD App Status** — retrieve the current sync and health status of an ArgoCD application
+- **Rollback ArgoCD App** — roll back an ArgoCD application to its previous deployment version
+- **Find ArgoCD App for Workload** — dynamically discover which ArgoCD application manages a given Kubernetes workload (by name/namespace matching)
+
+Example: A workflow triggered by a pod crash uses "Find ArgoCD App for Workload" to identify the managing ArgoCD application, checks its status, and if unhealthy, triggers a rollback to the last known good version.
+
+## Disconnecting
+
+To disable the ArgoCD integration:
+
+1. Navigate to **Integrations → Kubernetes** and select your cluster
+2. Disable **ArgoCD Integration** in the cluster configuration
+
+Or set `operator.argocd.enabled: false` in your Helm values and upgrade the operator.
