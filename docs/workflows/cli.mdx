@@ -170,6 +170,22 @@ kestrel approvals approve <approval-id> --justification "Emergency fix"
 kestrel approvals reject <approval-id>
 ```
 
+## Version History & Rollback
+
+```bash
+kestrel workflows versions <workflow-id>              # List version history
+kestrel workflows rollback <workflow-id> --version 3  # Roll back to version 3
+```
+
+## Execution Replay
+
+Replay failed executions from the beginning or from the failed step:
+
+```bash
+kestrel workflows replay <execution-id>                   # Replay from beginning
+kestrel workflows replay <execution-id> --from-failed     # Replay from failed step
+```
+
 ## Request Commands
 
 ```bash

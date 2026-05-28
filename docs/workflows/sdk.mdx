@@ -444,6 +444,34 @@ client.approvals.approve("approval-id", justification="Looks good")
 client.approvals.reject("approval-id")
 ```
 
+## Version History & Rollback
+
+```python
+# List version history
+versions = client.workflows.list_versions("workflow-id")
+for v in versions["versions"]:
+    print(f"v{v['version_number']} — {v['change_summary']} ({v['created_at']})")
+
+# Roll back to a previous version
+client.workflows.rollback("workflow-id", version=3)
+```
+
+## Execution Replay
+
+Replay failed executions from the beginning or from the failed step:
+
+```python
+# Replay from beginning (re-triggers with same signal data)
+new_exec = client.executions.replay("execution-id", mode="full")
+
+# Replay from failed step (preserves outputs from prior steps)
+new_exec = client.executions.replay("execution-id", mode="from_failed")
+
+# Wait for replay to complete
+result = client.executions.wait(new_exec.id)
+print(f"Replay status: {result.status}")
+```
+
 ## Error Handling
 
 ```python
