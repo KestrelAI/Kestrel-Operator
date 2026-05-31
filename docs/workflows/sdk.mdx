@@ -163,14 +163,41 @@ Trigger.vercel_error_anomaly()
 Trigger.vercel_usage_anomaly()
 Trigger.vercel_domain_issue()
 
-# Slack Requests (on-demand via /kestrel-workflow)
-Trigger.request_k8s_provision()
-Trigger.request_k8s_edit()
-Trigger.request_k8s_investigate()
-Trigger.request_cloud_provision()
-Trigger.request_cloud_edit()
-Trigger.request_cloud_investigate()
-Trigger.request_any()
+# Platform Requests (on-demand via Slack /kestrel-workflow, Kestrel Platform UI, or CLI)
+Trigger.platform_request()  # Unified trigger — scope with filters
+```
+
+The platform request trigger accepts filter configuration:
+
+```python
+from kestrel.workflows import Trigger
+
+# Accept all requests from any source/category
+Trigger.platform_request()
+
+# Scoped to Kubernetes create requests from Slack only
+Trigger.platform_request().config(
+    request_sources=["slack"],
+    request_categories=["k8s"],
+    request_types=["create"],
+)
+
+# Scoped to Cloudflare requests from any source
+Trigger.platform_request().config(
+    request_categories=["cloudflare"],
+)
+```
+
+### Submitting Requests Programmatically
+
+```python
+# Submit a request (like /kestrel-workflow in Slack)
+result = client.workflows.request("create a configmap for my-app in production")
+
+# If clarification is needed:
+if result.status == "awaiting_params":
+    reply = client.workflows.request_reply(result.id, "use the prod-cluster, namespace=payments")
+```
 
 # Custom Webhook
 Trigger.custom_webhook("my-event-type")
