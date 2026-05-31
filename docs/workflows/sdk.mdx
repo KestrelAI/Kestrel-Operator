@@ -163,28 +163,34 @@ Trigger.vercel_error_anomaly()
 Trigger.vercel_usage_anomaly()
 Trigger.vercel_domain_issue()
 
-# Platform Requests (on-demand via Slack /kestrel-workflow, Kestrel Platform UI, or CLI)
-Trigger.platform_request()  # Unified trigger — scope with filters
+# Developer Requests (on-demand via Slack /kestrel-workflow, Kestrel Platform UI, or CLI)
+Trigger.request_kubernetes()    # Kubernetes operations
+Trigger.request_cloud()         # AWS / Cloud operations
+Trigger.request_cloudflare()    # Cloudflare operations
+Trigger.request_pagerduty()     # PagerDuty operations
+Trigger.request_datadog()       # Datadog operations
+Trigger.request_argocd()        # ArgoCD operations
+Trigger.request_github()        # GitHub operations
+Trigger.request_gitlab()        # GitLab operations
+Trigger.request_helm()          # Helm operations
+Trigger.request_vercel()        # Vercel operations
+Trigger.request_general()       # General (catch-all)
 ```
 
-The platform request trigger accepts filter configuration:
+Each request trigger can be scoped further:
 
 ```python
 from kestrel.workflows import Trigger
 
-# Accept all requests from any source/category
-Trigger.platform_request()
-
-# Scoped to Kubernetes create requests from Slack only
-Trigger.platform_request().config(
+# Kubernetes requests — only create operations from Slack
+Trigger.request_kubernetes().config(
     request_sources=["slack"],
-    request_categories=["k8s"],
     request_types=["create"],
 )
 
-# Scoped to Cloudflare requests from any source
-Trigger.platform_request().config(
-    request_categories=["cloudflare"],
+# Cloud requests — only from Platform UI and CLI
+Trigger.request_cloud().config(
+    request_sources=["platform", "cli"],
 )
 ```
 
