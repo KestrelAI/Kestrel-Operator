@@ -214,6 +214,8 @@ Action.kestrel_analyze_costs().analysis_type("anomaly")
 Action.kestrel_apply_yaml_fix()
 Action.kestrel_restart_workload().workload_name("{{incident.workload_name}}").namespace("{{incident.namespace}}")
 Action.kestrel_scale_workload().workload_name("{{incident.workload_name}}").namespace("{{incident.namespace}}").replicas(0)
+Action.kubectl_execute("get pods -n production")                           # Run any kubectl command
+Action.kubectl_apply("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: my-ns")  # Apply a manifest
 Action.kestrel_generate_k8s_manifest().resource_type("Deployment").query("Create a deployment for nginx")
 Action.kestrel_generate_helm_values().chart_name("nginx-ingress")
 Action.kestrel_apply_k8s_manifest()
