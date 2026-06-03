@@ -133,6 +133,12 @@ If `kestrel` isn't on your PATH, use the full path (e.g., `/usr/local/bin/kestre
 
 The AI agent calls `generate_workflow`, reviews the result, then `create_workflow` and `activate_workflow`.
 
+**Creating a push-triggered workflow:**
+
+> "Create a workflow that triggers when code is pushed to main in the KestrelAI/AutoNP repo, then trigger the deploy GitHub Action"
+
+The agent uses `generate_workflow` with a GitHub push trigger (`signal_type: push`, filtered to the repo and branch).
+
 **Checking executions:**
 
 > "Show me the last 5 failed workflow executions and what went wrong"
