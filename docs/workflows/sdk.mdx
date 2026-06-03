@@ -163,14 +163,47 @@ Trigger.vercel_error_anomaly()
 Trigger.vercel_usage_anomaly()
 Trigger.vercel_domain_issue()
 
-# Slack Requests (on-demand via /kestrel-workflow)
-Trigger.request_k8s_provision()
-Trigger.request_k8s_edit()
-Trigger.request_k8s_investigate()
-Trigger.request_cloud_provision()
-Trigger.request_cloud_edit()
-Trigger.request_cloud_investigate()
-Trigger.request_any()
+# Developer Requests (on-demand via Slack /kestrel-workflow, Kestrel Platform UI, or CLI)
+Trigger.request_kubernetes()    # Kubernetes operations
+Trigger.request_cloud()         # AWS / Cloud operations
+Trigger.request_cloudflare()    # Cloudflare operations
+Trigger.request_pagerduty()     # PagerDuty operations
+Trigger.request_datadog()       # Datadog operations
+Trigger.request_argocd()        # ArgoCD operations
+Trigger.request_github()        # GitHub operations
+Trigger.request_gitlab()        # GitLab operations
+Trigger.request_helm()          # Helm operations
+Trigger.request_vercel()        # Vercel operations
+Trigger.request_general()       # General (catch-all)
+```
+
+Each request trigger can be scoped further:
+
+```python
+from kestrel.workflows import Trigger
+
+# Kubernetes requests — only create operations from Slack
+Trigger.request_kubernetes().config(
+    request_sources=["slack"],
+    request_types=["create"],
+)
+
+# Cloud requests — only from Platform UI and CLI
+Trigger.request_cloud().config(
+    request_sources=["platform", "cli"],
+)
+```
+
+### Submitting Requests Programmatically
+
+```python
+# Submit a request (like /kestrel-workflow in Slack)
+result = client.workflows.request("create a configmap for my-app in production")
+
+# If clarification is needed:
+if result.status == "awaiting_params":
+    reply = client.workflows.request_reply(result.id, "use the prod-cluster, namespace=payments")
+```
 
 # Custom Webhook
 Trigger.custom_webhook("my-event-type")
@@ -215,7 +248,7 @@ Action.kestrel_apply_yaml_fix()
 Action.kestrel_restart_workload().workload_name("{{incident.workload_name}}").namespace("{{incident.namespace}}")
 Action.kestrel_scale_workload().workload_name("{{incident.workload_name}}").namespace("{{incident.namespace}}").replicas(0)
 Action.kubectl_execute("get pods -n production")                           # Run any kubectl command
-Action.kubectl_apply("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: my-ns")  # Apply a manifest
+Action.generate_kubectl_command("Find pods in CrashLoopBackOff in production")  # AI generates a kubectl command
 Action.kestrel_generate_k8s_manifest().resource_type("Deployment").query("Create a deployment for nginx")
 Action.kestrel_generate_helm_values().chart_name("nginx-ingress")
 Action.kestrel_apply_k8s_manifest()
