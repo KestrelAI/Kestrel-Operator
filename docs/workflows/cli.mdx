@@ -141,11 +141,34 @@ kestrel workflows test <workflow-id>
 
 ### Request a workflow
 
-Submit a natural language request to trigger a matching workflow (CLI equivalent of `/kestrel-workflow` in Slack):
+Submit a natural language request to trigger a matching workflow. This is the CLI equivalent of `/kestrel-workflow` in Slack or the "Make a Request" page in the Kestrel Platform UI:
 
 ```bash
 kestrel workflows request "provision an MSK cluster with 3 brokers in us-east-1"
 kestrel workflows request "scale the payments deployment to 5 replicas"
+kestrel workflows request "create a DNS record for api.example.com in Cloudflare"
+kestrel workflows request "add a new PagerDuty escalation policy for the payments team"
+```
+
+If the matched workflow requires additional parameters, you'll be prompted interactively:
+
+```
+$ kestrel workflows request "create a configmap"
+  Routing request: create a configmap
+
+  ! Matched workflow: On-Demand K8s Resource Provision
+  Extracted: resource_type=ConfigMap
+
+  Please provide the following details:
+
+  cluster: prod-cluster
+  namespace: payments
+  name: app-config
+
+  Submitting with parameters...
+
+  ✓ Matched workflow: On-Demand K8s Resource Provision
+  ✓ Workflow is now executing.
 ```
 
 ## Execution Commands
