@@ -277,6 +277,7 @@ Action.jira_transition_ticket().ticket_key("KAN-123").status("Done")
 Action.github_create_pr().repo("org/repo").title("Fix: {{incident.title}}")
 Action.github_create_issue().repo("org/repo").title("Bug: {{incident.title}}")
 Action.github_investigate_code().query("{{rca_result.root_cause}}").repo("org/repo")
+Action.github_analyze_push().repo("org/repo").head_sha("{{signal.commit_sha}}")     # Determine affected services from push
 Action.github_generate_code_fix().context("{{rca_result.root_cause}}").repo("org/repo")
 Action.github_trigger_workflow().repo("org/repo").workflow_file("deploy.yml")
 Action.github_wait_for_run().repo("org/repo").workflow_file("deploy.yml")
