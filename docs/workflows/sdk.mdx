@@ -255,7 +255,7 @@ Action.kestrel_generate_helm_values().chart_name("nginx-ingress")
 Action.kestrel_apply_k8s_manifest()
 Action.kestrel_create_gitops_pr().repo("org/k8s-manifests")
 
-# Kestrel — Cloud Operations
+# Kestrel — Platform Engineering
 Action.kestrel_generate_cloud_resource().cloud_service("rds").output_format("terraform")
 Action.kestrel_execute_cloud_cli()
 Action.kestrel_create_iac_pr().repo("org/infra-repo")
