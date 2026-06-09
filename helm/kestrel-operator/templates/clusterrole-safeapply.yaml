@@ -13,6 +13,7 @@ rules:
   # Allow creating, updating, and deleting core resources for safe-apply
   - apiGroups: [""]
     resources: 
+      - "namespaces"
       - "pods"
       - "configmaps"
       - "secrets"
