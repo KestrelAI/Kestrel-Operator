@@ -273,6 +273,12 @@ Action.jira_create_ticket().project("KAN").title("{{incident.title}}").priority(
 Action.jira_add_comment().ticket_key("KAN-123").comment("Update: {{rca_result.root_cause}}")
 Action.jira_transition_ticket().ticket_key("KAN-123").status("Done")
 
+# Linear
+Action.linear_create_issue().team("ENG").title("{{incident.title}}").priority("High")
+Action.linear_add_comment().issue_identifier("ENG-123").body("Update: {{rca_result.root_cause}}")
+Action.linear_update_issue().issue_identifier("ENG-123").status("Done")
+Action.linear_search_issues().query("{{incident.title}}").team("ENG")
+
 # GitHub
 Action.github_create_pr().repo("org/repo").title("Fix: {{incident.title}}")
 Action.github_create_issue().repo("org/repo").title("Bug: {{incident.title}}")
