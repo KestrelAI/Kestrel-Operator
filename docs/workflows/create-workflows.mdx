@@ -43,6 +43,7 @@ Describe the workflow you want in plain English. The Workflow Agent interprets y
 - *"When a K8s incident is detected, run root cause analysis, send the RCA to #incidents in Slack, and create a Jira ticket with the details."*
 - *"When someone requests a new service in Slack, generate the K8s manifests, open a GitOps PR in GitHub, and sync with ArgoCD."*
 - *"When a Vercel deployment fails, pull the build logs, run an AI investigation, and notify the team in Slack."*
+- *"When a Railway service crashes, fetch the logs, investigate the root cause, roll back to the previous deployment, and alert #platform in Slack."*
 - *"When AWS costs spike, run a cost anomaly analysis and post a report to #finops in Slack."*
 
 {/* Screenshot placeholder: Workflow Agent with example prompt and generated workflow */}
@@ -182,6 +183,18 @@ Triggered by Vercel deployment and platform events. Filter by project and event 
 | Deployment Checks Failed | Triggers when post-deployment checks fail |
 | Production Rollback | Triggers when a production deployment is rolled back |
 
+### Railway
+
+Triggered by Railway deployment and platform events. Filter by project, environment, and event type.
+
+| Trigger Block | Description |
+|---|---|
+| Deployment Failed | Triggers when a Railway deployment build or deploy fails |
+| Deployment Crashed | Triggers when a Railway service crashes after a successful deploy |
+| Deployment Succeeded | Triggers when a Railway deployment succeeds and is live |
+| Volume Usage Alert | Triggers when a Railway volume approaches its capacity |
+| CPU/RAM Monitor Alert | Triggers when a Railway service exceeds CPU or memory thresholds |
+
 ### Custom Webhook
 
 Triggered by an HTTP POST to a unique webhook URL. Accepts any JSON payload with optional HMAC signature verification. See [Custom Integrations](/workflows/custom-integrations) for details.
@@ -232,6 +245,9 @@ Actions are grouped by integration. Each action produces output variables that d
   <Card title="Vercel" icon="triangle">
     Get Deployment, Get Build Logs, Rollback Production, Promote to Production, List Deployments, Investigate Vercel
   </Card>
+  <Card title="Railway" icon="train">
+    Get Deployment, Get Deployment Logs, Rollback, Redeploy, Restart, List Deployments, Set Variables, Investigate Railway
+  </Card>
   <Card title="Approval Gates" icon="shield-check">
     Wait for Manual Approval, Wait for Slack Approval, Wait for PR/MR Approval
   </Card>
@@ -269,6 +285,9 @@ Template variables let you pass data between workflow steps. Use double curly br
 | `{{request.prompt}}` | Slack request trigger | The user's original message |
 | `{{request.requester}}` | Slack request trigger | The requesting user |
 | `{{signal.deployment_id}}` | Vercel trigger | Vercel deployment ID |
+| `{{signal.deployment_id}}` | Railway trigger | Railway deployment ID |
+| `{{signal.service_id}}` | Railway trigger | Railway service ID |
+| `{{signal.environment_id}}` | Railway trigger | Railway environment ID |
 | `{{signal.session_id}}` | PostHog trigger | PostHog session ID |
 
 ### Variable Picker
@@ -291,7 +310,7 @@ Cooldowns prevent a workflow from firing repeatedly for the same event. Configur
 |--------|----------|-------------|
 | No cooldown | 0 | — |
 | 5 minutes | 5m | — |
-| 10 minutes | 10m | Slack, PostHog, Vercel, custom webhook triggers |
+| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, custom webhook triggers |
 | 30 minutes | 30m | — |
 | 1 hour | 1h | — |
 | 3 hours | 3h | — |
@@ -375,6 +394,18 @@ Test executions are marked as test runs in the [Observability dashboard](/workfl
 | **Action 1** | Get Build Logs | Deployment: `{{signal.deployment_id}}` |
 | **Action 2** | Investigate Vercel | Query: analyze build logs from `{{step_outputs.action-1.summary}}` |
 | **Action 3** | Slack Send Message | Channel: `#deploys`, message: `{{step_outputs.action-2.summary}}` |
+
+### Railway Deployment Crash → Logs → Investigation → Rollback → Slack
+
+**Workflow Agent prompt:** *"When a Railway service crashes, fetch the deployment logs, run an AI investigation to find the root cause, roll the service back to its previous deployment, and post a summary to #platform in Slack."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Railway Deployment Crashed | All projects |
+| **Action 1** | Get Deployment Logs | Deployment: `{{signal.deployment_id}}` |
+| **Action 2** | Investigate Railway | Query: analyze crash logs from `{{step_outputs.action-1.summary}}` |
+| **Action 3** | Rollback | Service: `{{signal.service_id}}`, Environment: `{{signal.environment_id}}` |
+| **Action 4** | Slack Send Message | Channel: `#platform`, message: `{{step_outputs.action-2.summary}}` |
 
 ### PostHog Exception → Session Summary → Slack Alert
 
