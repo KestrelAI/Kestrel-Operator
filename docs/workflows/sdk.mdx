@@ -172,6 +172,13 @@ Trigger.railway_volume_alert()
 Trigger.railway_resource_alert()
 Trigger.railway_any()
 
+# Fly.io (poll-based)
+Trigger.flyio_machine_crashed()
+Trigger.flyio_machine_stopped()
+Trigger.flyio_machine_started()
+Trigger.flyio_app_down()
+Trigger.flyio_any()
+
 # Developer Requests (on-demand via Slack /kestrel-workflow, Kestrel Platform UI, or CLI)
 Trigger.request_kubernetes()    # Kubernetes operations
 Trigger.request_cloud()         # AWS / Cloud operations
@@ -235,6 +242,17 @@ trigger = (
     .cluster("cluster-id-1", "cluster-id-2")
     .namespace("production", "staging")
     .workload("api-server", "worker")
+)
+```
+
+Fly.io triggers are poll-based — set the apps, regions, and poll cadence to control how often Kestrel checks the Fly Machines API:
+
+```python
+trigger = (
+    Trigger.flyio_machine_crashed()
+    .fly_apps("my-app", "another-app")   # omit for all apps the token can see
+    .fly_regions("iad", "sjc")
+    .fly_poll_interval("1m")             # 1m | 5m | 15m | 30m
 )
 ```
 
@@ -374,6 +392,19 @@ Action.railway_restart().deployment_id("{{signal.deployment_id}}")
 Action.railway_list_deployments().config("service_id", "{{signal.service_id}}").config("status", "FAILED")
 Action.railway_set_variables().config("service_id", "{{signal.service_id}}").config("environment_id", "{{signal.environment_id}}").config("variables", {"LOG_LEVEL": "debug"})
 Action.railway_investigate().config("query", "Why did the service crash?")
+
+# Fly.io (machine-scoped: require app_name + machine_id)
+Action.flyio_restart_machine().app_name("{{signal.app_name}}").machine_id("{{signal.machine_id}}")
+Action.flyio_start_machine().app_name("{{signal.app_name}}").machine_id("{{signal.machine_id}}")
+Action.flyio_stop_machine().app_name("{{signal.app_name}}").machine_id("{{signal.machine_id}}")
+Action.flyio_suspend_machine().app_name("{{signal.app_name}}").machine_id("{{signal.machine_id}}")
+Action.flyio_cordon_machine().app_name("{{signal.app_name}}").machine_id("{{signal.machine_id}}")
+Action.flyio_uncordon_machine().app_name("{{signal.app_name}}").machine_id("{{signal.machine_id}}")
+Action.flyio_get_machine().app_name("{{signal.app_name}}").machine_id("{{signal.machine_id}}")
+Action.flyio_get_machine_events().app_name("{{signal.app_name}}").machine_id("{{signal.machine_id}}")
+Action.flyio_list_machines().app_name("{{signal.app_name}}").config("state", "started")
+Action.flyio_set_secrets().app_name("{{signal.app_name}}").config("secrets", {"API_KEY": "..."})
+Action.flyio_investigate().config("query", "Why did the machine crash?")
 
 # Approval Gates
 Action.approval_manual()
