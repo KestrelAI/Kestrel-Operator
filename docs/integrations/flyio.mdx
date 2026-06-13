@@ -1,0 +1,78 @@
+---
+title: "Fly.io"
+description: "Connect Fly.io for machine lifecycle triggers, secrets access, and machine actions in workflows"
+---
+
+The Fly.io integration connects Kestrel to your Fly.io account, enabling Machine lifecycle events to trigger workflows and giving AI agents access to machine state, logs, secrets, and lifecycle actions across your apps.
+
+Unlike most integrations, Fly.io does not send outbound webhooks. Kestrel detects Machine lifecycle events by polling the Fly Machines API (`https://api.machines.dev`) on a configurable interval.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- Fly.io account with app access
+- `flyctl` installed (to mint a token)
+
+## Setup
+
+<Steps>
+  <Step title="Create an API token">
+    Create an org-scoped token so Kestrel can read machine state and perform machine actions across all apps in the org:
+    ```bash
+    fly tokens create org
+    ```
+    A deploy token also works for a single app. Copy the token value.
+  </Step>
+  <Step title="Find your organization slug">
+    ```bash
+    fly orgs list
+    ```
+    Use the **slug**, not the display name. Defaults to `personal`.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Fly.io** in your Kestrel dashboard
+    2. Click **Connect**
+    3. Paste the API token and enter the organization slug. The token is sent as a Bearer token to `https://api.machines.dev`.
+    4. Choose a **Poll Interval** — faster intervals detect incidents sooner; the minimum is 30 seconds.
+    5. Save — your Fly.io account appears as connected.
+  </Step>
+</Steps>
+
+<Note>
+  No webhook setup is required — there is nothing to configure inside Fly.io. Just keep the integration connected and Kestrel will poll for Machine lifecycle events.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+- **Machine Stopped** — fires when a Machine transitions to the stopped state
+- **Machine Failed / Crashed** — fires when a Machine enters a failed state
+- **Machine Started** — fires when a Machine starts
+- **Machine Created** — fires when a new Machine is created
+- **Machine Destroyed** — fires when a Machine is destroyed
+
+Filter triggers by app and event type. Kestrel polls the Fly Machines API on your configured interval to detect these transitions.
+
+**Action blocks:**
+- **Get Machine** — retrieve a Machine's state, config, and metadata
+- **Start Machine** — start a stopped Machine
+- **Stop Machine** — stop a running Machine
+- **Restart Machine** — restart a Machine
+- **List Machines** — list Machines for an app
+- **Get App** — retrieve app details
+- **Set Secrets** — set app secrets
+- **Investigate Fly.io** — run an AI investigation combining machine state, logs, and lifecycle history
+
+Fly.io app and machine selects accept template variables like `{{signal.app_name}}` and `{{signal.machine_id}}` from the trigger.
+
+Example: A workflow triggers when a Machine crashes, fetches its state and logs, runs an AI investigation, restarts the Machine, and posts a summary to Slack.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Fly.io**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops Fly.io polling and all Fly.io workflow triggers. You can reconnect at any time.

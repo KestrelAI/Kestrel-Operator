@@ -1,0 +1,90 @@
+---
+title: "Nebius"
+description: "Connect Nebius AI Cloud for GPU/node lifecycle triggers, instance actions, and managed Kubernetes scaling in workflows"
+---
+
+The Nebius integration connects Kestrel to your Nebius AI Cloud account, enabling GPU and node lifecycle events to trigger workflows and giving AI agents access to instance state, managed Kubernetes clusters, and node-group scaling across your projects.
+
+Nebius does not send outbound webhooks. Kestrel detects GPU errors and node/instance lifecycle events by polling the Nebius API on a configurable interval, authenticating with a service-account key exchanged for an IAM token via RFC-8693 token exchange.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- Nebius AI Cloud account with project access
+- Nebius CLI (`nebius`) installed to generate a service-account key
+
+## Setup
+
+<Steps>
+  <Step title="Create a service account and key">
+    Create (or choose) a service account with read access to instances and Kubernetes node state and permission to perform instance/scaling actions in your projects, then generate an authorized key JSON:
+    ```bash
+    nebius iam auth-public-key generate \
+      --service-account-id <your-service-account-id> \
+      --output authorized-key.json
+    ```
+    The resulting JSON contains a `subject-credentials` object with the signing key:
+    ```json
+    {
+      "subject-credentials": {
+        "alg": "RS256",
+        "private-key": "...",
+        "kid": "...",
+        "iss": "...",
+        "sub": "..."
+      }
+    }
+    ```
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Nebius** in your Kestrel dashboard
+    2. Click **Connect**
+    3. Paste the **service account authorized key JSON**. It is exchanged for an IAM token against `https://api.nebius.cloud` and used to read instance/node state and perform actions across your projects.
+    4. Set the **Region** (defaults to `eu-north1`).
+    5. Choose a **Poll Interval** for trigger detection.
+    6. Save — your Nebius account appears as connected.
+  </Step>
+</Steps>
+
+<Warning>
+  The authorized key JSON contains a private signing key. Treat it as a secret — Kestrel stores it encrypted and only uses it to mint short-lived IAM tokens.
+</Warning>
+
+<Note>
+  No webhook setup is required inside Nebius. Kestrel polls the Nebius API on your configured interval to detect GPU errors and node/instance lifecycle events.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+- **GPU Error** — fires when a node reports a GPU error condition
+- **Maintenance Scheduled** — fires when maintenance is scheduled for a node
+- **Node Not Ready** — fires when a node transitions into a not-ready state
+- **Instance Stopped** — fires when an instance transitions into a stopped state
+
+Filter triggers by project, cluster, and event type. Kestrel polls the Nebius API on your configured interval to detect these conditions.
+
+**Action blocks:**
+- **Get Instance** — retrieve an instance's state, config, and region
+- **Start Instance** — start a stopped instance
+- **Stop Instance** — gracefully stop a running instance
+- **Restart Instance** — restart an instance in place without recreating it
+- **List Instances** — list instances for a project
+- **List Clusters** — list managed Kubernetes clusters for a project
+- **List Node Groups** — list node groups for a managed Kubernetes cluster
+- **Scale Node Group** — scale a node group to a target size
+- **Investigate Nebius** — run an AI investigation of GPU errors, node failures, and configuration issues
+
+Nebius project, instance, cluster, and node-group selects accept template variables like `{{signal.project_id}}`, `{{signal.instance_id}}`, `{{signal.cluster_id}}`, and `{{signal.node_name}}` from the trigger.
+
+Example: A workflow triggers on a GPU error, runs an AI investigation to diagnose the failure, scales the affected node group to replace the bad node, and posts a summary to Slack.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Nebius**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops Nebius polling and all Nebius workflow triggers. You can reconnect at any time.

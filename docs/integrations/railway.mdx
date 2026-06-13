@@ -1,0 +1,72 @@
+---
+title: "Railway"
+description: "Connect Railway for deployment event triggers, log access, and rollback/redeploy actions in workflows"
+---
+
+The Railway integration connects Kestrel to your Railway account, enabling deployment and platform events to trigger workflows and giving AI agents access to deployment logs, status, and rollback/redeploy capabilities across your projects, services, and environments.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- Railway account with project access
+
+## Setup
+
+<Steps>
+  <Step title="Create an account API token">
+    1. Go to **railway.com/account/tokens** (Account Settings → Tokens)
+    2. Leave the **Workspace** dropdown set to **"No workspace"** to mint an account-scoped token. An account-scoped token can read projects, services, deployments, and logs across your whole account.
+    3. Create the token and copy it — you won't be able to view it again.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Railway** in your Kestrel dashboard
+    2. Click **Connect**
+    3. Paste the API token. It is sent as a Bearer token to Railway's GraphQL API (`https://backboard.railway.com/graphql/v2`).
+    4. Save — your Railway account appears as connected.
+  </Step>
+  <Step title="Configure the webhook (for triggers)">
+    Railway delivers deployment and platform events via outbound webhooks. Kestrel exposes a unique webhook URL on the **Integrations → Railway** page.
+
+    1. Copy the webhook URL from Kestrel and choose a secret.
+    2. Add the webhook URL to your Railway project's **Settings → Webhooks**.
+
+    <Note>
+      Railway does not sign webhooks, so the secret embedded in the URL is how Kestrel attributes incoming events to your account. Keep the URL private.
+    </Note>
+  </Step>
+</Steps>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+- **Deployment Failed** — fires when a Railway deployment build fails
+- **Deployment Crashed** — fires when a running deployment crashes
+- **Deployment Succeeded** — fires when a deployment completes successfully
+- **Volume Usage Alert** — fires when a volume crosses a usage threshold
+- **CPU/RAM Monitor Alert** — fires when a service exceeds CPU or memory thresholds
+
+Filter triggers by project, environment, and event type.
+
+**Action blocks:**
+- **Get Deployment** — retrieve deployment details including status and git commit
+- **Get Deployment Logs** — fetch build/runtime log output for a deployment
+- **Rollback** — roll a service back to its previous deployment
+- **Redeploy** — redeploy the current deployment
+- **Restart** — restart a service
+- **List Deployments** — list recent deployments with optional filters
+- **Set Variables** — set service environment variables
+- **Investigate Railway** — run an AI investigation combining deployment logs, status, and history
+
+Railway service and environment selects accept template variables like `{{signal.service_id}}` and `{{signal.environment_id}}` from the trigger.
+
+Example: A workflow triggers on a crashed deployment, fetches the logs, analyzes the failure with AI, rolls the service back, and posts a summary to Slack.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Railway**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all Railway workflow triggers. Remove the webhook from your Railway project to stop event delivery. You can reconnect at any time.
