@@ -164,6 +164,14 @@ Trigger.vercel_error_anomaly()
 Trigger.vercel_usage_anomaly()
 Trigger.vercel_domain_issue()
 
+# Railway
+Trigger.railway_deployment_failed()
+Trigger.railway_deployment_crashed()
+Trigger.railway_deployment_succeeded()
+Trigger.railway_volume_alert()
+Trigger.railway_resource_alert()
+Trigger.railway_any()
+
 # Developer Requests (on-demand via Slack /kestrel-workflow, Kestrel Platform UI, or CLI)
 Trigger.request_kubernetes()    # Kubernetes operations
 Trigger.request_cloud()         # AWS / Cloud operations
@@ -356,6 +364,16 @@ Action.vercel_rollback().project_id("{{signal.project_id}}")
 Action.vercel_promote().deployment_id("{{signal.deployment_id}}")
 Action.vercel_list_deployments().project_id("{{signal.project_id}}")
 Action.vercel_investigate().query("Why did the build fail?")
+
+# Railway
+Action.railway_get_deployment().deployment_id("{{signal.deployment_id}}")
+Action.railway_get_deployment_logs().deployment_id("{{signal.deployment_id}}")
+Action.railway_rollback().config("service_id", "{{signal.service_id}}").config("environment_id", "{{signal.environment_id}}")
+Action.railway_redeploy().deployment_id("{{signal.deployment_id}}")
+Action.railway_restart().deployment_id("{{signal.deployment_id}}")
+Action.railway_list_deployments().config("service_id", "{{signal.service_id}}").config("status", "FAILED")
+Action.railway_set_variables().config("service_id", "{{signal.service_id}}").config("environment_id", "{{signal.environment_id}}").config("variables", {"LOG_LEVEL": "debug"})
+Action.railway_investigate().config("query", "Why did the service crash?")
 
 # Approval Gates
 Action.approval_manual()
