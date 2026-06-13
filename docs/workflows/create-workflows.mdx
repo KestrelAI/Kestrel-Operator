@@ -218,7 +218,7 @@ Actions are grouped by integration. Each action produces output variables that d
 
 <CardGroup cols={2}>
   <Card title="Kestrel" icon="/logo/icon.svg">
-    Trigger K8s RCA & Generate Fix, Apply YAML Fix, Find Causal PRs/MRs, Trigger Cloud RCA & Generate Fix, Wait, Generate K8s Manifest, Apply K8s Manifest, Create GitOps PR, Generate Helm Values, Generate Cloud Resource, Execute Cloud CLI, Create IaC PR, Investigate Cloud, Investigate Kubernetes, AI Cost Analysis
+    Trigger K8s RCA & Generate Fix, Apply YAML Fix, Find Causal PRs/MRs, Trigger Cloud RCA & Generate Fix, Generate Runbook, Wait, Generate K8s Manifest, Apply K8s Manifest, Create GitOps PR, Generate Helm Values, Generate Cloud Resource, Execute Cloud CLI, Create IaC PR, Investigate Cloud, Investigate Kubernetes, AI Cost Analysis
   </Card>
   <Card title="GitHub" icon="github">
     Create Pull Request, Create Issue, Trigger GitHub Action, Wait for GitHub Action Run, Get GitHub Action Status, Read File, Search Code, AI Code Investigation, AI Code Fix, Wait for PR Approval, Wait for PR Merge
@@ -263,7 +263,7 @@ Actions are grouped by integration. Each action produces output variables that d
     Restart Machine, Start Machine, Stop Machine, Suspend Machine, Cordon Machine, Uncordon Machine, Get Machine, Get Machine Events, List Machines, Set Secrets, Investigate Fly
   </Card>
   <Card title="Approval Gates" icon="shield-check">
-    Wait for Manual Approval, Wait for Slack Approval, Wait for PR/MR Approval
+    Wait for Manual Approval, Wait for Slack Approval, Wait for PR/MR Approval, Refine RCA with Feedback
   </Card>
   <Card title="Custom HTTP & Webhooks" icon="globe">
     Create custom action blocks to call any API endpoint, and custom webhook triggers to start workflows from external systems. See [Custom Integrations](/workflows/custom-integrations).
@@ -357,6 +357,22 @@ The workflow posts an approval request to a configured Slack channel with **Appr
 
 The workflow waits for the associated pull request or merge request to be approved or merged (webhook-driven). Merging the PR approves the step; closing it rejects it.
 
+### Refine RCA with Feedback (human-in-the-loop)
+
+A self-looping review gate for incident-response workflows. Place it after a **Trigger K8s RCA** or **Trigger Cloud RCA** step. It presents the root cause and proposed fix for review with three outcomes:
+
+- **Approve** — continues on the approved branch (e.g. apply the fix, publish the runbook).
+- **Reject** — continues on the rejected branch.
+- **Request changes** — you provide free-text guidance ("the real cause is the readiness probe timeout, not the image tag"), and the RCA agent **re-runs with your feedback** and comes back for review again. Feedback accumulates across rounds, so each pass builds on the last.
+
+The loop repeats until you approve or reject, capped by **Max Refine Rounds** (default 5). When the cap is hit, the workflow advances on the approved branch. Choose **Kestrel UI** or **Slack** as the review channel in the block config.
+
+---
+
+## Generating Runbooks
+
+The **Generate Runbook** action (Kestrel) distills a completed RCA and its fixes into a reusable, generalized runbook for that *class* of incident — symptom, diagnosis steps, remediation steps, verification, and rollback. It requires an upstream RCA step. The generated runbook is available to downstream steps as `{{runbook_html}}` / `{{runbook_markdown}}`, and **Publish Runbook Entry** (Confluence) consumes `runbook_html` automatically.
+
 ---
 
 ## Testing Workflows
@@ -389,6 +405,24 @@ Test executions are marked as test runs in the [Observability dashboard](/workfl
 | **Action 1** | Trigger K8s RCA & Generate Fix | Include metrics and logs |
 | **Action 2** | Slack Send Message | Channel: `#incidents`, message: `{{incident.title}}` — `{{rca_result.root_cause}}` |
 | **Action 3** | Jira Create Ticket | Project: INFRA, summary: `{{incident.title}}`, body: `{{rca_result.investigation_summary}}` |
+
+### K8s Incident → RCA → Refine with Feedback → Apply → Publish Runbook
+
+A full human-in-the-loop loop: detect the incident, run RCA, draft a reusable runbook, let an engineer iteratively refine the analysis, then apply the fix and publish the runbook.
+
+**Workflow Agent prompt:** *"When a Kubernetes pod crashes, run root cause analysis, generate a runbook, then let me review and refine the analysis before applying — when I approve, apply the YAML fix and publish the runbook to Confluence; if I reject, notify #incidents."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Any Kubernetes Incident | All clusters |
+| **Action 1** | Trigger K8s RCA & Generate Fix | Include metrics and logs |
+| **Action 2** | Generate Runbook | Audience: SRE, include rollback |
+| **Approval** | Refine RCA with Feedback | Channel: Kestrel UI, Max Refine Rounds: 3 |
+| **On Approved → Action 3** | Apply YAML Fix | Auto-detected from RCA |
+| **On Approved → Action 4** | Publish Runbook Entry (Confluence) | Uses `{{runbook_html}}` |
+| **On Rejected → Action 5** | Slack Send Message | Channel: `#incidents`, message: RCA rejected by reviewer |
+
+On **Request changes**, the reviewer's free-text guidance re-runs the RCA agent and the gate re-opens — repeating until approve/reject or the round cap.
 
 ### Slack Request → K8s Manifest → GitOps PR → ArgoCD Sync
 

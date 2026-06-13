@@ -264,6 +264,7 @@ Every integration has typed factory methods:
 # Kestrel — RCA & Investigation
 Action.kestrel_trigger_rca()
 Action.kestrel_trigger_cloud_rca()
+Action.kestrel_generate_runbook()  # Distill RCA + fixes into a reusable runbook (requires an upstream RCA step)
 Action.kestrel_investigate_k8s().query("Why is {{incident.workload_name}} crashing?")
 Action.kestrel_investigate_cloud().query("Investigate IAM event")
 Action.kestrel_find_causal_prs()
@@ -441,6 +442,26 @@ wf = (
 ```
 
 Types: `Approval.manual()`, `Approval.slack(channel)`, `Approval.pr_approval()`, `Approval.pr_merge()`.
+
+### Iterative RCA Refinement (human-in-the-loop)
+
+`Approval.refine()` builds a single self-looping gate that presents the upstream RCA + fixes for review. When the approver **requests changes** with free-text guidance, the *same* upstream RCA agent re-runs with that feedback (accumulated across rounds) and re-requests approval — looping until approved/rejected or `max_rounds` is reached. It must be placed after a `kestrel_trigger_rca()` or `kestrel_trigger_cloud_rca()` step.
+
+```python
+wf = (
+    Workflow("RCA with human refinement")
+    .trigger(Trigger.k8s_rollout_status())
+    .then(Action.kestrel_trigger_rca().label("Run RCA"))
+    .then(Action.kestrel_generate_runbook().label("Draft runbook"))
+    # Reviewer can iteratively refine the RCA before it's applied:
+    .then(Approval.refine().max_rounds(3).message("Review the RCA + fix"))
+    .on_approved(Action.kestrel_apply_yaml_fix())
+    .on_approved(Action.confluence_publish_runbook())  # publishes runbook_html
+    .on_rejected(Action.slack_send_message().channel("ops").message("RCA rejected"))
+)
+```
+
+Use `Approval.refine("slack")` to request the refinement approval in Slack instead of the Kestrel UI. `max_rounds` defaults to 5; once exhausted the loop advances on the **approved** branch.
 
 ## Workflow Management
 
