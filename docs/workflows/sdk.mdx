@@ -179,6 +179,13 @@ Trigger.flyio_machine_started()
 Trigger.flyio_app_down()
 Trigger.flyio_any()
 
+# Nebius AI Cloud (poll-based)
+Trigger.nebius_gpu_error()
+Trigger.nebius_maintenance_scheduled()
+Trigger.nebius_node_not_ready()
+Trigger.nebius_instance_stopped()
+Trigger.nebius_any()
+
 # Developer Requests (on-demand via Slack /kestrel-workflow, Kestrel Platform UI, or CLI)
 Trigger.request_kubernetes()    # Kubernetes operations
 Trigger.request_cloud()         # AWS / Cloud operations
@@ -253,6 +260,17 @@ trigger = (
     .fly_apps("my-app", "another-app")   # omit for all apps the token can see
     .fly_regions("iad", "sjc")
     .fly_poll_interval("1m")             # 1m | 5m | 15m | 30m
+)
+```
+
+Nebius triggers are also poll-based — scope to projects/clusters and set the poll cadence to control how often Kestrel checks the Nebius compute and Managed Kubernetes APIs:
+
+```python
+trigger = (
+    Trigger.nebius_gpu_error()
+    .nebius_projects("project-abc")      # omit for all projects the credentials can see
+    .nebius_clusters("cluster-xyz")      # optional: restrict to specific clusters
+    .nebius_poll_interval("5m")          # 1m | 5m | 15m | 30m
 )
 ```
 
@@ -406,6 +424,17 @@ Action.flyio_get_machine_events().app_name("{{signal.app_name}}").machine_id("{{
 Action.flyio_list_machines().app_name("{{signal.app_name}}").config("state", "started")
 Action.flyio_set_secrets().app_name("{{signal.app_name}}").config("secrets", {"API_KEY": "..."})
 Action.flyio_investigate().config("query", "Why did the machine crash?")
+
+# Nebius AI Cloud (compute: project_id + instance_id; mk8s: cluster_id + node_group_id)
+Action.nebius_get_instance().project_id("{{signal.project_id}}").instance_id("{{signal.instance_id}}")
+Action.nebius_start_instance().project_id("{{signal.project_id}}").instance_id("{{signal.instance_id}}")
+Action.nebius_stop_instance().project_id("{{signal.project_id}}").instance_id("{{signal.instance_id}}")
+Action.nebius_restart_instance().project_id("{{signal.project_id}}").instance_id("{{signal.instance_id}}")
+Action.nebius_list_instances().project_id("{{signal.project_id}}")
+Action.nebius_list_clusters().project_id("{{signal.project_id}}")
+Action.nebius_list_node_groups().cluster_id("{{signal.cluster_id}}")
+Action.nebius_scale_node_group().cluster_id("{{signal.cluster_id}}").node_group_id("{{signal.node_group_id}}").size(3)
+Action.nebius_investigate().config("query", "Why did the GPU node error?")
 
 # Approval Gates
 Action.approval_manual()

@@ -206,6 +206,17 @@ Triggered by Fly.io machine lifecycle changes. Fly.io has no outbound webhooks, 
 | Machine Started | Triggers when a machine transitions to started |
 | App Down | Triggers when all of an app's machines are stopped/unhealthy |
 
+### Nebius AI Cloud
+
+Triggered by Nebius GPU/compute and Managed Kubernetes node changes. Nebius has no outbound webhooks, so Kestrel detects these events by polling the Nebius compute and Managed Kubernetes APIs and diffing instance state and node conditions on a configurable interval. Filter by project, cluster, and event type, and set the poll cadence (1m / 5m / 15m / 30m).
+
+| Trigger Block | Description |
+|---|---|
+| GPU Error | Triggers when a node reports a GPU error condition |
+| Maintenance Scheduled | Triggers when a node has scheduled maintenance |
+| Node Not Ready | Triggers when a Kubernetes node leaves the Ready state |
+| Instance Stopped | Triggers when a compute instance transitions to stopped |
+
 ### Custom Webhook
 
 Triggered by an HTTP POST to a unique webhook URL. Accepts any JSON payload with optional HMAC signature verification. See [Custom Integrations](/workflows/custom-integrations) for details.
@@ -262,6 +273,9 @@ Actions are grouped by integration. Each action produces output variables that d
   <Card title="Fly.io" icon="plane">
     Restart Machine, Start Machine, Stop Machine, Suspend Machine, Cordon Machine, Uncordon Machine, Get Machine, Get Machine Events, List Machines, Set Secrets, Investigate Fly
   </Card>
+  <Card title="Nebius AI Cloud" icon="microchip">
+    Get Instance, Start Instance, Stop Instance, Restart Instance, List Instances, List Clusters, List Node Groups, Scale Node Group, Investigate Nebius
+  </Card>
   <Card title="Approval Gates" icon="shield-check">
     Wait for Manual Approval, Wait for Slack Approval, Wait for PR/MR Approval, Refine RCA with Feedback
   </Card>
@@ -306,6 +320,12 @@ Template variables let you pass data between workflow steps. Use double curly br
 | `{{signal.machine_id}}` | Fly.io trigger | Fly machine ID |
 | `{{signal.region}}` | Fly.io trigger | Fly region (e.g. iad) |
 | `{{signal.exit_code}}` | Fly.io trigger | Machine exit code (crash events) |
+| `{{signal.project_id}}` | Nebius trigger | Nebius project ID |
+| `{{signal.instance_id}}` | Nebius trigger | Nebius compute instance ID |
+| `{{signal.cluster_id}}` | Nebius trigger | Nebius Managed Kubernetes cluster ID |
+| `{{signal.node_group_id}}` | Nebius trigger | Nebius node group ID |
+| `{{signal.node_name}}` | Nebius trigger | Kubernetes node name |
+| `{{signal.condition}}` | Nebius trigger | Node condition that fired (e.g. NebiusGPUError) |
 | `{{signal.session_id}}` | PostHog trigger | PostHog session ID |
 
 ### Variable Picker
@@ -328,7 +348,7 @@ Cooldowns prevent a workflow from firing repeatedly for the same event. Configur
 |--------|----------|-------------|
 | No cooldown | 0 | — |
 | 5 minutes | 5m | — |
-| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, custom webhook triggers |
+| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, Nebius, custom webhook triggers |
 | 30 minutes | 30m | — |
 | 1 hour | 1h | — |
 | 3 hours | 3h | — |
@@ -470,6 +490,17 @@ On **Request changes**, the reviewer's free-text guidance re-runs the RCA agent 
 | **Action 2** | Investigate Fly | Query: find why machine `{{signal.machine_id}}` crashed using `{{step_outputs.action-1.summary}}` |
 | **Action 3** | Restart Machine | App: `{{signal.app_name}}`, Machine: `{{signal.machine_id}}` |
 | **Action 4** | Slack Send Message | Channel: `#platform`, message: `{{step_outputs.action-2.summary}}` |
+
+### Nebius GPU Error → Investigation → Scale Node Group → Slack
+
+**Workflow Agent prompt:** *"When a Nebius GPU node reports an error, run an AI investigation to find the root cause, add a node to the affected node group, and post a summary to #ml-infra in Slack."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Nebius GPU Error | All projects, poll every 5m |
+| **Action 1** | Investigate Nebius | Query: find why node `{{signal.node_name}}` reported a GPU error |
+| **Action 2** | Scale Node Group | Cluster: `{{signal.cluster_id}}`, Node Group: `{{signal.node_group_id}}`, Size: `3` |
+| **Action 3** | Slack Send Message | Channel: `#ml-infra`, message: `{{step_outputs.action-1.summary}}` |
 
 **Workflow Agent prompt:** *"When PostHog captures a frontend exception, generate an AI summary of the user's session including what they were doing before the error, and send the summary with the replay URL to #product-alerts in Slack."*
 
