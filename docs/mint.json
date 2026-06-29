@@ -126,6 +126,7 @@
         "integrations/railway",
         "integrations/flyio",
         "integrations/nebius",
+        "integrations/daytona",
         "integrations/datadog",
         "integrations/opentelemetry",
         "integrations/argocd",
