@@ -39,21 +39,21 @@ PlanetScale delivers branch, deploy-request, and storage events to Kestrel via n
     2. Paste your **Service Token ID** and **Service Token**.
     3. Enter your **Organization** name.
     4. Choose a **Backup Poll Interval** (how often Kestrel checks the backups API for backup completed/failed events).
-    5. Copy the generated **webhook signing secret** shown on the connect screen (used in the next step).
+    5. Paste the **webhook signing secret(s)** PlanetScale generated when you registered the webhook(s) in the next step — one per database. (You can connect first and add secrets later by reconnecting.)
     6. Click **Connect PlanetScale** — your PlanetScale organization appears as connected.
   </Step>
   <Step title="Register a webhook (per database)">
     Needed for the branch and deploy-request triggers:
 
-    1. In the PlanetScale dashboard at **app.planetscale.com**, open the database's **Settings → Webhooks → New webhook** (or run `pscale webhook create <database>`).
+    1. In the PlanetScale dashboard at **app.planetscale.com**, open the database's **Settings → Webhooks → Add webhook** (or run `pscale webhook create <database>`).
     2. Set the **URL** to the Kestrel webhook URL shown on the **Integrations → PlanetScale** connect screen (it ends in `/api/webhooks/planetscale`).
-    3. Select the **events** to forward (e.g. all `deploy_request.*` and `branch.*` events).
-    4. Set the webhook's **signing secret** to the value Kestrel generated on the connect screen, then **create and enable** the webhook.
+    3. Under **Events**, select the ones to forward — the deploy-request lifecycle (`deploy_request.opened`, `deploy_request.errored`, etc.), the branch events (`branch.ready`, `branch.anomaly`, …), and `cluster.storage`. Keep **Enable this webhook** checked and **Save webhook**.
+    4. PlanetScale generates a unique **signing secret** for the webhook (shown on creation, and under **⋯ → Show secret**). Copy it and paste it into the **Webhook secret** field on the Kestrel connect screen. Repeat per database — paste each database's secret (Kestrel verifies every delivery against any of the stored secrets). To add a database later, paste its secret on the **Reconnect** form; existing secrets are kept.
   </Step>
 </Steps>
 
 <Warning>
-  The service token grants access to your PlanetScale databases. Treat the token and the webhook signing secret as secrets — Kestrel stores both encrypted.
+  The service token grants access to your PlanetScale databases. Treat the token and the webhook signing secrets as secrets — Kestrel stores them encrypted.
 </Warning>
 
 <Note>
