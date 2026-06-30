@@ -17,7 +17,14 @@ Daytona supports webhooks for resource lifecycle events, but they are registered
 
 <Steps>
   <Step title="Create an API key">
-    Create an API key from the Daytona dashboard (under **Keys**) or with the Daytona CLI (`daytona api-key create`). The key is sent as a bearer token to `https://app.daytona.io/api` to read sandbox, snapshot, and volume state and perform actions.
+    In the Daytona dashboard, open **API Keys** in the left sidebar and click **Create API Key** (or use the CLI: `daytona api-key create`). Then:
+
+    1. Enter a **Key Name** (e.g. `kestrel`).
+    2. Optionally set an **Expires** date — leave blank for a non-expiring key, or pick a date and plan to rotate the key in Kestrel before it expires.
+    3. For **Permissions**, choose **Full Access** (simplest), or choose **Restricted** and grant **Read + Write + Delete** on **Sandboxes** and **Snapshots** plus **Read** on **Volumes**. The **Sandboxes** preset alone is not sufficient — snapshot and volume actions require those additional grants.
+    4. Click **Create** and copy the generated key (shown only once).
+
+    The key is sent as a bearer token to `https://app.daytona.io/api` to read sandbox, snapshot, and volume state and perform actions.
   </Step>
   <Step title="Connect in Kestrel">
     1. Navigate to **Integrations → Daytona** in your Kestrel dashboard
