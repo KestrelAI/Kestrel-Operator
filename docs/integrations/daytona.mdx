@@ -5,13 +5,14 @@ description: "Connect Daytona for sandbox, snapshot, and volume lifecycle, comma
 
 The Daytona integration connects Kestrel to your Daytona organization, enabling sandbox, snapshot, and volume lifecycle events to trigger workflows and giving AI agents access to sandbox state, snapshots, and volumes.
 
-Daytona supports webhooks for resource lifecycle events, but they are registered manually in the Daytona dashboard. Kestrel works either way: connect with just an API key and Kestrel polls the Daytona API on a configurable interval, or register a webhook for real-time events (the poller then acts as a backstop).
+Daytona delivers sandbox, snapshot, and volume lifecycle events to Kestrel through a webhook you register in the Daytona dashboard. Kestrel verifies every delivery against the webhook's signing secret before it can fire a workflow.
 
 ## Prerequisites
 
 - **Organization Admin** role in Kestrel
 - Daytona account with an organization
 - A Daytona organization API key
+- Webhooks enabled for your Daytona organization
 
 ## Setup
 
@@ -26,24 +27,27 @@ Daytona supports webhooks for resource lifecycle events, but they are registered
 
     The key is sent as a bearer token to `https://app.daytona.io/api` to read sandbox, snapshot, and volume state and perform actions.
   </Step>
+  <Step title="Create a webhook in Daytona">
+    1. In the Daytona dashboard, open **Webhooks**. If webhooks aren't enabled yet, click **Enable webhooks**.
+    2. Click **Create Endpoint**, give it a name, and set the **Endpoint URL** to the Kestrel webhook URL shown on the **Integrations → Daytona** connect screen (it ends in `/api/webhooks/daytona`).
+    3. For **Events**, select all the sandbox, snapshot, and volume events, then click **Create**.
+    4. Click the newly created endpoint to open its details and copy its **Signing Secret**.
+  </Step>
   <Step title="Connect in Kestrel">
-    1. Navigate to **Integrations → Daytona** in your Kestrel dashboard
+    1. Navigate to **Integrations → Daytona** in your Kestrel dashboard.
     2. Paste your **Daytona API key**.
     3. (Optional) Set a custom **API URL** for self-hosted Daytona.
-    4. Choose a **Poll Interval** for trigger detection.
+    4. Paste the webhook **Signing Secret** from the previous step.
     5. Click **Connect Daytona** — your Daytona organization appears as connected.
-  </Step>
-  <Step title="(Optional) Configure a webhook for real-time events">
-    After connecting, open the **Real-Time Webhook** card and **Generate Signing Secret**. In the Daytona dashboard, go to **Webhooks → Add Endpoint**, paste the Kestrel webhook URL and the signing secret, and subscribe to the sandbox, snapshot, and volume events. Kestrel verifies each delivery's signature before firing workflows.
   </Step>
 </Steps>
 
 <Warning>
-  The API key grants access to your Daytona sandboxes, snapshots, and volumes. Treat it as a secret — Kestrel stores it encrypted.
+  The API key grants access to your Daytona sandboxes, snapshots, and volumes. Treat it and the signing secret as secrets — Kestrel stores both encrypted.
 </Warning>
 
 <Note>
-  No webhook setup is required to get started. Kestrel polls the Daytona API on your configured interval; configure a webhook only if you want lower-latency event detection.
+  Kestrel only fires Daytona triggers from webhook deliveries whose signature matches the signing secret you provided. To rotate the secret, update it in Daytona, then disconnect and reconnect in Kestrel with the new value.
 </Note>
 
 ## How It's Used
@@ -59,7 +63,7 @@ Daytona supports webhooks for resource lifecycle events, but they are registered
 - **Snapshot Build Failed** — fires when a snapshot enters an error/build-failed state
 - **Volume Error** — fires when a volume enters an error state
 
-Filter triggers by sandbox and event type. Kestrel detects these via webhook (when configured) or by polling the Daytona API on your configured interval.
+Filter triggers by sandbox and event type. Kestrel receives these as webhook deliveries from Daytona.
 
 **Action blocks:**
 - **List Sandboxes** — list the sandboxes in the organization
@@ -89,4 +93,4 @@ Example: A workflow triggers on a newly created sandbox and sets an auto-stop in
 2. Click **Disconnect**
 3. Confirm the disconnection
 
-This stops Daytona polling and all Daytona workflow triggers. You can reconnect at any time.
+This stops all Daytona workflow triggers. You can optionally remove the webhook endpoint in the Daytona dashboard too. You can reconnect at any time.
