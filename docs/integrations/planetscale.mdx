@@ -47,7 +47,7 @@ PlanetScale delivers branch, deploy-request, and storage events to Kestrel via n
 
     1. In the PlanetScale dashboard at **app.planetscale.com**, open the database's **Settings → Webhooks → Add webhook** (or run `pscale webhook create <database>`).
     2. Set the **URL** to the Kestrel webhook URL shown on the **Integrations → PlanetScale** connect screen (it ends in `/api/webhooks/planetscale`).
-    3. Under **Events**, select the ones to forward — the deploy-request lifecycle (`deploy_request.opened`, `deploy_request.errored`, etc.), the branch events (`branch.ready`, `branch.anomaly`, …), and `cluster.storage`. Keep **Enable this webhook** checked and **Save webhook**.
+    3. Under **Events**, select the ones to forward. The available events depend on the database engine: all databases expose the branch events (`branch.ready`, `branch.anomaly`, `branch.primary_promoted`, `branch.sleeping`) and `cluster.storage`; **Vitess (MySQL) databases also expose the deploy-request lifecycle** (`deploy_request.opened`, `deploy_request.errored`, `deploy_request.closed`, …), which **Postgres databases do not**. Keep **Enable this webhook** checked and **Save webhook**.
     4. PlanetScale generates a unique **signing secret** for the webhook (shown on creation, and under **⋯ → Show secret**). Copy it and paste it into the **Webhook secret** field on the Kestrel connect screen. Repeat per database — paste each database's secret (Kestrel verifies every delivery against any of the stored secrets). To add a database later, paste its secret on the **Reconnect** form; existing secrets are kept.
   </Step>
 </Steps>
@@ -65,11 +65,11 @@ PlanetScale delivers branch, deploy-request, and storage events to Kestrel via n
 ### In Workflows
 
 **Trigger blocks:**
-- **Deploy Request Opened / Queued / In Progress / Schema Applied / Errored / Reverted / Closed** — the deploy-request (schema migration) lifecycle (webhook)
+- **Deploy Request Opened / Queued / In Progress / Schema Applied / Errored / Reverted / Closed** — the deploy-request (schema migration) lifecycle (webhook; **Vitess/MySQL databases only** — Postgres databases don't emit deploy-request webhook events)
 - **Branch Ready** — fires when a branch is created and ready to connect (webhook)
 - **Branch Anomaly (Insights)** — fires on a new insights anomaly, e.g. a slow query or replication lag (webhook)
 - **Branch Primary Promoted** / **Branch Sleeping** — branch lifecycle (webhook)
-- **Storage Threshold** — fires when a cluster/keyspace reaches a storage threshold (webhook)
+- **Storage Threshold** — fires when a cluster reaches a storage threshold (webhook)
 - **Backup Completed** / **Backup Failed** — fires when a branch backup completes or fails (poll-based)
 
 Filter triggers by database, branch, and event type.
