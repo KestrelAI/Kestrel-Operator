@@ -11,7 +11,7 @@ PlanetScale delivers branch, deploy-request, and storage events to Kestrel via n
 
 - **Organization Admin** role in Kestrel
 - A PlanetScale account with at least one database
-- A PlanetScale **service token** (ID + token) with the database accesses you want to automate
+- A PlanetScale **service token** (ID + token) with `read_databases` organization access plus the database accesses for the blocks you'll use (see below)
 - The PlanetScale **organization** name (slug)
 - (For branch/deploy-request triggers) a PlanetScale webhook registered per database
 
@@ -19,9 +19,20 @@ PlanetScale delivers branch, deploy-request, and storage events to Kestrel via n
 
 <Steps>
   <Step title="Create a service token">
-    In the PlanetScale dashboard, open **Settings → Service tokens → New service token** (or run `pscale service-token create`). Grant it the accesses you want to automate (e.g. `read_branch`, `create_branch`, `read_deploy_request`, `create_deploy_request`, `deploy_deploy_request`, `read_backups`, `write_database`). Copy the **token ID** and **token** (shown once).
+    In the PlanetScale dashboard at **app.planetscale.com**, open **Settings → Service tokens → New service token** (or run `pscale service-token create`). Copy the **token ID** and **token** (shown once), then grant permissions in two scopes:
 
-    The token is sent in the `Authorization: <ID>:<TOKEN>` header to `https://api.planetscale.com` to read and manage branches, deploy requests, and backups.
+    **Organization access** (click *Add organization permissions*):
+    - `read_databases` — list and inspect the organization's databases (required; Kestrel uses it to validate the connection and populate dropdowns)
+
+    **Database access** (click *Select permissions*; use *Permissions for all databases* to cover every database, or scope to specific ones):
+    - `read_branch`, `create_branch`, `delete_branch` — branch blocks (create/get/list/delete, promote, safe migrations)
+    - `read_deploy_request`, `create_deploy_request`, `approve_deploy_request` — deploy-request blocks (create/get/list/deploy/revert/close/approve)
+    - `read_backups`, `write_backups` — backup blocks (list/create)
+    - `connect_branch` (and `connect_production_branch` for production) — branch password blocks (list/create/delete)
+
+    For a read-only setup (investigate + list/get blocks only), the `read_*` permissions alone are enough.
+
+    The token is sent in the `Authorization: <ID>:<TOKEN>` header to the PlanetScale API at `api.planetscale.com` to read and manage branches, deploy requests, and backups.
   </Step>
   <Step title="Connect in Kestrel">
     1. Navigate to **Integrations → PlanetScale** in your Kestrel dashboard.
@@ -34,7 +45,7 @@ PlanetScale delivers branch, deploy-request, and storage events to Kestrel via n
   <Step title="Register a webhook (per database)">
     Needed for the branch and deploy-request triggers:
 
-    1. In the PlanetScale dashboard, open the database's **Settings → Webhooks → New webhook** (or run `pscale webhook create <database>`).
+    1. In the PlanetScale dashboard at **app.planetscale.com**, open the database's **Settings → Webhooks → New webhook** (or run `pscale webhook create <database>`).
     2. Set the **URL** to the Kestrel webhook URL shown on the **Integrations → PlanetScale** connect screen (it ends in `/api/webhooks/planetscale`).
     3. Select the **events** to forward (e.g. all `deploy_request.*` and `branch.*` events).
     4. Set the webhook's **signing secret** to the value Kestrel generated on the connect screen, then **create and enable** the webhook.
