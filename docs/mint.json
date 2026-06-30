@@ -127,6 +127,7 @@
         "integrations/flyio",
         "integrations/nebius",
         "integrations/daytona",
+        "integrations/supabase",
         "integrations/datadog",
         "integrations/opentelemetry",
         "integrations/argocd",

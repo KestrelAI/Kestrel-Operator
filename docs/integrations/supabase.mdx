@@ -1,0 +1,93 @@
+---
+title: "Supabase"
+description: "Connect Supabase for project, branch, backup, and read-replica lifecycle, network restrictions, and AI investigation in workflows"
+---
+
+The Supabase integration connects Kestrel to your Supabase organization through the Supabase Management API, enabling control-plane events (project health, backups, read replicas, and database branches) to trigger workflows and giving AI agents read-only access to your projects' state.
+
+Supabase has no tenant-wide outbound webhook for control-plane events, so Kestrel polls the Supabase Management API on a per-tenant cadence to detect project health degradation, backup failures, read-replica health, and branch status. The one webhook-delivered trigger is **Database Row Event**: you register a Supabase Database Webhook that posts table `INSERT`/`UPDATE`/`DELETE` events to Kestrel.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A Supabase account with at least one project
+- A Supabase **Personal Access Token**
+- (Optional) A Database Webhook signing secret, only needed for the Database Row Event trigger
+
+## Setup
+
+<Steps>
+  <Step title="Create a Personal Access Token">
+    In the Supabase dashboard, open **Account → Access Tokens**, click **Generate new token**, give it a name (e.g. `kestrel`), and copy the generated token (shown only once).
+
+    The token is sent as a bearer token to `https://api.supabase.com` to read project, branch, backup, and health state and perform control-plane actions.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Supabase** in your Kestrel dashboard.
+    2. Paste your **Personal Access Token**.
+    3. (Optional) Set a custom **API URL** for self-hosted/enterprise endpoints.
+    4. Choose a **Poll Interval** (how often Kestrel checks the Management API for health/backup/replica/branch events).
+    5. (Optional) Set a **Database Webhook Secret** if you plan to use the Database Row Event trigger.
+    6. Click **Connect Supabase** — your Supabase organization appears as connected.
+  </Step>
+  <Step title="(Optional) Register a Database Webhook">
+    Only needed for the **Database Row Event** trigger:
+
+    1. In the Supabase dashboard, open **Database → Webhooks** and create a webhook on the table(s) you want to watch.
+    2. Set the **URL** to the Kestrel webhook URL shown on the **Integrations → Supabase** connect screen (it ends in `/api/webhooks/supabase`).
+    3. Add an HTTP header **`X-Supabase-Webhook-Secret`** whose value matches the signing secret you set when connecting.
+    4. Select the table events (insert/update/delete) you want to forward.
+  </Step>
+</Steps>
+
+<Warning>
+  The Personal Access Token grants access to your Supabase projects and their control plane. Treat it and the webhook secret as secrets — Kestrel stores both encrypted.
+</Warning>
+
+<Note>
+  Control-plane triggers are detected by polling, so there may be up to one poll interval of delay before a workflow fires. The minimum poll interval is 60 seconds. Database Row Event triggers fire as soon as the webhook delivery is verified.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+- **Project Health Degraded** — fires when a project service (db, auth, rest, realtime, storage, pooler) is unhealthy (poll-based)
+- **Backup Failed** — fires when a project's most recent database backup failed (poll-based)
+- **Read Replica Unhealthy** — fires when a project read replica is unhealthy (poll-based)
+- **Usage/Quota Threshold** — fires when a project crosses a usage/quota threshold (poll-based)
+- **Branch Created** — fires when a new database branch is created (poll-based)
+- **Branch Migration Failed** — fires when a database branch enters a failed migration state (poll-based)
+- **Database Row Event** — fires on table INSERT/UPDATE/DELETE delivered by a Supabase Database Webhook
+
+Filter triggers by project ref and event type (and by table, for Database Row Events).
+
+**Action blocks:**
+- **List Projects** / **Get Project** / **Get Project Health** — inspect projects and per-service health
+- **Create Branch** — create an ephemeral preview database branch (ideal for PR previews)
+- **List Branches** / **Get Branch** — inspect branches and their connection refs
+- **Merge Branch** / **Reset Branch** — run or redo a branch's migrations against its parent
+- **Delete Branch** — permanently delete a branch (gate behind an Approval node)
+- **List Backups** — list backups and PITR availability
+- **Create Restore Point** — create a named checkpoint before a risky migration
+- **Restore Backup (PITR)** — point-in-time restore (destructive; gate behind an Approval node)
+- **Setup Read Replica** / **Remove Read Replica** — manage read replicas
+- **Pause Project** / **Restore Project** — pause/un-pause a project for cost control
+- **Get Network Restrictions** / **Update Network Restrictions** — review and lock down a project's allowed CIDRs
+- **List API Keys** — list API key metadata (secret values are never returned)
+- **Investigate Supabase** — run an AI investigation of unhealthy projects, failed backups, and branch failures
+
+Supabase project and branch selects accept template variables like `{{signal.project_ref}}` and `{{signal.branch_id}}` from the trigger.
+
+Example: When a pull request opens, create a Supabase preview database branch, run migrations, and post the branch connection details to Slack; when the PR closes, delete the branch.
+
+Example: When a project backup fails, run an AI investigation, page on-call via PagerDuty, and open a Jira ticket.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Supabase**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all Supabase workflow triggers (polling and webhook). You can optionally remove the Database Webhook in the Supabase dashboard too. You can reconnect at any time.
