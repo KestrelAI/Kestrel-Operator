@@ -17,14 +17,14 @@ Neon has no control-plane webhooks (its only webhooks are Neon Auth application-
 
 <Steps>
   <Step title="Create an API key">
-    In the Neon Console, open **Account settings → API keys**, click **Create new API key**, give it a name (e.g. `kestrel`), and copy the generated key (shown only once).
+    In the Neon Console (`console.neon.tech`), open **Account settings → API keys**, click **Create new API key**, give it a name (e.g. `kestrel`), and copy the generated key (shown only once).
 
-    The key is sent as a bearer token to `https://console.neon.tech/api/v2` to read and manage projects, branches, compute endpoints, and operations. A personal key covers all projects you can access; an organization key scopes to that organization.
+    The key is sent as a bearer token to the Neon API at `console.neon.tech/api/v2` to read and manage projects, branches, compute endpoints, and operations. A personal key covers all projects you can access; an organization key scopes to that organization.
   </Step>
   <Step title="Connect in Kestrel">
     1. Navigate to **Integrations → Neon** in your Kestrel dashboard.
     2. Paste your **API key**.
-    3. (Optional) Enter an **Organization ID** to scope projects to a specific organization.
+    3. (Optional) Enter an **Organization ID** to scope projects to a specific organization. Find your org ID in the Neon Console URL when you open the org (`console.neon.tech/app/org-.../projects`), or under **Organization settings → Settings**.
     4. Choose a **Poll Interval** (how often Kestrel checks the Neon API for branch/compute/operation/usage events).
     5. Click **Connect Neon** — your Neon organization appears as connected.
   </Step>
