@@ -1,0 +1,81 @@
+---
+title: "Neon"
+description: "Connect Neon for serverless Postgres branch lifecycle, compute suspend/resume and autoscaling, reset-from-parent, credential rotation, and AI investigation in workflows"
+---
+
+The Neon integration connects Kestrel to your Neon organization through the Neon API, enabling control-plane events (branches, compute endpoints, operations, and usage) to trigger workflows and giving AI agents read-only access to your projects' state.
+
+Neon has no control-plane webhooks (its only webhooks are Neon Auth application-auth events like `send.otp` / `user.created`, which are not infrastructure events), so Kestrel polls the Neon API on a per-tenant cadence to detect branch creation/readiness, operation failures, compute suspend/resume, and usage thresholds.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A Neon account with at least one project
+- A Neon **API key** (personal or organization) created in the Neon Console
+
+## Setup
+
+<Steps>
+  <Step title="Create an API key">
+    In the Neon Console, open **Account settings → API keys**, click **Create new API key**, give it a name (e.g. `kestrel`), and copy the generated key (shown only once).
+
+    The key is sent as a bearer token to `https://console.neon.tech/api/v2` to read and manage projects, branches, compute endpoints, and operations. A personal key covers all projects you can access; an organization key scopes to that organization.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Neon** in your Kestrel dashboard.
+    2. Paste your **API key**.
+    3. (Optional) Enter an **Organization ID** to scope projects to a specific organization.
+    4. Choose a **Poll Interval** (how often Kestrel checks the Neon API for branch/compute/operation/usage events).
+    5. Click **Connect Neon** — your Neon organization appears as connected.
+  </Step>
+</Steps>
+
+<Warning>
+  The API key grants access to your Neon projects and their control plane. Treat it as a secret — Kestrel stores it encrypted.
+</Warning>
+
+<Note>
+  All Neon triggers are detected by polling, so there may be up to one poll interval of delay before a workflow fires. The minimum poll interval is 60 seconds.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks (all poll-based):**
+- **Branch Created** — fires when a new Neon branch is created
+- **Branch Ready** — fires when a branch becomes ready to connect
+- **Operation Failed** — fires when a Neon operation (create branch, start compute, etc.) enters a failed state
+- **Compute Suspended** — fires when a compute endpoint autosuspends to idle (cost signal)
+- **Compute Active** — fires when a compute endpoint resumes to active
+- **Usage/Quota Threshold** — fires when a project crosses a storage or compute usage threshold
+
+Filter triggers by project ID, branch ID, and event type.
+
+**Action blocks:**
+- **List Projects** / **Get Project**, **List Branches** / **Get Branch** — inventory
+- **Create Branch** — instant copy-on-write branch (optionally with a compute endpoint), ideal for ephemeral PR preview databases
+- **Delete Branch** — tear down a branch (gate behind an Approval node)
+- **Reset Branch from Parent** — the "reset my preview DB" action (gate behind an Approval node)
+- **List Compute Endpoints** / **Create Compute Endpoint** / **Delete Compute Endpoint**
+- **Suspend Compute** / **Start Compute** — cut/restore compute cost
+- **Set Autoscaling Limits** — update a compute endpoint's autoscaling min/max compute units
+- **Rotate Role Credentials** — reset a role's password and return a fresh connection URI (gate behind an Approval node)
+- **Get Connection URI** — fetch a branch's connection string (for posting to Slack)
+- **Investigate Neon** — run an AI investigation of projects, branches, compute endpoints, and failed operations
+
+Neon project and branch selects accept template variables like `{{signal.project_id}}`, `{{signal.branch_id}}`, and `{{signal.endpoint_id}}` from the trigger.
+
+Example (the flagship Neon flow): When a pull request opens, create a Neon copy-on-write preview branch and post the connection URI to Slack; when the PR closes, delete the branch.
+
+Example (cost): When a compute endpoint suspends, notify the team; or on idle detection, suspend the compute to cut cost.
+
+Example (dev requests): A "reset my preview DB" Slack request gates behind an Approval, then resets the branch from its parent.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Neon**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all Neon workflow triggers. You can reconnect at any time.
