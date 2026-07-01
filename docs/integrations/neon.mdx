@@ -12,6 +12,7 @@ Neon has no control-plane webhooks (its only webhooks are Neon Auth application-
 - **Organization Admin** role in Kestrel
 - A Neon account with at least one project
 - A Neon **API key** (personal or organization) created in the Neon Console
+- Your Neon **Organization ID** if your account is organization-scoped (found in the Console URL, `console.neon.tech/app/org-.../projects`, or under Organization settings)
 
 ## Setup
 
@@ -24,7 +25,7 @@ Neon has no control-plane webhooks (its only webhooks are Neon Auth application-
   <Step title="Connect in Kestrel">
     1. Navigate to **Integrations → Neon** in your Kestrel dashboard.
     2. Paste your **API key**.
-    3. (Optional) Enter an **Organization ID** to scope projects to a specific organization. Find your org ID in the Neon Console URL when you open the org (`console.neon.tech/app/org-.../projects`), or under **Organization settings → Settings**.
+    3. Enter your **Organization ID** if your Neon account is organization-scoped (a personal account can leave this blank). Find your org ID in the Neon Console URL when you open the org (`console.neon.tech/app/org-.../projects`), or under **Organization settings → Settings**.
     4. Choose a **Poll Interval** (how often Kestrel checks the Neon API for branch/compute/operation/usage events).
     5. Click **Connect Neon** — your Neon organization appears as connected.
   </Step>
