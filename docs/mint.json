@@ -129,6 +129,7 @@
         "integrations/daytona",
         "integrations/supabase",
         "integrations/neon",
+        "integrations/planetscale",
         "integrations/datadog",
         "integrations/opentelemetry",
         "integrations/argocd",
