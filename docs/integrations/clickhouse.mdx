@@ -1,0 +1,86 @@
+---
+title: "ClickHouse"
+description: "Connect ClickHouse Cloud for service lifecycle (start/stop/scale), IP access list, backups, ClickPipes ingestion, usage costs, error-spike detection, and AI investigation in workflows"
+---
+
+The ClickHouse integration connects Kestrel to your ClickHouse Cloud organization through the ClickHouse Cloud API, enabling control-plane events (service state, scaling, backups, ClickPipes, query errors, and spend) to trigger workflows and giving AI agents read-only access to your services' state.
+
+ClickHouse Cloud has no control-plane webhooks (its notifications are email/console-only, and ClickStack alert webhooks are observability alerts, not service/backup/ClickPipe events), so Kestrel polls the ClickHouse Cloud API on a per-tenant cadence to detect service state changes, scaling and version changes, backup completions/failures, ClickPipe failures, failed-query spikes, and spend thresholds.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A ClickHouse Cloud organization with at least one service
+- A ClickHouse Cloud **API key** (key ID + secret) with the **Admin** role, created in the ClickHouse Cloud console
+
+## Setup
+
+<Steps>
+  <Step title="Create an API key">
+    In the ClickHouse Cloud console (`console.clickhouse.cloud`), open **API Keys** in the left sidebar, click **New API Key**, give it a name (e.g. `kestrel`), and select the **Admin** role (Developer keys are read-only and cannot start/stop/scale services). Copy the generated **Key ID** and **Key secret** (shown only once).
+
+    The key ID and secret are sent as HTTP Basic auth to the ClickHouse Cloud API at `api.clickhouse.cloud` to read and manage services, backups, and ClickPipes.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → ClickHouse** in your Kestrel dashboard.
+    2. Paste your **Key ID** and **Key secret**.
+    3. Optionally enter your **Organization ID** — a ClickHouse Cloud API key belongs to exactly one organization, so Kestrel auto-detects it when left blank.
+    4. Choose a **Poll Interval** (how often Kestrel checks the ClickHouse Cloud API for service/backup/ClickPipe/error/spend events).
+    5. Click **Connect ClickHouse** — your ClickHouse Cloud organization appears as connected.
+  </Step>
+</Steps>
+
+<Warning>
+  The API key grants access to your ClickHouse Cloud services and their control plane. Treat it as a secret — Kestrel stores it encrypted.
+</Warning>
+
+<Note>
+  All ClickHouse triggers are detected by polling, so there may be up to one poll interval of delay before a workflow fires. The minimum poll interval is 60 seconds.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks (all poll-based):**
+- **Service State Changed** — fires when a service changes state (running, idle, stopped, awaking, ...)
+- **Service Idle** — fires when a service scales to idle/stopped (cost signal)
+- **Service Scaled** — fires when a service's replica count or memory limits change
+- **Backup Completed** / **Backup Failed** — fires when a service backup reaches a terminal state
+- **Query Error Spike** — fires when failed queries/inserts (Prometheus counters) increase past a configurable threshold within a poll window
+- **ClickPipe Failed** — fires when a managed ingestion pipeline enters a failed state
+- **Version Changed** — fires when a service's ClickHouse version changes after an upgrade
+- **Usage/Spend Threshold** — fires when month-to-date spend (ClickHouse Credits) crosses a percent of a configured monthly budget
+
+Filter triggers by service ID and event type; the error-spike threshold, monthly budget, and usage percent are configurable per trigger.
+
+**Action blocks:**
+- **List Services** / **Get Service** — inventory (state, scaling, version, endpoints, IP access list)
+- **Create Service** — provision a service, e.g. a self-serve staging analytics DB (gate behind an Approval node)
+- **Start Service** / **Stop Service** — the cost levers: resume before working hours, stop non-prod services overnight
+- **Update Autoscaling** — per-replica memory limits, replica count, idle scaling, idle timeout
+- **Update IP Access List** — add/remove CIDR entries (security)
+- **List Backups** / **Get Backup** / **Update Backup Configuration** — backup visibility and schedule
+- **Restore Backup** — restore by provisioning a new service from a backup (the API has no in-place restore; gate behind an Approval node)
+- **Delete Service** — tear down a stopped service (gate behind an Approval node)
+- **List API Keys** — key hygiene (metadata only; secrets are never returned)
+- **Get Service Metrics** — fetch failed-query Prometheus counters during RCA
+- **Get Usage Costs** — org spend report in ClickHouse Credits
+- **List ClickPipes** / **Get ClickPipe** / **Start ClickPipe** / **Stop ClickPipe** / **Resync ClickPipe** / **Scale ClickPipe** — manage managed ingestion (Kafka, S3, CDC)
+- **Investigate ClickHouse** — run an AI investigation of services, backups, ClickPipes, metrics, and costs
+
+ClickHouse service, ClickPipe, and backup selects accept template variables like `{{signal.service_id}}`, `{{signal.clickpipe_id}}`, and `{{signal.backup_id}}` from the trigger.
+
+Example (cost — the flagship ClickHouse flow): On a weeknight schedule, stop non-production ClickHouse services and post a summary to Slack; on a morning schedule, start them again.
+
+Example (incident): When a query-error spike or ClickPipe failure is detected, run an AI investigation, page on-call via PagerDuty, and open a Jira issue with the findings.
+
+Example (provisioning): A "staging ClickHouse service" developer request gates behind an Approval, then creates the service and posts the endpoint host to Slack.
+
+## Disconnecting
+
+1. Navigate to **Integrations → ClickHouse**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all ClickHouse workflow triggers. You can reconnect at any time.

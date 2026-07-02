@@ -130,6 +130,7 @@
         "integrations/supabase",
         "integrations/neon",
         "integrations/planetscale",
+        "integrations/clickhouse",
         "integrations/datadog",
         "integrations/opentelemetry",
         "integrations/argocd",
