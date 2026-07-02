@@ -17,7 +17,7 @@ ClickHouse Cloud has no control-plane webhooks (its notifications are email/cons
 
 <Steps>
   <Step title="Create an API key">
-    In the ClickHouse Cloud console (`console.clickhouse.cloud`), open **API Keys** in the left sidebar, click **New API Key**, give it a name (e.g. `kestrel`), and select the **Admin** role (Developer keys are read-only and cannot start/stop/scale services). Copy the generated **Key ID** and **Key secret** (shown only once).
+    In the ClickHouse Cloud console (`console.clickhouse.cloud`), click your **organization** name in the bottom-left to open the organization menu, choose **API keys**, then click **New API key**. Give it a name (e.g. `kestrel`) and select the **Admin** role (Developer keys are read-only and cannot start/stop/scale services). Copy the generated **Key ID** and **Key secret** (shown only once).
 
     The key ID and secret are sent as HTTP Basic auth to the ClickHouse Cloud API at `api.clickhouse.cloud` to read and manage services, backups, and ClickPipes.
   </Step>
