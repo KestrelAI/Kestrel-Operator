@@ -1,0 +1,103 @@
+---
+title: "PlanetScale"
+description: "Connect PlanetScale for database branch, deploy-request (schema migration), backup, and credential automation in workflows"
+---
+
+The PlanetScale integration connects Kestrel to your PlanetScale organization through the PlanetScale API, enabling branch and deploy-request (schema migration) events to trigger workflows and giving AI agents read-only access to your databases' state.
+
+PlanetScale delivers branch, deploy-request, and storage events to Kestrel via native webhooks you register per-database (the webhook receiver verifies the `X-PlanetScale-Signature` against the signing secret). PlanetScale has no backup webhook, so **Backup Completed** / **Backup Failed** are detected by polling the backups API on a per-tenant cadence. Because the poller only synthesizes backup events, it never double-fires with webhook-delivered events.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A PlanetScale account with at least one database
+- A PlanetScale **service token** (ID + token) with `read_databases` organization access plus the database accesses for the blocks you'll use (see below)
+- The PlanetScale **organization** name (slug)
+- (For branch/deploy-request triggers) a PlanetScale webhook registered per database
+
+## Setup
+
+<Steps>
+  <Step title="Create a service token">
+    In the PlanetScale dashboard at **app.planetscale.com**, open **Settings → Service tokens → New service token** (or run `pscale service-token create`). Copy the **token ID** and **token** (shown once), then grant permissions in two scopes:
+
+    **Organization access** (click *Add organization permissions*):
+    - `read_databases` — list and inspect the organization's databases (required; Kestrel uses it to validate the connection and populate dropdowns)
+
+    **Database access** (click *Select permissions*; use *Permissions for all databases* to cover every database, or scope to specific ones):
+    - `read_branch`, `create_branch`, `delete_branch` — branch blocks (create/get/list/delete, promote, safe migrations)
+    - `read_deploy_request`, `create_deploy_request`, `approve_deploy_request` — deploy-request blocks (create/get/list/deploy/revert/close/approve)
+    - `read_backups`, `write_backups` — backup blocks (list/create)
+    - `connect_branch` (and `connect_production_branch` for production) — branch password blocks (list/create/delete)
+
+    For a read-only setup (investigate + list/get blocks only), the `read_*` permissions alone are enough.
+
+    The token is sent in the `Authorization: <ID>:<TOKEN>` header to the PlanetScale API at `api.planetscale.com` to read and manage branches, deploy requests, and backups.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → PlanetScale** in your Kestrel dashboard.
+    2. Paste your **Service Token ID** and **Service Token**.
+    3. Enter your **Organization** name.
+    4. Choose a **Backup Poll Interval** (how often Kestrel checks the backups API for backup completed/failed events).
+    5. Paste the **webhook signing secret(s)** PlanetScale generated when you registered the webhook(s) in the next step — one per database. (You can connect first and add secrets later by reconnecting.)
+    6. Click **Connect PlanetScale** — your PlanetScale organization appears as connected.
+  </Step>
+  <Step title="Register a webhook (per database)">
+    Needed for the branch and deploy-request triggers:
+
+    1. In the PlanetScale dashboard at **app.planetscale.com**, open the database's **Settings → Webhooks → Add webhook** (or run `pscale webhook create <database>`).
+    2. Set the **URL** to the Kestrel webhook URL shown on the **Integrations → PlanetScale** connect screen (it ends in `/api/webhooks/planetscale`).
+    3. Under **Events**, select the ones to forward. The available events depend on the database engine: all databases expose the branch events (`branch.ready`, `branch.anomaly`, `branch.primary_promoted`, `branch.sleeping`) and `cluster.storage`; **Vitess (MySQL) databases also expose the deploy-request lifecycle** (`deploy_request.opened`, `deploy_request.errored`, `deploy_request.closed`, …), which **Postgres databases do not**. Keep **Enable this webhook** checked and **Save webhook**.
+    4. PlanetScale generates a unique **signing secret** for the webhook (shown on creation, and under **⋯ → Show secret**). Copy it and paste it into the **Webhook secret** field on the Kestrel connect screen. Repeat per database — paste each database's secret (Kestrel verifies every delivery against any of the stored secrets). To add a database later, paste its secret on the **Reconnect** form; existing secrets are kept.
+  </Step>
+</Steps>
+
+<Warning>
+  The service token grants access to your PlanetScale databases. Treat the token and the webhook signing secrets as secrets — Kestrel stores them encrypted.
+</Warning>
+
+<Note>
+  Branch and deploy-request triggers fire as soon as the webhook delivery is verified. Backup triggers are detected by polling, so there may be up to one poll interval of delay before a backup workflow fires. The minimum poll interval is 60 seconds.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+- **Deploy Request Opened / Queued / In Progress / Schema Applied / Errored / Reverted / Closed** — the deploy-request (schema migration) lifecycle (webhook; **Vitess/MySQL databases only** — Postgres databases don't emit deploy-request webhook events)
+- **Branch Ready** — fires when a branch is created and ready to connect (webhook)
+- **Branch Anomaly (Insights)** — fires on a new insights anomaly, e.g. a slow query or replication lag (webhook)
+- **Branch Primary Promoted** / **Branch Sleeping** — branch lifecycle (webhook)
+- **Storage Threshold** — fires when a cluster reaches a storage threshold (webhook)
+- **Backup Completed** / **Backup Failed** — fires when a branch backup completes or fails (poll-based)
+
+Filter triggers by database, branch, and event type.
+
+**Action blocks:**
+- **List Databases** / **Get Database** — inspect databases
+- **List Branches** / **Get Branch** / **Create Branch** / **Delete Branch** — manage branches
+- **Promote Branch to Production** — promote a branch (gate behind an Approval node)
+- **Set Safe Migrations** — enable/disable safe migrations on a branch
+- **List Deploy Requests** / **Get Deploy Request** — inspect deploy requests
+- **Create Deploy Request** — open a schema migration
+- **Deploy Deploy Request** — apply the schema change (gate behind an Approval node)
+- **Revert Deploy Request** — revert a deployed change (auto-revert on failure; gate behind an Approval node)
+- **Close Deploy Request** / **Approve Deploy Request** — close or approve a deploy request
+- **List Backups** / **Create Backup** — manage branch backups
+- **List/Create/Delete Branch Password** — manage branch credentials
+- **Investigate PlanetScale** — run an AI investigation of databases, branches, deploy requests, and backups
+
+PlanetScale database and branch selects accept template variables like `{{signal.database}}`, `{{signal.branch}}`, and `{{signal.deploy_request_number}}` from the trigger.
+
+Example (the flagship CI/CD flow): When a pull request is merged, create a PlanetScale deploy request, require approval, deploy the schema change, and post the result to `#releases` on Slack.
+
+Example (incident): When a deploy request errors, run an AI investigation, revert the deploy request, and page on-call via PagerDuty.
+
+## Disconnecting
+
+1. Navigate to **Integrations → PlanetScale**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all PlanetScale workflow triggers (polling and webhook). You can optionally remove the webhooks in the PlanetScale dashboard too. You can reconnect at any time.
