@@ -52,7 +52,6 @@ ClickHouse Cloud has no control-plane webhooks (its notifications are email/cons
 - **Version Changed** — fires when a service's ClickHouse version changes after an upgrade
 - **Usage/Spend Threshold** — fires when month-to-date spend (ClickHouse Credits) crosses a percent of a configured monthly budget
 - **Too Many Parts** — fires when a partition's max part count exceeds a threshold (the classic "too many parts" incident)
-- **Failed Mutations** — fires when the failed-mutation counter increases past a threshold within a poll window
 - **High Query Concurrency** — fires when concurrent running queries exceed a threshold
 
 Filter triggers by service ID and event type; the error-spike threshold, monthly budget, and usage percent are configurable per trigger.
