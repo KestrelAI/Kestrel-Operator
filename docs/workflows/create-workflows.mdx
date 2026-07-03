@@ -217,6 +217,21 @@ Triggered by Nebius GPU/compute and Managed Kubernetes node changes. Nebius has 
 | Node Not Ready | Triggers when a Kubernetes node leaves the Ready state |
 | Instance Stopped | Triggers when a compute instance transitions to stopped |
 
+### Terraform Cloud
+
+Triggered by Terraform Cloud (HCP Terraform) run lifecycle and drift events, delivered by per-workspace **notification configurations** (webhooks) signed with HMAC-SHA512 and verified by Kestrel. Filter by workspace, event type, and run status.
+
+| Trigger Block | Description |
+|---|---|
+| Run Created | Triggers when a new run is queued on a workspace |
+| Run Planning | Triggers when a run starts planning |
+| Run Needs Attention | Triggers when a plan finishes and the run awaits confirmation |
+| Run Applying | Triggers when a run starts applying |
+| Run Completed | Triggers when a run applies successfully or finishes as planned-and-finished |
+| Run Errored | Triggers when a run fails (plan/apply error, policy hard-fail) |
+| Drift Detected | Triggers when a workspace health assessment detects infrastructure drift |
+| Assessment Check Failed | Triggers when a workspace health assessment fails to run |
+
 ### Custom Webhook
 
 Triggered by an HTTP POST to a unique webhook URL. Accepts any JSON payload with optional HMAC signature verification. See [Custom Integrations](/workflows/custom-integrations) for details.
@@ -276,6 +291,9 @@ Actions are grouped by integration. Each action produces output variables that d
   <Card title="Nebius AI Cloud" icon="microchip">
     Get Instance, Start Instance, Stop Instance, Restart Instance, List Instances, List Clusters, List Node Groups, Scale Node Group, Investigate Nebius
   </Card>
+  <Card title="Terraform Cloud" icon="cubes">
+    List/Get Workspace, Lock/Unlock/Force-Unlock Workspace, List/Get Run, Create Run (Plan), Create Destroy Run, Apply Run, Discard Run, Cancel Run, Wait for Run, Get State Outputs, List Variables, Set Variable, Get Drift Assessment, Investigate Terraform
+  </Card>
   <Card title="Approval Gates" icon="shield-check">
     Wait for Manual Approval, Wait for Slack Approval, Wait for PR/MR Approval, Refine RCA with Feedback
   </Card>
@@ -326,6 +344,11 @@ Template variables let you pass data between workflow steps. Use double curly br
 | `{{signal.node_group_id}}` | Nebius trigger | Nebius node group ID |
 | `{{signal.node_name}}` | Nebius trigger | Kubernetes node name |
 | `{{signal.condition}}` | Nebius trigger | Node condition that fired (e.g. NebiusGPUError) |
+| `{{signal.workspace}}` | Terraform Cloud trigger | Workspace name |
+| `{{signal.run_id}}` | Terraform Cloud trigger | Run ID (run-...) |
+| `{{signal.run_status}}` | Terraform Cloud trigger | Run status at notification time |
+| `{{signal.run_url}}` | Terraform Cloud trigger | Link to the run in Terraform Cloud |
+| `{{signal.organization}}` | Terraform Cloud trigger | Terraform Cloud organization |
 | `{{signal.session_id}}` | PostHog trigger | PostHog session ID |
 
 ### Variable Picker
@@ -348,7 +371,7 @@ Cooldowns prevent a workflow from firing repeatedly for the same event. Configur
 |--------|----------|-------------|
 | No cooldown | 0 | — |
 | 5 minutes | 5m | — |
-| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, Nebius, custom webhook triggers |
+| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, Nebius, Terraform Cloud, custom webhook triggers |
 | 30 minutes | 30m | — |
 | 1 hour | 1h | — |
 | 3 hours | 3h | — |
@@ -501,6 +524,18 @@ On **Request changes**, the reviewer's free-text guidance re-runs the RCA agent 
 | **Action 1** | Investigate Nebius | Query: find why node `{{signal.node_name}}` reported a GPU error |
 | **Action 2** | Scale Node Group | Cluster: `{{signal.cluster_id}}`, Node Group: `{{signal.node_group_id}}`, Size: `3` |
 | **Action 3** | Slack Send Message | Channel: `#ml-infra`, message: `{{step_outputs.action-1.summary}}` |
+
+### Terraform Run Needs Attention → Plan Summary → Slack Approval → Apply
+
+**Workflow Agent prompt:** *"When a Terraform Cloud run on a production workspace finishes planning and needs confirmation, fetch the planned changes, ask for approval in #infra-approvals, and apply the run if approved or discard it if rejected."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Terraform Run Needs Attention | Workspaces: `prod-*` |
+| **Action 1** | Get Run | Workspace: `{{signal.workspace}}`, Run: `{{signal.run_id}}` |
+| **Action 2** | Wait for Slack Approval | Channel: `#infra-approvals`, message includes `{{step_outputs.action-1.summary}}` and `{{signal.run_url}}` |
+| **On Approved** | Apply Run | Workspace: `{{signal.workspace}}`, Run: `{{signal.run_id}}` |
+| **On Rejected** | Discard Run | Workspace: `{{signal.workspace}}`, Run: `{{signal.run_id}}` |
 
 **Workflow Agent prompt:** *"When PostHog captures a frontend exception, generate an AI summary of the user's session including what they were doing before the error, and send the summary with the replay URL to #product-alerts in Slack."*
 

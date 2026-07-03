@@ -1,0 +1,92 @@
+---
+title: "Terraform Cloud"
+description: "Connect Terraform Cloud (HCP Terraform) for run lifecycle automation (plan/apply/discard/cancel), workspace locking, variables, state outputs, drift detection, and AI investigation in workflows"
+---
+
+The Terraform Cloud integration connects Kestrel to your Terraform Cloud (HCP Terraform) organization through the Terraform Cloud API, enabling run lifecycle and drift events to trigger workflows and letting workflows queue plans, gate applies behind approvals, manage workspace locks and variables, and read state outputs.
+
+Run and health-assessment events are delivered by **workspace notification configurations** (webhooks) that you register per workspace. Each delivery is signed with HMAC-SHA512 (`X-TFE-Notification-Signature` header) using the notification token Kestrel generates at connect time, and Kestrel verifies the signature before evaluating workflows.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A Terraform Cloud (or Terraform Enterprise) organization with at least one workspace
+- A Terraform Cloud **API token** with access to the organization — a **team token** or **organization token** is recommended over a user token
+
+## Setup
+
+<Steps>
+  <Step title="Create an API token">
+    In Terraform Cloud (`app.terraform.io`), go to your organization's **Settings → API tokens** (or **Account Settings → Tokens** for a user token). Create a **team token** for a team that has the workspace permissions your workflows need (queue plans, apply runs, lock workspaces, manage variables). Copy the token — it is shown only once.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Terraform Cloud** in your Kestrel dashboard.
+    2. Paste your **API token**.
+    3. Enter your **Organization** name (e.g. `my-org`).
+    4. Optionally set a custom **API base URL** for Terraform Enterprise (defaults to `https://app.terraform.io/api/v2`).
+    5. Click **Connect Terraform Cloud** — Kestrel validates the token against your organization and generates a **notification token** for webhook verification.
+  </Step>
+  <Step title="Register workspace notifications (for triggers)">
+    Actions work as soon as the token is connected. To have Terraform Cloud events **trigger** workflows, add a notification configuration to each workspace you care about:
+
+    1. On the Kestrel Terraform Cloud integration page, copy the **Webhook URL** and the **Notification token**.
+    2. In each Terraform Cloud workspace, open **Settings → Notifications → Create a Notification**.
+    3. Choose the **Webhook** destination, set the URL to the copied webhook URL, and paste the notification token as the **Token**.
+    4. Select the run and health-assessment events you want (Created, Planning, Needs Attention, Applying, Completed, Errored, Drifted, Check Failed).
+  </Step>
+</Steps>
+
+<Warning>
+  The API token can queue and apply runs that change real infrastructure. Treat it as a secret — Kestrel stores it encrypted. Gate destructive workflow actions (Apply Run, Create Destroy Run, Force-Unlock, Set Variable) behind Approval nodes.
+</Warning>
+
+<Note>
+  Drift events require **health assessments** to be enabled on the workspace (Terraform Cloud Plus/Premium). Health assessment notifications (`assessment:drifted`, `assessment:check_failure`) are only sent for workspaces with assessments turned on.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks (webhook):**
+- **Run Created** — fires when a new run is queued on a workspace
+- **Run Planning** — fires when a run starts planning
+- **Run Needs Attention** — fires when a plan finishes and the run awaits confirmation (the moment to route an approval)
+- **Run Applying** — fires when a run starts applying
+- **Run Completed** — fires when a run applies successfully or finishes as planned-and-finished
+- **Run Errored** — fires when a run fails (plan error, apply error, or policy hard-fail)
+- **Drift Detected** — fires when a workspace health assessment detects infrastructure drift from state
+- **Assessment Check Failed** — fires when a workspace health assessment fails to run
+
+Filter triggers by workspace name, event type, and run status. Trigger events expose template variables such as `{{signal.workspace}}`, `{{signal.run_id}}`, `{{signal.run_status}}`, `{{signal.organization}}`, and `{{signal.run_url}}` for downstream steps.
+
+**Action blocks:**
+- **List Workspaces** / **Get Workspace** — inventory (lock state, execution mode, Terraform version, resource counts)
+- **Lock Workspace** / **Unlock Workspace** — block or allow runs during incidents and maintenance windows
+- **Force-Unlock Workspace** — recover a workspace stuck by a crashed run's lock (gate behind an Approval node)
+- **List Runs** / **Get Run** — run history and a run's status plus planned adds/changes/destroys (great for Slack notifications and approval context)
+- **Create Run (Plan)** — queue a plan run on a workspace, optionally auto-apply
+- **Create Destroy Run** — queue a destroy plan (gate behind an Approval node)
+- **Apply Run** — confirm and apply a run awaiting confirmation (gate behind an Approval node for production)
+- **Discard Run** / **Cancel Run** — discard a pending plan or interrupt an in-progress run
+- **Wait for Run** — poll a run until it reaches a terminal state (applied, errored, discarded, canceled) and branch on the result
+- **Get State Outputs** — read the workspace's current state outputs (sensitive values are redacted) to wire infrastructure values into later steps
+- **List Variables** / **Set Variable** — inspect and update workspace Terraform/environment variables (sensitive values are never returned; gate Set Variable behind an Approval node)
+- **Get Drift Assessment** — check the latest health assessment result for drift
+- **Investigate Terraform** — run a read-only AI investigation across workspaces, runs, state outputs, variables, and drift
+
+Workspace and run selects use dynamic dropdowns backed by the Terraform Cloud API and accept template variables like `{{signal.workspace}}` and `{{signal.run_id}}` from the trigger.
+
+Example (approval gating — the flagship Terraform flow): When a run **needs attention** on a production workspace, fetch the run's planned changes, post them to Slack with approve/reject buttons, then **Apply Run** on approval or **Discard Run** on rejection.
+
+Example (drift): When **drift is detected**, run an AI investigation, queue a **plan run** to preview remediation, and open a Jira ticket with the findings.
+
+Example (incident): When a run **errors**, investigate the failure with AI and page on-call via PagerDuty with the summary and run URL.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Terraform Cloud**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all Terraform Cloud workflow triggers and actions. Notification configurations in Terraform Cloud will keep sending deliveries until you remove them there; unverified deliveries are ignored. You can reconnect at any time.
