@@ -217,6 +217,25 @@ Triggered by Nebius GPU/compute and Managed Kubernetes node changes. Nebius has 
 | Node Not Ready | Triggers when a Kubernetes node leaves the Ready state |
 | Instance Stopped | Triggers when a compute instance transitions to stopped |
 
+### Pulumi Cloud
+
+Triggered by Pulumi Cloud stack, update, deployment, drift, and policy events, delivered by organization or stack **webhooks** signed with HMAC-SHA256 (`Pulumi-Webhook-Signature`) and verified by Kestrel. Filter by stack (project/stack reference), project, and event type.
+
+| Trigger Block | Description |
+|---|---|
+| Update Succeeded | Triggers when a stack update (`pulumi up`) succeeds |
+| Update Failed | Triggers when a stack update, refresh, or destroy fails |
+| Preview Failed | Triggers when a stack preview fails |
+| Destroy Succeeded | Triggers when a stack destroy succeeds |
+| Deployment Started | Triggers when a Pulumi Deployments run starts executing |
+| Deployment Succeeded | Triggers when a Pulumi Deployments run succeeds |
+| Deployment Failed | Triggers when a Pulumi Deployments run fails |
+| Drift Detected | Triggers when a drift detection run finds infrastructure drift |
+| Drift Run Failed | Triggers when a drift detection or remediation run fails |
+| Policy Violation | Triggers when a CrossGuard policy violation is detected |
+| Stack Created | Triggers when a new stack is created in the organization |
+| Stack Deleted | Triggers when a stack is deleted from the organization |
+
 ### Custom Webhook
 
 Triggered by an HTTP POST to a unique webhook URL. Accepts any JSON payload with optional HMAC signature verification. See [Custom Integrations](/workflows/custom-integrations) for details.
@@ -276,6 +295,9 @@ Actions are grouped by integration. Each action produces output variables that d
   <Card title="Nebius AI Cloud" icon="microchip">
     Get Instance, Start Instance, Stop Instance, Restart Instance, List Instances, List Clusters, List Node Groups, Scale Node Group, Investigate Nebius
   </Card>
+  <Card title="Pulumi Cloud" icon="layer-group">
+    List/Get Stack, List/Get Update, Run Deployment, Get/Wait for/Cancel Deployment, Pause/Resume Deployments, Get Stack Outputs, Get Drift Status, Set/Delete Stack Tag, Investigate Pulumi
+  </Card>
   <Card title="Approval Gates" icon="shield-check">
     Wait for Manual Approval, Wait for Slack Approval, Wait for PR/MR Approval, Refine RCA with Feedback
   </Card>
@@ -326,6 +348,14 @@ Template variables let you pass data between workflow steps. Use double curly br
 | `{{signal.node_group_id}}` | Nebius trigger | Nebius node group ID |
 | `{{signal.node_name}}` | Nebius trigger | Kubernetes node name |
 | `{{signal.condition}}` | Nebius trigger | Node condition that fired (e.g. NebiusGPUError) |
+| `{{signal.stack}}` | Pulumi Cloud trigger | Stack reference (project/stack) |
+| `{{signal.project}}` | Pulumi Cloud trigger | Pulumi project name |
+| `{{signal.operation}}` | Pulumi Cloud trigger | Operation kind (update, preview, refresh, destroy, detect-drift, remediate-drift) |
+| `{{signal.result}}` | Pulumi Cloud trigger | Operation result (succeeded, failed) |
+| `{{signal.update_version}}` | Pulumi Cloud trigger | Stack update version number |
+| `{{signal.deployment_id}}` | Pulumi Cloud trigger | Pulumi Deployments run ID (deployment events) |
+| `{{signal.update_url}}` | Pulumi Cloud trigger | Link to the update in the Pulumi Cloud console |
+| `{{signal.user}}` | Pulumi Cloud trigger | User who initiated the operation |
 | `{{signal.session_id}}` | PostHog trigger | PostHog session ID |
 
 ### Variable Picker
@@ -348,7 +378,7 @@ Cooldowns prevent a workflow from firing repeatedly for the same event. Configur
 |--------|----------|-------------|
 | No cooldown | 0 | — |
 | 5 minutes | 5m | — |
-| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, Nebius, custom webhook triggers |
+| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, Nebius, Pulumi Cloud, custom webhook triggers |
 | 30 minutes | 30m | — |
 | 1 hour | 1h | — |
 | 3 hours | 3h | — |
@@ -501,6 +531,18 @@ On **Request changes**, the reviewer's free-text guidance re-runs the RCA agent 
 | **Action 1** | Investigate Nebius | Query: find why node `{{signal.node_name}}` reported a GPU error |
 | **Action 2** | Scale Node Group | Cluster: `{{signal.cluster_id}}`, Node Group: `{{signal.node_group_id}}`, Size: `3` |
 | **Action 3** | Slack Send Message | Channel: `#ml-infra`, message: `{{step_outputs.action-1.summary}}` |
+
+### Pulumi Update Failure → Investigation → Slack Approval → Retry
+
+**Workflow Agent prompt:** *"When a Pulumi Cloud update fails on a production stack, investigate the failure, post the findings to #infra-approvals in Slack and ask for approval, then retry the update if approved."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Pulumi Update Failed | Stacks: `prod-*` |
+| **Action 1** | Investigate Pulumi | Query: why did the update fail?, Stack: `{{signal.stack}}` |
+| **Action 2** | Wait for Slack Approval | Channel: `#infra-approvals`, message includes `{{step_outputs.action-1.summary}}` and `{{signal.update_url}}` |
+| **On Approved** | Run Deployment | Stack: `{{signal.stack}}`, Operation: `update` |
+| **Action 4** | Wait for Deployment | Stack: `{{signal.stack}}`, Deployment: `{{step_outputs.action-3.deployment_id}}` |
 
 **Workflow Agent prompt:** *"When PostHog captures a frontend exception, generate an AI summary of the user's session including what they were doing before the error, and send the summary with the replay URL to #product-alerts in Slack."*
 

@@ -1,0 +1,91 @@
+---
+title: "Pulumi Cloud"
+description: "Connect Pulumi Cloud for stack update and deployment automation, drift detection and remediation, deployment queue control, stack tags, outputs, and AI investigation in workflows"
+---
+
+The Pulumi Cloud integration connects Kestrel to your Pulumi Cloud organization through the Pulumi Cloud REST API, enabling stack update, deployment, drift, and policy events to trigger workflows and letting workflows run deployments, gate destructive operations behind approvals, pause/resume deployment queues, manage stack tags, and read stack outputs.
+
+Stack and deployment events are delivered by **Pulumi Cloud webhooks** that you register at the organization or stack level. Each delivery carries a `Pulumi-Webhook-Kind` header identifying the event and is signed with HMAC-SHA256 (`Pulumi-Webhook-Signature` header) using the webhook secret Kestrel generates at connect time, and Kestrel verifies the signature before evaluating workflows.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A Pulumi Cloud organization with at least one stack
+- A Pulumi Cloud **access token** with access to the organization — an **organization token** or **team token** is recommended over a personal token
+- Deployment actions (Run Deployment, Cancel, Pause/Resume) require **Pulumi Deployments** to be configured on the target stacks
+
+## Setup
+
+<Steps>
+  <Step title="Create an access token">
+    In Pulumi Cloud (`app.pulumi.com`), go to your organization's **Settings → Access Tokens**. Create an **organization token** (or a team token scoped to the stacks your workflows manage). Copy the token — it is shown only once.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Pulumi Cloud** in your Kestrel dashboard.
+    2. Paste your **access token**.
+    3. Enter your **Organization** name (e.g. `my-org`).
+    4. Optionally set a custom **API base URL** for self-hosted Pulumi (defaults to `https://api.pulumi.com`).
+    5. Click **Connect Pulumi Cloud** — Kestrel validates the token by listing your organization's stacks and generates a **webhook secret** for delivery verification.
+  </Step>
+  <Step title="Register webhooks (for triggers)">
+    Actions work as soon as the token is connected. To have Pulumi Cloud events **trigger** workflows, add a webhook at the organization level (all stacks) or per stack:
+
+    1. On the Kestrel Pulumi Cloud integration page, copy the **Webhook URL** and the **Webhook secret**.
+    2. In Pulumi Cloud, open your organization's **Settings → Webhooks** (or a stack's **Settings → Webhooks**) and click **Create webhook**.
+    3. Set the **Payload URL** to the copied webhook URL and paste the webhook secret as the **Secret**.
+    4. Select the event groups you want (stack events, update events, deployment events, drift events, policy events).
+  </Step>
+</Steps>
+
+<Warning>
+  The access token can run deployments that change or destroy real infrastructure. Treat it as a secret — Kestrel stores it encrypted. Gate destructive workflow actions (Run Deployment with destroy or remediate-drift operations) behind Approval nodes.
+</Warning>
+
+<Note>
+  Deployment and drift events (`deployment_*`, `drift_detected`) require **Pulumi Deployments** with drift detection schedules configured on the stack (Pulumi Cloud Team/Enterprise). Update events (`update_succeeded`, `update_failed`) fire for any `pulumi up`, including CLI-driven updates.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks (webhook):**
+- **Update Succeeded** — fires when a stack update (`pulumi up`) succeeds
+- **Update Failed** — fires when a stack update, refresh, or destroy fails
+- **Preview Failed** — fires when a stack preview fails (broken program or config before anything is applied)
+- **Destroy Succeeded** — fires when a stack destroy succeeds (all managed resources torn down)
+- **Deployment Started / Succeeded / Failed** — fire as a Pulumi Deployments run progresses
+- **Drift Detected** — fires when a scheduled drift detection run finds infrastructure drift from the declared program state
+- **Drift Run Failed** — fires when a drift detection or remediation run fails to complete
+- **Policy Violation** — fires when a CrossGuard policy violation is detected during a stack operation
+- **Stack Created / Stack Deleted** — fire when stacks are created or removed in the organization
+
+Filter triggers by stack (project/stack reference), project name, and event type. Trigger events expose template variables such as `{{signal.stack}}`, `{{signal.project}}`, `{{signal.operation}}`, `{{signal.result}}`, `{{signal.update_version}}`, `{{signal.deployment_id}}`, `{{signal.organization}}`, `{{signal.user}}`, and `{{signal.update_url}}` for downstream steps.
+
+**Action blocks:**
+- **List Stacks** / **Get Stack** — inventory (last update time, resource counts, version, tags, in-flight operations)
+- **List Updates** / **Get Update** — update history and an update's result plus resource change counts (great for Slack notifications and approval context)
+- **Run Deployment** — start a Pulumi Deployments run (update, preview, refresh, destroy, detect-drift, or remediate-drift) using the stack's saved deployment settings (gate destroy and remediate-drift behind an Approval node)
+- **Get Deployment** / **Wait for Deployment** — check a deployment's status, or poll it until it reaches a terminal state (succeeded, failed, skipped) and branch on the result
+- **Cancel Deployment** — cancel a queued or running deployment
+- **Pause Deployments** / **Resume Deployments** — freeze or unfreeze a stack's deployment queue during incidents and maintenance windows
+- **Get Stack Outputs** — read the stack's current outputs from its latest state (secret outputs are redacted) to wire infrastructure values into later steps
+- **Get Drift Status** — check the latest drift detection runs for a stack
+- **Set Stack Tag** / **Delete Stack Tag** — mark stacks (e.g. quarantined, incident ID) or clean up tags
+- **Investigate Pulumi** — run a read-only AI investigation across stacks, updates, deployments, outputs, and drift
+
+Stack selects use dynamic dropdowns backed by the Pulumi Cloud API and accept template variables like `{{signal.stack}}` and `{{signal.deployment_id}}` from the trigger.
+
+Example (failure triage — the flagship Pulumi flow): When an **update fails** on a production stack, run an AI investigation, post the findings to Slack with approve/reject buttons, then **Run Deployment** (update) to retry on approval.
+
+Example (drift): When **drift is detected**, fetch the drift status, post a summary to Slack and ask for approval, then **Run Deployment** with the remediate-drift operation on approval.
+
+Example (incident): When a **deployment fails**, investigate the failure with AI, page on-call via PagerDuty with the summary and update URL, and **Pause Deployments** on the stack until the incident is resolved.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Pulumi Cloud**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all Pulumi Cloud workflow triggers and actions. Webhooks in Pulumi Cloud will keep sending deliveries until you remove them there; unverified deliveries are ignored. You can reconnect at any time.

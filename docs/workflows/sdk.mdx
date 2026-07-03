@@ -186,6 +186,20 @@ Trigger.nebius_node_not_ready()
 Trigger.nebius_instance_stopped()
 Trigger.nebius_any()
 
+# Pulumi Cloud (webhook via organization or stack webhooks)
+Trigger.pulumi_update_succeeded()
+Trigger.pulumi_update_failed()
+Trigger.pulumi_preview_failed()
+Trigger.pulumi_destroy_succeeded()
+Trigger.pulumi_deployment_started()
+Trigger.pulumi_deployment_succeeded()
+Trigger.pulumi_deployment_failed()
+Trigger.pulumi_drift_detected()           # scheduled drift run found drift
+Trigger.pulumi_policy_violation()         # mandatory policy pack blocked an update
+Trigger.pulumi_stack_created()
+Trigger.pulumi_stack_deleted()
+Trigger.pulumi_any()
+
 # Developer Requests (on-demand via Slack /kestrel-workflow, Kestrel Platform UI, or CLI)
 Trigger.request_kubernetes()    # Kubernetes operations
 Trigger.request_cloud()         # AWS / Cloud operations
@@ -197,6 +211,7 @@ Trigger.request_github()        # GitHub operations
 Trigger.request_gitlab()        # GitLab operations
 Trigger.request_helm()          # Helm operations
 Trigger.request_vercel()        # Vercel operations
+Trigger.request_pulumi()        # Pulumi Cloud operations
 Trigger.request_general()       # General (catch-all)
 ```
 
@@ -271,6 +286,16 @@ trigger = (
     .nebius_projects("project-abc")      # omit for all projects the credentials can see
     .nebius_clusters("cluster-xyz")      # optional: restrict to specific clusters
     .nebius_poll_interval("5m")          # 1m | 5m | 15m | 30m
+)
+```
+
+Pulumi Cloud triggers are webhook-based — scope to stacks (project/stack) and optionally projects:
+
+```python
+trigger = (
+    Trigger.pulumi_update_failed()
+    .pulumi_stacks("my-project/prod")    # project/stack refs or bare stack names; omit or "*" for all
+    .pulumi_projects("my-project")       # optional: filter by Pulumi project name
 )
 ```
 
@@ -435,6 +460,23 @@ Action.nebius_list_clusters().project_id("{{signal.project_id}}")
 Action.nebius_list_node_groups().cluster_id("{{signal.cluster_id}}")
 Action.nebius_scale_node_group().cluster_id("{{signal.cluster_id}}").node_group_id("{{signal.node_group_id}}").size(3)
 Action.nebius_investigate().config("query", "Why did the GPU node error?")
+
+# Pulumi Cloud (stack-scoped: .stack() in project/stack format; deployment-scoped: .deployment_id())
+Action.pulumi_list_stacks()
+Action.pulumi_get_stack().stack("{{signal.stack}}")
+Action.pulumi_list_updates().stack("{{signal.stack}}").limit(10)
+Action.pulumi_get_update().stack("{{signal.stack}}").update_version("{{signal.update_version}}")
+Action.pulumi_run_deployment().stack("my-project/prod").operation("update")   # gate destroy/remediate-drift behind approval
+Action.pulumi_get_deployment().stack("{{signal.stack}}").deployment_id("{{signal.deployment_id}}")
+Action.pulumi_wait_for_deployment().stack("{{signal.stack}}").deployment_id("{{signal.deployment_id}}").timeout_minutes(30)
+Action.pulumi_cancel_deployment().stack("{{signal.stack}}").deployment_id("{{signal.deployment_id}}")
+Action.pulumi_pause_deployments().stack("my-project/prod")     # incident/maintenance freeze
+Action.pulumi_resume_deployments().stack("my-project/prod")
+Action.pulumi_get_stack_outputs().stack("my-project/prod")
+Action.pulumi_get_drift().stack("my-project/prod")
+Action.pulumi_set_stack_tag().stack("{{signal.stack}}").tag_name("kestrel:quarantined").tag_value("true")
+Action.pulumi_delete_stack_tag().stack("{{signal.stack}}").tag_name("kestrel:quarantined")
+Action.pulumi_investigate().query("Why did the update fail?").stack("{{signal.stack}}")
 
 # Approval Gates
 Action.approval_manual()
