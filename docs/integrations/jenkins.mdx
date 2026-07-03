@@ -1,0 +1,83 @@
+---
+title: "Jenkins"
+description: "Connect Jenkins for build triggering (with parameters), build monitoring, console log retrieval, stopping runaway builds, build-failure webhooks, and AI investigation in workflows"
+---
+
+The Jenkins integration connects Kestrel to your Jenkins controller through the Jenkins REST API, enabling build lifecycle events to trigger workflows and letting workflows trigger jobs (optionally with parameters), wait on builds, fetch console logs, stop runaway builds, and run read-only AI investigations across jobs, builds, and the build queue.
+
+Build events are delivered by a **webhook notification plugin** (such as the Notification plugin) or a simple post-build `curl` step POSTing to Kestrel. Deliveries are authenticated with a per-tenant **shared secret** (the `X-Kestrel-Webhook-Secret` header, or a `?secret=` query parameter for plugins that cannot set custom headers) generated at connect time.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A Jenkins controller reachable from Kestrel (Jenkins is self-hosted; the controller URL must be accessible)
+- A Jenkins user and **API token** with permission to read jobs and trigger builds
+
+## Setup
+
+<Steps>
+  <Step title="Create an API token">
+    In Jenkins, click your username → **Configure** (or **Security**), then under **API Token** click **Add new Token**. Give it a name (e.g. `kestrel`) and copy the generated token — it is shown only once.
+
+    The username + API token authenticate to the Jenkins REST API via HTTP basic auth. The user needs at least **Job/Read** and **Job/Build** permissions for the jobs your workflows will manage.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Jenkins** in your Kestrel dashboard.
+    2. Enter your **Jenkins URL** (e.g. `https://jenkins.example.com`).
+    3. Enter the **Username** the token belongs to.
+    4. Paste the **API token**.
+    5. Click **Connect Jenkins** — Kestrel validates the credentials by listing jobs and generates a **webhook secret** for build-event deliveries.
+  </Step>
+  <Step title="Set up build-event delivery (for triggers)">
+    Actions work as soon as the credentials are connected. To have Jenkins builds **trigger** workflows, configure Jenkins to POST build events to Kestrel:
+
+    1. On the Kestrel Jenkins integration page, copy the **Webhook URL** and the **Webhook secret**.
+    2. **Option A (Notification plugin):** install the Notification plugin and add a notification endpoint to each job with the webhook URL, format JSON, protocol HTTP. Append `?secret=<webhook secret>` to the URL if the plugin cannot set custom headers.
+    3. **Option B (post-build step):** add a post-build shell step that POSTs to the webhook URL with the `X-Kestrel-Webhook-Secret` header and a JSON body containing `job_name`, `build_number`, `phase` (`STARTED`/`COMPLETED`), `status` (`SUCCESS`/`FAILURE`/`UNSTABLE`/`ABORTED`), and `build_url`.
+  </Step>
+</Steps>
+
+<Warning>
+  The API token can trigger and abort builds. Treat it as a secret — Kestrel stores it encrypted. Gate build-triggering workflow actions on production deploy jobs behind Approval nodes.
+</Warning>
+
+<Note>
+  Folder-nested jobs (including multibranch pipeline branches) are addressed by their full path, e.g. `platform/deploy-api`. The job dropdowns in the workflow builder list nested jobs automatically.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks (webhook):**
+- **Build Failed** — fires when a build completes with `FAILURE`
+- **Build Unstable** — fires when a build completes `UNSTABLE` (e.g. test failures)
+- **Build Succeeded** — fires when a build completes with `SUCCESS`
+- **Build Completed (any result)** — fires when a build finishes with any result
+- **Build Started** — fires when a build starts
+
+Filter triggers by job name (full path for folder-nested jobs) and build status. Trigger events expose template variables such as `{{signal.job_name}}`, `{{signal.build_number}}`, `{{signal.build_status}}`, and `{{signal.build_url}}` for downstream steps.
+
+**Action blocks:**
+- **Trigger Build** — trigger a job build, optionally with build parameters (one `KEY=VALUE` per line)
+- **Wait for Build** — poll a build until it finishes and branch on the result (`SUCCESS`, `FAILURE`, `UNSTABLE`, `ABORTED`)
+- **Get Build Status** — fetch a build's status without waiting (`BUILDING` while in progress)
+- **Stop Build** — abort a running build (kill hung or runaway builds to free executors; gate behind an Approval node when appropriate)
+- **Get Console Log** — fetch the tail of a build's console log (great before Slack posts or AI analysis)
+- **Investigate Jenkins** — run a read-only AI investigation across jobs, builds, console logs, and the build queue
+
+Job selects use dynamic dropdowns backed by the Jenkins API and accept template variables like `{{signal.job_name}}` and `{{signal.build_number}}` from the trigger.
+
+Example (CI failure RCA — the flagship Jenkins flow): When a **build fails**, fetch the console log, run an **AI investigation** of the failure, then post the root cause to Slack `#ci` and open a Jira ticket.
+
+Example (remediation): When a nightly job fails, **trigger** a cleanup job with parameters, **wait** for it, and page on-call via PagerDuty only if the retry also fails.
+
+Example (hygiene): On a schedule, investigate builds that have been running longer than an hour and **stop** the hung ones, posting a summary to Slack.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Jenkins**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all Jenkins workflow triggers and actions. Notification endpoints configured in Jenkins will keep sending deliveries until you remove them there; deliveries with an unknown secret are rejected. You can reconnect at any time.

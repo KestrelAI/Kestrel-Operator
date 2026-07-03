@@ -217,6 +217,29 @@ Triggered by Nebius GPU/compute and Managed Kubernetes node changes. Nebius has 
 | Node Not Ready | Triggers when a Kubernetes node leaves the Ready state |
 | Instance Stopped | Triggers when a compute instance transitions to stopped |
 
+### Jenkins
+
+Triggered by Jenkins build lifecycle events, delivered by a webhook notification plugin (or a post-build curl step) authenticated with a per-tenant shared secret. Filter by job name (full path for folder-nested jobs) and build status.
+
+| Trigger Block | Description |
+|---|---|
+| Build Failed | Triggers when a build completes with FAILURE |
+| Build Unstable | Triggers when a build completes UNSTABLE (e.g. test failures) |
+| Build Succeeded | Triggers when a build completes with SUCCESS |
+| Build Completed (any result) | Triggers when a build finishes with any result |
+| Build Started | Triggers when a build starts |
+
+### CircleCI
+
+Triggered by CircleCI's native outbound webhooks (workflow-completed / job-completed), signed with HMAC-SHA256 and verified by Kestrel. Filter by project slug, branch, and status.
+
+| Trigger Block | Description |
+|---|---|
+| Workflow Failed | Triggers when a workflow completes with failed or error status |
+| Workflow Succeeded | Triggers when a workflow completes successfully |
+| Workflow Completed (any status) | Triggers when a workflow finishes with any status |
+| Job Failed | Triggers when a job completes with failed status (finer-grained than workflow-completed) |
+
 ### Custom Webhook
 
 Triggered by an HTTP POST to a unique webhook URL. Accepts any JSON payload with optional HMAC signature verification. See [Custom Integrations](/workflows/custom-integrations) for details.
@@ -254,6 +277,12 @@ Actions are grouped by integration. Each action produces output variables that d
   </Card>
   <Card title="ArgoCD" icon="rotate">
     Trigger ArgoCD Sync, Wait for ArgoCD Sync, Get ArgoCD App Status
+  </Card>
+  <Card title="Jenkins" icon="hammer">
+    Trigger Build, Wait for Build, Get Build Status, Stop Build, Get Console Log, Investigate Jenkins
+  </Card>
+  <Card title="CircleCI" icon="circle-dot">
+    Trigger Pipeline, Wait for Pipeline, Get Workflow Status, Rerun Workflow, Cancel Workflow, Approve On-Hold Job, Get Job Test Results, Investigate CircleCI
   </Card>
   <Card title="Datadog" icon="chart-line">
     Query Metrics, Create Monitor, Send Event, Mute Monitor
@@ -326,6 +355,17 @@ Template variables let you pass data between workflow steps. Use double curly br
 | `{{signal.node_group_id}}` | Nebius trigger | Nebius node group ID |
 | `{{signal.node_name}}` | Nebius trigger | Kubernetes node name |
 | `{{signal.condition}}` | Nebius trigger | Node condition that fired (e.g. NebiusGPUError) |
+| `{{signal.job_name}}` | Jenkins / CircleCI trigger | Jenkins job full name, or CircleCI job name (job-completed events) |
+| `{{signal.build_number}}` | Jenkins trigger | Number of the build |
+| `{{signal.build_status}}` | Jenkins trigger | Build result (SUCCESS, FAILURE, UNSTABLE, ABORTED) |
+| `{{signal.build_url}}` | Jenkins trigger | Link to the build |
+| `{{signal.project_slug}}` | CircleCI trigger | Project slug (e.g. gh/org/repo) |
+| `{{signal.pipeline_id}}` | CircleCI trigger | ID of the pipeline |
+| `{{signal.workflow_id}}` | CircleCI trigger | ID of the workflow |
+| `{{signal.workflow_name}}` | CircleCI trigger | Name of the workflow |
+| `{{signal.job_number}}` | CircleCI trigger | Number of the job (job-completed events) |
+| `{{signal.status}}` | CircleCI trigger | Workflow/job status (success, failed, error, canceled) |
+| `{{signal.branch}}` | CircleCI trigger | VCS branch the pipeline ran on |
 | `{{signal.session_id}}` | PostHog trigger | PostHog session ID |
 
 ### Variable Picker
@@ -348,7 +388,7 @@ Cooldowns prevent a workflow from firing repeatedly for the same event. Configur
 |--------|----------|-------------|
 | No cooldown | 0 | — |
 | 5 minutes | 5m | — |
-| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, Nebius, custom webhook triggers |
+| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, Nebius, Jenkins, CircleCI, custom webhook triggers |
 | 30 minutes | 30m | — |
 | 1 hour | 1h | — |
 | 3 hours | 3h | — |
@@ -501,6 +541,30 @@ On **Request changes**, the reviewer's free-text guidance re-runs the RCA agent 
 | **Action 1** | Investigate Nebius | Query: find why node `{{signal.node_name}}` reported a GPU error |
 | **Action 2** | Scale Node Group | Cluster: `{{signal.cluster_id}}`, Node Group: `{{signal.node_group_id}}`, Size: `3` |
 | **Action 3** | Slack Send Message | Channel: `#ml-infra`, message: `{{step_outputs.action-1.summary}}` |
+
+### Jenkins Build Failure → Console Log → Investigation → Slack + Jira
+
+**Workflow Agent prompt:** *"When a Jenkins build fails, fetch the console log, run an AI investigation to identify the root cause of the failure, post the findings to #ci in Slack, and create a Jira ticket in the INFRA project."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Jenkins Build Failed | All jobs |
+| **Action 1** | Get Console Log | Job: `{{signal.job_name}}`, Build: `{{signal.build_number}}` |
+| **Action 2** | Investigate Jenkins | Query: analyze the console log from `{{step_outputs.action-1.summary}}` |
+| **Action 3** | Slack Send Message | Channel: `#ci`, message: `{{step_outputs.action-2.summary}}` |
+| **Action 4** | Jira Create Ticket | Project: `INFRA`, description: `{{step_outputs.action-2.answer}}` |
+
+### CircleCI Workflow Failure → Rerun From Failed → Wait → PagerDuty
+
+**Workflow Agent prompt:** *"When a CircleCI workflow fails on main, rerun only the failed jobs, wait for the pipeline to finish, and page on-call via PagerDuty with an AI investigation summary if the rerun also fails."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | CircleCI Workflow Failed | Projects: all, branch: `main` |
+| **Action 1** | Rerun Workflow | Workflow: `{{signal.workflow_id}}`, from failed jobs only |
+| **Action 2** | Wait for Pipeline | Project: `{{signal.project_slug}}`, Pipeline: `{{signal.pipeline_id}}`, timeout 30m |
+| **Action 3** | Investigate CircleCI | Query: find why `{{signal.workflow_name}}` keeps failing (only on failure branch) |
+| **Action 4** | PagerDuty Create Alert | Summary: `{{step_outputs.action-3.summary}}` |
 
 **Workflow Agent prompt:** *"When PostHog captures a frontend exception, generate an AI summary of the user's session including what they were doing before the error, and send the summary with the replay URL to #product-alerts in Slack."*
 
