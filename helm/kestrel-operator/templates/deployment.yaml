@@ -113,6 +113,18 @@ spec:
             {{- end }}
             {{- end }}
 
+            # Argo Rollouts integration (auto-detected; opt-out via values)
+            {{- if not .Values.operator.rollouts.enabled }}
+            - name: ROLLOUTS_DISABLED
+              value: "true"
+            {{- end }}
+
+            # Flux CD integration (auto-detected; opt-out via values)
+            {{- if not .Values.operator.flux.enabled }}
+            - name: FLUX_DISABLED
+              value: "true"
+            {{- end }}
+
             # OTEL Metrics Store configuration
             {{- if .Values.operator.otel.enabled }}
             - name: ENABLE_OTEL_METRICS_STORE
