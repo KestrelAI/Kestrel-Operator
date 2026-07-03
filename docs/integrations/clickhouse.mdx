@@ -17,7 +17,7 @@ ClickHouse Cloud has no control-plane webhooks (its notifications are email/cons
 
 <Steps>
   <Step title="Create an API key">
-    In the ClickHouse Cloud console (`console.clickhouse.cloud`), open **API Keys** in the left sidebar, click **New API Key**, give it a name (e.g. `kestrel`), and select the **Admin** role (Developer keys are read-only and cannot start/stop/scale services). Copy the generated **Key ID** and **Key secret** (shown only once).
+    In the ClickHouse Cloud console (`console.clickhouse.cloud`), click your **organization** name in the bottom-left to open the organization menu, choose **API keys**, then click **New API key**. Give it a name (e.g. `kestrel`) and select the **Admin** role (Developer keys are read-only and cannot start/stop/scale services). Copy the generated **Key ID** and **Key secret** (shown only once).
 
     The key ID and secret are sent as HTTP Basic auth to the ClickHouse Cloud API at `api.clickhouse.cloud` to read and manage services, backups, and ClickPipes.
   </Step>
@@ -51,6 +51,9 @@ ClickHouse Cloud has no control-plane webhooks (its notifications are email/cons
 - **ClickPipe Failed** — fires when a managed ingestion pipeline enters a failed state
 - **Version Changed** — fires when a service's ClickHouse version changes after an upgrade
 - **Usage/Spend Threshold** — fires when month-to-date spend (ClickHouse Credits) crosses a percent of a configured monthly budget
+- **Too Many Parts** — fires when a partition's max part count exceeds a threshold (the classic "too many parts" incident)
+- **Failed Mutations** — fires when the failed-mutation counter increases past a threshold within a poll window
+- **High Query Concurrency** — fires when concurrent running queries exceed a threshold
 
 Filter triggers by service ID and event type; the error-spike threshold, monthly budget, and usage percent are configurable per trigger.
 
@@ -66,6 +69,13 @@ Filter triggers by service ID and event type; the error-spike threshold, monthly
 - **List API Keys** — key hygiene (metadata only; secrets are never returned)
 - **Get Service Metrics** — fetch failed-query Prometheus counters during RCA
 - **Get Usage Costs** — org spend report in ClickHouse Credits
+- **Get / Set / Clear Autoscaling Schedule** — native scheduled autoscaling (business-hours scale-down; the race-free cost lever)
+- **Get / Set / Clear Upgrade Window** — control when ClickHouse version upgrades occur (maintenance governance)
+- **Get / Update / Reset ClickHouse Setting** — tune server/query settings, e.g. `max_concurrent_queries` (Beta API; some settings trigger a rollout restart)
+- **Get / Upsert / Delete Query Endpoint** — manage the query API endpoint (roles, allowed origins)
+- **List Members** / **Remove Member** — org access review and offboarding (gate remove behind Approval)
+- **List Roles** — org role inventory for access review
+- **List Activity** — org audit/activity log over a recent window (security RCA)
 - **List ClickPipes** / **Get ClickPipe** / **Start ClickPipe** / **Stop ClickPipe** / **Resync ClickPipe** / **Scale ClickPipe** — manage managed ingestion (Kafka, S3, CDC)
 - **Investigate ClickHouse** — run an AI investigation of services, backups, ClickPipes, metrics, and costs
 
