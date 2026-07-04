@@ -30,9 +30,12 @@ Run and health-assessment events are delivered by **workspace notification confi
     Actions work as soon as the token is connected. To have Terraform Cloud events **trigger** workflows, add a notification configuration to each workspace you care about:
 
     1. On the Kestrel Terraform Cloud integration page, copy the **Webhook URL** and the **Notification token**.
-    2. In each Terraform Cloud workspace, open **Settings → Notifications → Create a Notification**.
-    3. Choose the **Webhook** destination, set the URL to the copied webhook URL, and paste the notification token as the **Token**.
-    4. Select the run and health-assessment events you want (Created, Planning, Needs Attention, Applying, Completed, Errored, Drifted, Check Failed).
+    2. In Terraform Cloud, go to **Workspaces** and open the workspace you want events from. Notifications are a **per-workspace** setting — you won't find them under Organization Settings.
+    3. In the workspace's sidebar, open **Settings → Notifications** and click **Create a Notification**.
+    4. Choose the **Webhook** destination, set the URL to the copied webhook URL, and paste the notification token as the **Token**.
+    5. Select the run events you want (Created, Planning, Needs Attention, Applying, Completed, Errored).
+    6. If the workspace has **health assessments** enabled (HCP Terraform Plus/Premium), a **Health Events** section also appears — select **Drifted** and **Check Failed** there to enable drift triggers. On workspaces without health assessments, these options are not shown.
+    7. Repeat for each workspace that should trigger workflows.
   </Step>
 </Steps>
 
