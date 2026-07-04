@@ -136,6 +136,7 @@
         "integrations/argocd",
         "integrations/argo-rollouts",
         "integrations/fluxcd",
+        "integrations/terraform",
         "integrations/knowledge-sources"
       ]
     },

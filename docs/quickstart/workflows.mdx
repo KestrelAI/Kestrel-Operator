@@ -48,6 +48,7 @@ Kestrel Workflows let you automate incident response, cloud resource provisionin
     | **PagerDuty** | Incident Triggered, Incident Acknowledged, Incident Resolved, Any PagerDuty Incident, High Urgency Incident |
     | **PostHog** | Session Error/Exception, Console Error, Rage Click, Any PostHog Event, Log Error Alert |
     | **Vercel** | Deployment Failed, Deployment Succeeded, Deployment Created, Error Anomaly, Usage Anomaly, Domain Issue, Firewall Attack Detected, Deployment Checks Failed, Production Rollback |
+    | **Terraform Cloud** | Run Created, Run Planning, Run Needs Attention, Run Applying, Run Completed, Run Errored, Drift Detected, Assessment Check Failed |
     | **Custom Webhook** | Any HTTP POST to your workflow's unique webhook endpoint with HMAC signature verification |
 
     Configure trigger-specific filters to control when the workflow fires — for example, limit a K8s trigger to a specific namespace, cluster, or set of AWS accounts.
@@ -88,6 +89,7 @@ Kestrel Workflows let you automate incident response, cloud resource provisionin
 | CI/CD automation | GitHub PR merged | ArgoCD sync → Run tests → Notify Slack on failure |
 | Cost anomaly response | AWS cost spike detected | Investigate resources → Slack alert to #finops → Linear ticket |
 | Vercel deployment failure | Vercel Deployment Failed | Get build logs → AI investigation → Slack notification |
+| Terraform apply approval | Terraform Run Needs Attention | Get run plan summary → Slack approval → Apply or Discard run |
 | PostHog exception alert | PostHog Session Error | Session summary → Slack alert → Jira ticket if critical |
 
 ## What's Next

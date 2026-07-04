@@ -186,6 +186,15 @@ Trigger.nebius_node_not_ready()
 Trigger.nebius_instance_stopped()
 Trigger.nebius_any()
 
+# Terraform Cloud (webhook via workspace notification configurations)
+Trigger.terraform_run_created()
+Trigger.terraform_run_needs_attention()   # plan finished, awaiting confirmation
+Trigger.terraform_run_completed()
+Trigger.terraform_run_errored()
+Trigger.terraform_drift_detected()        # health assessment found drift
+Trigger.terraform_check_failed()
+Trigger.terraform_any()
+
 # Developer Requests (on-demand via Slack /kestrel-workflow, Kestrel Platform UI, or CLI)
 Trigger.request_kubernetes()    # Kubernetes operations
 Trigger.request_cloud()         # AWS / Cloud operations
@@ -197,6 +206,7 @@ Trigger.request_github()        # GitHub operations
 Trigger.request_gitlab()        # GitLab operations
 Trigger.request_helm()          # Helm operations
 Trigger.request_vercel()        # Vercel operations
+Trigger.request_terraform()     # Terraform Cloud operations
 Trigger.request_general()       # General (catch-all)
 ```
 
@@ -271,6 +281,16 @@ trigger = (
     .nebius_projects("project-abc")      # omit for all projects the credentials can see
     .nebius_clusters("cluster-xyz")      # optional: restrict to specific clusters
     .nebius_poll_interval("5m")          # 1m | 5m | 15m | 30m
+)
+```
+
+Terraform Cloud triggers are webhook-based — scope to workspaces and optionally run statuses:
+
+```python
+trigger = (
+    Trigger.terraform_run_errored()
+    .terraform_workspaces("prod-vpc", "prod-eks")   # omit or use "*" for all workspaces
+    .terraform_run_statuses("errored")              # optional: filter by run status
 )
 ```
 
@@ -435,6 +455,26 @@ Action.nebius_list_clusters().project_id("{{signal.project_id}}")
 Action.nebius_list_node_groups().cluster_id("{{signal.cluster_id}}")
 Action.nebius_scale_node_group().cluster_id("{{signal.cluster_id}}").node_group_id("{{signal.node_group_id}}").size(3)
 Action.nebius_investigate().config("query", "Why did the GPU node error?")
+
+# Terraform Cloud (workspace-scoped: .workspace(); run-scoped: .run_id())
+Action.terraform_list_workspaces()
+Action.terraform_get_workspace().workspace("{{signal.workspace}}")
+Action.terraform_lock_workspace().workspace("{{signal.workspace}}").reason("Incident freeze")
+Action.terraform_unlock_workspace().workspace("{{signal.workspace}}")
+Action.terraform_force_unlock_workspace().workspace("{{signal.workspace}}")   # gate behind approval
+Action.terraform_list_runs().workspace("{{signal.workspace}}").limit(10)
+Action.terraform_get_run().workspace("{{signal.workspace}}").run_id("{{signal.run_id}}")
+Action.terraform_create_run().workspace("prod-vpc").run_message("Queued by Kestrel").auto_apply(False)
+Action.terraform_create_destroy_run().workspace("staging-sandbox")           # gate behind approval
+Action.terraform_apply_run().workspace("{{signal.workspace}}").run_id("{{signal.run_id}}").comment("Approved via Kestrel")  # gate behind approval
+Action.terraform_discard_run().workspace("{{signal.workspace}}").run_id("{{signal.run_id}}")
+Action.terraform_cancel_run().workspace("{{signal.workspace}}").run_id("{{signal.run_id}}")
+Action.terraform_wait_for_run().workspace("{{signal.workspace}}").run_id("{{signal.run_id}}").timeout_minutes(30)
+Action.terraform_get_state_outputs().workspace("prod-vpc")
+Action.terraform_list_variables().workspace("prod-vpc")
+Action.terraform_set_variable().workspace("prod-vpc").key("instance_count").value("3").category("terraform")  # gate behind approval
+Action.terraform_get_drift().workspace("prod-vpc")
+Action.terraform_investigate().query("Why did the latest run fail?").workspace("{{signal.workspace}}")
 
 # Approval Gates
 Action.approval_manual()
