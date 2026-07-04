@@ -31,9 +31,15 @@ Stack and deployment events are delivered by **Pulumi Cloud webhooks** that you 
     Actions work as soon as the token is connected. To have Pulumi Cloud events **trigger** workflows, add a webhook at the organization level (all stacks) or per stack:
 
     1. On the Kestrel Pulumi Cloud integration page, copy the **Webhook URL** and the **Webhook secret**.
-    2. In Pulumi Cloud, open your organization's **Settings → Webhooks** (or a stack's **Settings → Webhooks**) and click **Create webhook**.
-    3. Set the **Payload URL** to the copied webhook URL and paste the webhook secret as the **Secret**.
-    4. Select the event groups you want (stack events, update events, deployment events, drift events, policy events).
+    2. In Pulumi Cloud, open your organization's **Settings → Integrations**, scroll to the **Webhooks** section, and click **Add webhook** (for per-stack events, use the stack's **Settings → Webhooks** instead).
+    3. Under **Destination**, choose **Webhook** (not Slack or Microsoft Teams) and give it a display name (e.g. `kestrel`).
+    4. Set the **Payload URL** to the copied webhook URL and paste the webhook secret into the **Secret** field. The secret is required — Kestrel rejects unsigned deliveries.
+    5. Under **Triggers**, check these boxes so every Kestrel trigger block receives its events:
+       - **All Stack events** — powers **Stack Created**, **Stack Deleted**, **Update Succeeded**, **Update Failed**, **Preview Failed**, and **Destroy Succeeded**.
+       - **All Deployment events** — powers **Deployment Started / Succeeded / Failed**, **Drift Detected**, and **Drift Run Failed** (the drift detection and remediation checkboxes live in this section).
+       - **All Policy events** — powers **Policy Violation** (both mandatory and advisory violations).
+       - **Environment events** and **Change requests** are not consumed by Kestrel and can be left unchecked.
+    6. Click **Create**. Pulumi Cloud sends a `ping` delivery on creation, which Kestrel acknowledges — the integration page's webhook event counter increments once the first delivery is verified.
   </Step>
 </Steps>
 
