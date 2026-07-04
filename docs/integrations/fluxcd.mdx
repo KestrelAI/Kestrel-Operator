@@ -1,0 +1,66 @@
+---
+title: "Flux CD"
+description: "Connect Flux CD for GitOps actions — reconcile, suspend, and resume Kustomizations, HelmReleases, and sources in workflows"
+---
+
+The Flux CD integration connects Kestrel to your in-cluster Flux installation, enabling AI agents to trigger reconciliations, suspend or resume GitOps resources, and inspect reconciliation status as part of automated workflows and incident response.
+
+## Prerequisites
+
+- Kestrel Operator deployed in your cluster (see [Kubernetes](/integrations/kubernetes))
+- Flux controllers and CRDs installed in the same cluster (`kustomize.toolkit.fluxcd.io`, `helm.toolkit.fluxcd.io`, `source.toolkit.fluxcd.io`)
+
+## Setup
+
+Flux CD is auto-detected by the Kestrel Operator when the Flux CRDs are present in the cluster. No manual connection or credentials are required.
+
+<Steps>
+  <Step title="Install Flux">
+    If Flux is not already installed, bootstrap it with the Flux CLI:
+    ```bash
+    flux bootstrap github \
+      --owner=<org> \
+      --repository=<repo> \
+      --path=clusters/my-cluster
+    ```
+  </Step>
+  <Step title="Verify detection">
+    The operator probes for the Flux CRDs on each inventory sync. Check the operator logs:
+    ```bash
+    kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "Flux"
+    ```
+    Once detected, the integration shows as **Detected** on the Integrations page and Flux action blocks become available in the workflow builder.
+  </Step>
+</Steps>
+
+<Note>
+  The integration is enabled by default. To opt out, set `operator.flux.enabled: false` in your Helm values and upgrade the operator (this sets `FLUX_DISABLED=true` on the operator deployment).
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Action blocks:**
+- **Reconcile Flux Resource** — trigger an immediate reconciliation of a Kustomization, HelmRelease, GitRepository, HelmRepository, or OCIRepository (optionally reconciling its source first)
+- **Suspend Flux Resource** — suspend reconciliation of a resource (e.g., to freeze deployments during an incident)
+- **Resume Flux Resource** — resume reconciliation of a suspended resource
+- **Get Flux Resource Status** — retrieve ready condition, last applied revision, and suspension state
+- **Wait for Flux Ready** — block workflow execution until a resource reports Ready (with configurable timeout)
+- **Get Flux Events** — fetch recent Kubernetes events for a Flux resource to aid debugging
+
+Example: A workflow triggered by a PagerDuty incident suspends the affected HelmRelease to stop Flux from re-applying a bad change, notifies the team in Slack, and resumes reconciliation once an approval gate is passed.
+
+### Scoping
+
+Flux actions are scoped by **cluster**, **resource kind**, **namespace**, and **resource name** — all populated with dropdowns from live cluster data in the workflow builder.
+
+## Disconnecting
+
+To disable the Flux CD integration, set the following in your Helm values and upgrade the operator:
+
+```yaml
+operator:
+  flux:
+    enabled: false
+```

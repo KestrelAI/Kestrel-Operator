@@ -134,6 +134,9 @@
         "integrations/datadog",
         "integrations/opentelemetry",
         "integrations/argocd",
+        "integrations/argo-rollouts",
+        "integrations/fluxcd",
+        "integrations/terraform",
         "integrations/pulumi",
         "integrations/knowledge-sources"
       ]
