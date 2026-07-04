@@ -201,6 +201,29 @@ Trigger.circleci_workflow_completed()     # any status
 Trigger.circleci_job_failed()
 Trigger.circleci_any()
 
+# Terraform Cloud (webhook via workspace notification configurations)
+Trigger.terraform_run_created()
+Trigger.terraform_run_needs_attention()   # plan finished, awaiting confirmation
+Trigger.terraform_run_completed()
+Trigger.terraform_run_errored()
+Trigger.terraform_drift_detected()        # health assessment found drift
+Trigger.terraform_check_failed()
+Trigger.terraform_any()
+
+# Pulumi Cloud (webhook via organization or stack webhooks)
+Trigger.pulumi_update_succeeded()
+Trigger.pulumi_update_failed()
+Trigger.pulumi_preview_failed()
+Trigger.pulumi_destroy_succeeded()
+Trigger.pulumi_deployment_started()
+Trigger.pulumi_deployment_succeeded()
+Trigger.pulumi_deployment_failed()
+Trigger.pulumi_drift_detected()           # scheduled drift run found drift
+Trigger.pulumi_policy_violation()         # mandatory policy pack blocked an update
+Trigger.pulumi_stack_created()
+Trigger.pulumi_stack_deleted()
+Trigger.pulumi_any()
+
 # Developer Requests (on-demand via Slack /kestrel-workflow, Kestrel Platform UI, or CLI)
 Trigger.request_kubernetes()    # Kubernetes operations
 Trigger.request_cloud()         # AWS / Cloud operations
@@ -214,6 +237,8 @@ Trigger.request_helm()          # Helm operations
 Trigger.request_vercel()        # Vercel operations
 Trigger.request_jenkins()       # Jenkins operations
 Trigger.request_circleci()      # CircleCI operations
+Trigger.request_terraform()     # Terraform Cloud operations
+Trigger.request_pulumi()        # Pulumi Cloud operations
 Trigger.request_general()       # General (catch-all)
 ```
 
@@ -305,6 +330,26 @@ trigger = (
     .circleci_projects("gh/acme/api")          # project slugs; omit for all followed projects
     .circleci_branches("main")                 # optional: filter by branch
     .circleci_statuses("failed", "error")      # optional: filter by status
+)
+```
+
+Terraform Cloud triggers are webhook-based — scope to workspaces and optionally run statuses:
+
+```python
+trigger = (
+    Trigger.terraform_run_errored()
+    .terraform_workspaces("prod-vpc", "prod-eks")   # omit or use "*" for all workspaces
+    .terraform_run_statuses("errored")              # optional: filter by run status
+)
+```
+
+Pulumi Cloud triggers are webhook-based — scope to stacks (project/stack) and optionally projects:
+
+```python
+trigger = (
+    Trigger.pulumi_update_failed()
+    .pulumi_stacks("my-project/prod")    # project/stack refs or bare stack names; omit or "*" for all
+    .pulumi_projects("my-project")       # optional: filter by Pulumi project name
 )
 ```
 
@@ -487,6 +532,43 @@ Action.circleci_cancel_workflow().workflow_id("{{signal.workflow_id}}")
 Action.circleci_approve_job().workflow_id("{{signal.workflow_id}}").job_name("hold-production")   # gate behind approval
 Action.circleci_get_job_tests().project_slug("{{signal.project_slug}}").job_number("{{signal.job_number}}")
 Action.circleci_investigate().query("Why did the main-branch workflow fail?").project_slug("{{signal.project_slug}}")
+
+# Terraform Cloud (workspace-scoped: .workspace(); run-scoped: .run_id())
+Action.terraform_list_workspaces()
+Action.terraform_get_workspace().workspace("{{signal.workspace}}")
+Action.terraform_lock_workspace().workspace("{{signal.workspace}}").reason("Incident freeze")
+Action.terraform_unlock_workspace().workspace("{{signal.workspace}}")
+Action.terraform_force_unlock_workspace().workspace("{{signal.workspace}}")   # gate behind approval
+Action.terraform_list_runs().workspace("{{signal.workspace}}").limit(10)
+Action.terraform_get_run().workspace("{{signal.workspace}}").run_id("{{signal.run_id}}")
+Action.terraform_create_run().workspace("prod-vpc").run_message("Queued by Kestrel").auto_apply(False)
+Action.terraform_create_destroy_run().workspace("staging-sandbox")           # gate behind approval
+Action.terraform_apply_run().workspace("{{signal.workspace}}").run_id("{{signal.run_id}}").comment("Approved via Kestrel")  # gate behind approval
+Action.terraform_discard_run().workspace("{{signal.workspace}}").run_id("{{signal.run_id}}")
+Action.terraform_cancel_run().workspace("{{signal.workspace}}").run_id("{{signal.run_id}}")
+Action.terraform_wait_for_run().workspace("{{signal.workspace}}").run_id("{{signal.run_id}}").timeout_minutes(30)
+Action.terraform_get_state_outputs().workspace("prod-vpc")
+Action.terraform_list_variables().workspace("prod-vpc")
+Action.terraform_set_variable().workspace("prod-vpc").key("instance_count").value("3").category("terraform")  # gate behind approval
+Action.terraform_get_drift().workspace("prod-vpc")
+Action.terraform_investigate().query("Why did the latest run fail?").workspace("{{signal.workspace}}")
+
+# Pulumi Cloud (stack-scoped: .stack() in project/stack format; deployment-scoped: .deployment_id())
+Action.pulumi_list_stacks()
+Action.pulumi_get_stack().stack("{{signal.stack}}")
+Action.pulumi_list_updates().stack("{{signal.stack}}").limit(10)
+Action.pulumi_get_update().stack("{{signal.stack}}").update_version("{{signal.update_version}}")
+Action.pulumi_run_deployment().stack("my-project/prod").operation("update")   # gate destroy/remediate-drift behind approval
+Action.pulumi_get_deployment().stack("{{signal.stack}}").deployment_id("{{signal.deployment_id}}")
+Action.pulumi_wait_for_deployment().stack("{{signal.stack}}").deployment_id("{{signal.deployment_id}}").timeout_minutes(30)
+Action.pulumi_cancel_deployment().stack("{{signal.stack}}").deployment_id("{{signal.deployment_id}}")
+Action.pulumi_pause_deployments().stack("my-project/prod")     # incident/maintenance freeze
+Action.pulumi_resume_deployments().stack("my-project/prod")
+Action.pulumi_get_stack_outputs().stack("my-project/prod")
+Action.pulumi_get_drift().stack("my-project/prod")
+Action.pulumi_set_stack_tag().stack("{{signal.stack}}").tag_name("kestrel:quarantined").tag_value("true")
+Action.pulumi_delete_stack_tag().stack("{{signal.stack}}").tag_name("kestrel:quarantined")
+Action.pulumi_investigate().query("Why did the update fail?").stack("{{signal.stack}}")
 
 # Approval Gates
 Action.approval_manual()

@@ -240,6 +240,40 @@ Triggered by CircleCI's native outbound webhooks (workflow-completed / job-compl
 | Workflow Completed (any status) | Triggers when a workflow finishes with any status |
 | Job Failed | Triggers when a job completes with failed status (finer-grained than workflow-completed) |
 
+### Terraform Cloud
+
+Triggered by Terraform Cloud (HCP Terraform) run lifecycle and drift events, delivered by per-workspace **notification configurations** (webhooks) signed with HMAC-SHA512 and verified by Kestrel. Filter by workspace, event type, and run status.
+
+| Trigger Block | Description |
+|---|---|
+| Run Created | Triggers when a new run is queued on a workspace |
+| Run Planning | Triggers when a run starts planning |
+| Run Needs Attention | Triggers when a plan finishes and the run awaits confirmation |
+| Run Applying | Triggers when a run starts applying |
+| Run Completed | Triggers when a run applies successfully or finishes as planned-and-finished |
+| Run Errored | Triggers when a run fails (plan/apply error, policy hard-fail) |
+| Drift Detected | Triggers when a workspace health assessment detects infrastructure drift |
+| Assessment Check Failed | Triggers when a workspace health assessment fails to run |
+
+### Pulumi Cloud
+
+Triggered by Pulumi Cloud stack, update, deployment, drift, and policy events, delivered by organization or stack **webhooks** signed with HMAC-SHA256 (`Pulumi-Webhook-Signature`) and verified by Kestrel. Filter by stack (project/stack reference), project, and event type.
+
+| Trigger Block | Description |
+|---|---|
+| Update Succeeded | Triggers when a stack update (`pulumi up`) succeeds |
+| Update Failed | Triggers when a stack update, refresh, or destroy fails |
+| Preview Failed | Triggers when a stack preview fails |
+| Destroy Succeeded | Triggers when a stack destroy succeeds |
+| Deployment Started | Triggers when a Pulumi Deployments run starts executing |
+| Deployment Succeeded | Triggers when a Pulumi Deployments run succeeds |
+| Deployment Failed | Triggers when a Pulumi Deployments run fails |
+| Drift Detected | Triggers when a drift detection run finds infrastructure drift |
+| Drift Run Failed | Triggers when a drift detection or remediation run fails |
+| Policy Violation | Triggers when a CrossGuard policy violation is detected |
+| Stack Created | Triggers when a new stack is created in the organization |
+| Stack Deleted | Triggers when a stack is deleted from the organization |
+
 ### Custom Webhook
 
 Triggered by an HTTP POST to a unique webhook URL. Accepts any JSON payload with optional HMAC signature verification. See [Custom Integrations](/workflows/custom-integrations) for details.
@@ -305,6 +339,12 @@ Actions are grouped by integration. Each action produces output variables that d
   <Card title="Nebius AI Cloud" icon="microchip">
     Get Instance, Start Instance, Stop Instance, Restart Instance, List Instances, List Clusters, List Node Groups, Scale Node Group, Investigate Nebius
   </Card>
+  <Card title="Terraform Cloud" icon="cubes">
+    List/Get Workspace, Lock/Unlock/Force-Unlock Workspace, List/Get Run, Create Run (Plan), Create Destroy Run, Apply Run, Discard Run, Cancel Run, Wait for Run, Get State Outputs, List Variables, Set Variable, Get Drift Assessment, Investigate Terraform
+  </Card>
+  <Card title="Pulumi Cloud" icon="layer-group">
+    List/Get Stack, List/Get Update, Run Deployment, Get/Wait for/Cancel Deployment, Pause/Resume Deployments, Get Stack Outputs, Get Drift Status, Set/Delete Stack Tag, Investigate Pulumi
+  </Card>
   <Card title="Approval Gates" icon="shield-check">
     Wait for Manual Approval, Wait for Slack Approval, Wait for PR/MR Approval, Refine RCA with Feedback
   </Card>
@@ -367,6 +407,20 @@ Template variables let you pass data between workflow steps. Use double curly br
 | `{{signal.status}}` | CircleCI trigger | Workflow/job status (success, failed, error, canceled) |
 | `{{signal.branch}}` | CircleCI trigger | VCS branch the pipeline ran on |
 | `{{signal.session_id}}` | PostHog trigger | PostHog session ID |
+| `{{signal.workspace}}` | Terraform Cloud trigger | Workspace name |
+| `{{signal.run_id}}` | Terraform Cloud trigger | Run ID (run-...) |
+| `{{signal.run_status}}` | Terraform Cloud trigger | Run status at notification time |
+| `{{signal.run_url}}` | Terraform Cloud trigger | Link to the run in Terraform Cloud |
+| `{{signal.organization}}` | Terraform Cloud trigger | Terraform Cloud organization |
+| `{{signal.session_id}}` | PostHog trigger | PostHog session ID |
+| `{{signal.stack}}` | Pulumi Cloud trigger | Stack reference (project/stack) |
+| `{{signal.project}}` | Pulumi Cloud trigger | Pulumi project name |
+| `{{signal.operation}}` | Pulumi Cloud trigger | Operation kind (update, preview, refresh, destroy, detect-drift, remediate-drift) |
+| `{{signal.result}}` | Pulumi Cloud trigger | Operation result (succeeded, failed) |
+| `{{signal.update_version}}` | Pulumi Cloud trigger | Stack update version number |
+| `{{signal.deployment_id}}` | Pulumi Cloud trigger | Pulumi Deployments run ID (deployment events) |
+| `{{signal.update_url}}` | Pulumi Cloud trigger | Link to the update in the Pulumi Cloud console |
+| `{{signal.user}}` | Pulumi Cloud trigger | User who initiated the operation |
 
 ### Variable Picker
 
@@ -388,7 +442,7 @@ Cooldowns prevent a workflow from firing repeatedly for the same event. Configur
 |--------|----------|-------------|
 | No cooldown | 0 | — |
 | 5 minutes | 5m | — |
-| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, Nebius, Jenkins, CircleCI, custom webhook triggers |
+| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, Nebius, Jenkins, CircleCI, Terraform Cloud, Pulumi Cloud, custom webhook triggers |
 | 30 minutes | 30m | — |
 | 1 hour | 1h | — |
 | 3 hours | 3h | — |
@@ -566,6 +620,8 @@ On **Request changes**, the reviewer's free-text guidance re-runs the RCA agent 
 | **Action 3** | Investigate CircleCI | Query: find why `{{signal.workflow_name}}` keeps failing (only on failure branch) |
 | **Action 4** | PagerDuty Create Alert | Summary: `{{step_outputs.action-3.summary}}` |
 
+### PostHog Exception → Investigation → Slack
+
 **Workflow Agent prompt:** *"When PostHog captures a frontend exception, generate an AI summary of the user's session including what they were doing before the error, and send the summary with the replay URL to #product-alerts in Slack."*
 
 | Step | Type | Configuration |
@@ -573,6 +629,30 @@ On **Request changes**, the reviewer's free-text guidance re-runs the RCA agent 
 | **Trigger** | PostHog Session Error/Exception | All events |
 | **Action 1** | Get Session Summary | Session: `{{signal.session_id}}` |
 | **Action 2** | Slack Send Message | Channel: `#product-alerts`, message: `{{step_outputs.action-1.summary}}` with replay URL |
+
+### Terraform Run Needs Attention → Plan Summary → Slack Approval → Apply
+
+**Workflow Agent prompt:** *"When a Terraform Cloud run on a production workspace finishes planning and needs confirmation, fetch the planned changes, ask for approval in #infra-approvals, and apply the run if approved or discard it if rejected."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Terraform Run Needs Attention | Workspaces: `prod-*` |
+| **Action 1** | Get Run | Workspace: `{{signal.workspace}}`, Run: `{{signal.run_id}}` |
+| **Action 2** | Wait for Slack Approval | Channel: `#infra-approvals`, message includes `{{step_outputs.action-1.summary}}` and `{{signal.run_url}}` |
+| **On Approved** | Apply Run | Workspace: `{{signal.workspace}}`, Run: `{{signal.run_id}}` |
+| **On Rejected** | Discard Run | Workspace: `{{signal.workspace}}`, Run: `{{signal.run_id}}` |
+
+### Pulumi Update Failure → Investigation → Slack Approval → Retry
+
+**Workflow Agent prompt:** *"When a Pulumi Cloud update fails on a production stack, investigate the failure, post the findings to #infra-approvals in Slack and ask for approval, then retry the update if approved."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Pulumi Update Failed | Stacks: `prod-*` |
+| **Action 1** | Investigate Pulumi | Query: why did the update fail?, Stack: `{{signal.stack}}` |
+| **Action 2** | Wait for Slack Approval | Channel: `#infra-approvals`, message includes `{{step_outputs.action-1.summary}}` and `{{signal.update_url}}` |
+| **On Approved** | Run Deployment | Stack: `{{signal.stack}}`, Operation: `update` |
+| **Action 4** | Wait for Deployment | Stack: `{{signal.stack}}`, Deployment: `{{step_outputs.action-3.deployment_id}}` |
 
 ### Cloud Cost Anomaly → AI Analysis → Slack Report
 

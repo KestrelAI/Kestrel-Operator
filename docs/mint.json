@@ -136,6 +136,10 @@
         "integrations/argocd",
         "integrations/jenkins",
         "integrations/circleci",
+        "integrations/argo-rollouts",
+        "integrations/fluxcd",
+        "integrations/terraform",
+        "integrations/pulumi",
         "integrations/knowledge-sources"
       ]
     },

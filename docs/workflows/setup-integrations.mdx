@@ -21,6 +21,12 @@ You only need to connect an integration once. All workflows in your organization
   <Card title="OCI" icon="cloud" href="/integrations/oci">
     Connect Oracle Cloud Infrastructure for resource inventory and incident detection.
   </Card>
+  <Card title="Terraform Cloud" icon="cubes" href="/integrations/terraform">
+    **Triggers (webhook):** Run Created, Run Planning, Run Needs Attention, Run Applying, Run Completed, Run Errored, Drift Detected, Assessment Check Failed. **Actions:** List/Get Workspace, Lock/Unlock/Force-Unlock Workspace, List/Get Run, Create Run (Plan), Create Destroy Run, Apply/Discard/Cancel Run, Wait for Run, Get State Outputs, List Variables, Set Variable, Get Drift Assessment, Investigate Terraform.
+  </Card>
+  <Card title="Pulumi Cloud" icon="layer-group" href="/integrations/pulumi">
+    **Triggers (webhook):** Update Succeeded/Failed, Preview Failed, Destroy Succeeded, Deployment Started/Succeeded/Failed, Drift Detected, Drift Run Failed, Policy Violation, Stack Created/Deleted. **Actions:** List/Get Stack, List/Get Update, Run Deployment (update/preview/refresh/destroy/drift), Get/Wait for/Cancel Deployment, Pause/Resume Deployments, Get Stack Outputs, Get Drift Status, Set/Delete Stack Tag, Investigate Pulumi.
+  </Card>
 </CardGroup>
 
 ## Source Control & CI/CD

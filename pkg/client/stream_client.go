@@ -16,6 +16,8 @@ import (
 	"operator/pkg/otel_receiver"
 	"operator/pkg/datadog_executor"
 	"operator/pkg/argocd_executor"
+	"operator/pkg/flux_executor"
+	"operator/pkg/rollouts_executor"
 	"operator/pkg/shell_executor"
 	smartcache "operator/pkg/smart_cache"
 	"os"
@@ -80,6 +82,8 @@ type StreamClient struct {
 	shellExecutor    *shell_executor.ShellExecutor
 	datadogExecutor  *datadog_executor.DatadogExecutor
 	argoCDExecutor   *argocd_executor.ArgoCDExecutor
+	rolloutsExecutor *rollouts_executor.RolloutsExecutor
+	fluxExecutor     *flux_executor.FluxExecutor
 
 	// OTEL Metrics Store for local metrics storage and querying
 	metricsStore *metrics_store.MetricsStore
@@ -533,6 +537,30 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		logger.Info("ArgoCD integration not configured (ARGOCD_NAMESPACE not set)")
 	}
 
+	// Initialize Argo Rollouts and Flux CD executors. Both are CRD-based
+	// (no external API auth) and probe cheaply, so they are always created;
+	// availability is determined by the CRD probe before the inventory commit.
+	// Set ROLLOUTS_DISABLED / FLUX_DISABLED to opt out entirely.
+	var rolloutsExecutor *rollouts_executor.RolloutsExecutor
+	var fluxExecutor *flux_executor.FluxExecutor
+	dynamicClient, dynErr := k8s_helper.NewDynamicClient()
+	if dynErr != nil {
+		logger.Warn("Failed to create dynamic client — Argo Rollouts and Flux CD integrations disabled", zap.Error(dynErr))
+	} else {
+		if os.Getenv("ROLLOUTS_DISABLED") != "true" {
+			rolloutsExecutor = rollouts_executor.NewRolloutsExecutor(logger, dynamicClient)
+			logger.Info("Argo Rollouts executor initialized (availability determined by CRD probe)")
+		} else {
+			logger.Info("Argo Rollouts integration disabled (ROLLOUTS_DISABLED=true)")
+		}
+		if os.Getenv("FLUX_DISABLED") != "true" {
+			fluxExecutor = flux_executor.NewFluxExecutor(logger, dynamicClient, k8sClient)
+			logger.Info("Flux CD executor initialized (availability determined by CRD probe)")
+		} else {
+			logger.Info("Flux CD integration disabled (FLUX_DISABLED=true)")
+		}
+	}
+
 	// Initialize metrics store, pod resolver, and OTEL receiver if enabled
 	var metricsStoreInstance *metrics_store.MetricsStore
 	var otelReceiverInstance *otel_receiver.OTelReceiverServer
@@ -579,6 +607,8 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		shellExecutor:   shellExecutor,
 		datadogExecutor: ddExecutor,
 		argoCDExecutor:  argoExecutor,
+		rolloutsExecutor: rolloutsExecutor,
+		fluxExecutor:     fluxExecutor,
 		metricsStore:  metricsStoreInstance,
 		podResolver:   podResolver,
 		otelReceiver:  otelReceiverInstance,
@@ -1217,15 +1247,35 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			probeCancel()
 		}
 
+		// Probe for Argo Rollouts before sending inventory commit
+		hasRollouts := false
+		if s.rolloutsExecutor != nil {
+			probeCtx, probeCancel := context.WithTimeout(ctx, 10*time.Second)
+			hasRollouts = s.rolloutsExecutor.Probe(probeCtx)
+			probeCancel()
+		}
+
+		// Probe for Flux CD before sending inventory commit
+		hasFlux := false
+		if s.fluxExecutor != nil {
+			probeCtx, probeCancel := context.WithTimeout(ctx, 10*time.Second)
+			hasFlux = s.fluxExecutor.Probe(probeCtx)
+			probeCancel()
+		}
+
 		// Send inventory commit message to signal that initial inventory is complete
 		s.Logger.Info("Sending inventory commit message to server",
 			zap.Bool("has_datadog", hasDatadog),
-			zap.Bool("has_argocd", hasArgoCD))
+			zap.Bool("has_argocd", hasArgoCD),
+			zap.Bool("has_rollouts", hasRollouts),
+			zap.Bool("has_flux", hasFlux))
 		commitMsg := &v1.StreamDataRequest{
 			Request: &v1.StreamDataRequest_InventoryCommit{
 				InventoryCommit: &v1.InventoryCommit{
-					HasDatadog: hasDatadog,
-					HasArgocd:  hasArgoCD,
+					HasDatadog:  hasDatadog,
+					HasArgocd:   hasArgoCD,
+					HasRollouts: hasRollouts,
+					HasFlux:     hasFlux,
 				},
 			},
 		}
@@ -1920,9 +1970,10 @@ func (s *StreamClient) handleDatadogQueryRequest(
 		zap.String("request_id", ddRequest.RequestId),
 		zap.String("query_type", ddRequest.QueryType.String()))
 
-	// ArgoCD query types (>= 10) are dispatched to the ArgoCD executor
+	// ArgoCD / Argo Rollouts / Flux CD query types (>= 10) are dispatched
+	// to the matching GitOps executor
 	if ddRequest.QueryType >= 10 {
-		s.handleArgoCDQueryOnControlStream(ctx, stream, ddRequest)
+		s.handleGitOpsQueryOnControlStream(ctx, stream, ddRequest)
 		return
 	}
 
@@ -3849,9 +3900,10 @@ func (s *StreamClient) handleDatadogQueryRequestOnDataStream(ctx context.Context
 		zap.String("request_id", ddRequest.RequestId),
 		zap.String("query_type", ddRequest.QueryType.String()))
 
-	// ArgoCD query types (>= 10) are dispatched to the ArgoCD executor
+	// ArgoCD / Argo Rollouts / Flux CD query types (>= 10) are dispatched
+	// to the matching GitOps executor
 	if ddRequest.QueryType >= 10 {
-		s.handleArgoCDQueryOnDataStream(ctx, stream, ddRequest)
+		s.handleGitOpsQueryOnDataStream(ctx, stream, ddRequest)
 		return
 	}
 
@@ -3887,35 +3939,62 @@ func (s *StreamClient) handleDatadogQueryRequestOnDataStream(ctx context.Context
 	}
 }
 
-func (s *StreamClient) handleArgoCDQueryOnControlStream(
+// executeGitOpsQuery routes a query type >= 10 to the matching GitOps
+// executor (ArgoCD: 10-13, Argo Rollouts: 14-22, Flux CD: 23-28) and returns
+// the response, or an error response when the executor is unavailable.
+func (s *StreamClient) executeGitOpsQuery(ctx context.Context, ddRequest *v1.DatadogQueryRequest) *v1.DatadogQueryResponse {
+	qt := ddRequest.QueryType
+	switch {
+	case qt >= v1.DatadogQueryType_ARGOCD_SYNC_APP && qt <= v1.DatadogQueryType_ARGOCD_ROLLBACK_APP:
+		if s.argoCDExecutor == nil {
+			return &v1.DatadogQueryResponse{
+				RequestId:    ddRequest.RequestId,
+				Success:      false,
+				ErrorMessage: "ArgoCD integration is not available on this operator",
+				StatusCode:   503,
+			}
+		}
+		return s.argoCDExecutor.ExecuteQuery(ctx, ddRequest)
+	case qt >= v1.DatadogQueryType_ROLLOUTS_PROMOTE && qt <= v1.DatadogQueryType_ROLLOUTS_LIST:
+		if s.rolloutsExecutor == nil {
+			return &v1.DatadogQueryResponse{
+				RequestId:    ddRequest.RequestId,
+				Success:      false,
+				ErrorMessage: "Argo Rollouts integration is not available on this operator",
+				StatusCode:   503,
+			}
+		}
+		return s.rolloutsExecutor.ExecuteQuery(ctx, ddRequest)
+	case qt >= v1.DatadogQueryType_FLUX_RECONCILE && qt <= v1.DatadogQueryType_FLUX_GET_EVENTS:
+		if s.fluxExecutor == nil {
+			return &v1.DatadogQueryResponse{
+				RequestId:    ddRequest.RequestId,
+				Success:      false,
+				ErrorMessage: "Flux CD integration is not available on this operator",
+				StatusCode:   503,
+			}
+		}
+		return s.fluxExecutor.ExecuteQuery(ctx, ddRequest)
+	default:
+		return &v1.DatadogQueryResponse{
+			RequestId:    ddRequest.RequestId,
+			Success:      false,
+			ErrorMessage: fmt.Sprintf("unsupported GitOps query type: %s", qt.String()),
+			StatusCode:   400,
+		}
+	}
+}
+
+func (s *StreamClient) handleGitOpsQueryOnControlStream(
 	ctx context.Context,
 	stream v1.StreamService_StreamControlClient,
 	ddRequest *v1.DatadogQueryRequest,
 ) {
-	s.Logger.Info("Dispatching ArgoCD query on control stream",
+	s.Logger.Info("Dispatching GitOps query on control stream",
 		zap.String("request_id", ddRequest.RequestId),
 		zap.String("query_type", ddRequest.QueryType.String()))
 
-	if s.argoCDExecutor == nil {
-		ddResponse := &v1.DatadogQueryResponse{
-			RequestId:    ddRequest.RequestId,
-			Success:      false,
-			ErrorMessage: "ArgoCD integration is not available on this operator",
-			StatusCode:   503,
-		}
-		responseMsg := &v1.StreamControlRequest{
-			Request: &v1.StreamControlRequest_DatadogQueryResponse{
-				DatadogQueryResponse: ddResponse,
-			},
-		}
-		if err := s.protectedControlSend(stream, responseMsg); err != nil {
-			s.Logger.Error("Failed to send ArgoCD not-configured response",
-				zap.String("request_id", ddRequest.RequestId), zap.Error(err))
-		}
-		return
-	}
-
-	ddResponse := s.argoCDExecutor.ExecuteQuery(ctx, ddRequest)
+	ddResponse := s.executeGitOpsQuery(ctx, ddRequest)
 
 	const maxResponseBytes = 8 * 1024 * 1024
 	if len(ddResponse.ResponseData) > maxResponseBytes {
@@ -3931,32 +4010,17 @@ func (s *StreamClient) handleArgoCDQueryOnControlStream(
 		},
 	}
 	if err := s.protectedControlSend(stream, responseMsg); err != nil {
-		s.Logger.Error("Failed to send ArgoCD query response",
+		s.Logger.Error("Failed to send GitOps query response",
 			zap.String("request_id", ddRequest.RequestId), zap.Error(err))
 	}
 }
 
-func (s *StreamClient) handleArgoCDQueryOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, ddRequest *v1.DatadogQueryRequest) {
-	s.Logger.Info("Dispatching ArgoCD query on data stream (fallback)",
+func (s *StreamClient) handleGitOpsQueryOnDataStream(ctx context.Context, stream v1.StreamService_StreamDataClient, ddRequest *v1.DatadogQueryRequest) {
+	s.Logger.Info("Dispatching GitOps query on data stream (fallback)",
 		zap.String("request_id", ddRequest.RequestId),
 		zap.String("query_type", ddRequest.QueryType.String()))
 
-	if s.argoCDExecutor == nil {
-		resp := &v1.DatadogQueryResponse{
-			RequestId:    ddRequest.RequestId,
-			Success:      false,
-			ErrorMessage: "ArgoCD executor not available on this operator",
-			StatusCode:   503,
-		}
-		if err := s.protectedSend(stream, &v1.StreamDataRequest{
-			Request: &v1.StreamDataRequest_DatadogQueryResponse{DatadogQueryResponse: resp},
-		}); err != nil {
-			s.Logger.Error("Failed to send ArgoCD error response on data stream", zap.String("request_id", ddRequest.RequestId), zap.Error(err))
-		}
-		return
-	}
-
-	ddResponse := s.argoCDExecutor.ExecuteQuery(ctx, ddRequest)
+	ddResponse := s.executeGitOpsQuery(ctx, ddRequest)
 
 	const maxResponseBytes = 8 * 1024 * 1024
 	if len(ddResponse.ResponseData) > maxResponseBytes {
@@ -3969,7 +4033,7 @@ func (s *StreamClient) handleArgoCDQueryOnDataStream(ctx context.Context, stream
 	if err := s.protectedSend(stream, &v1.StreamDataRequest{
 		Request: &v1.StreamDataRequest_DatadogQueryResponse{DatadogQueryResponse: ddResponse},
 	}); err != nil {
-		s.Logger.Error("Failed to send ArgoCD response on data stream", zap.String("request_id", ddRequest.RequestId), zap.Error(err))
+		s.Logger.Error("Failed to send GitOps response on data stream", zap.String("request_id", ddRequest.RequestId), zap.Error(err))
 	}
 }
 

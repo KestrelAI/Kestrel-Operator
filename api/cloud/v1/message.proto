@@ -244,6 +244,10 @@ message InventoryCommit {
   bool has_datadog = 1;
   // True if the operator detected an ArgoCD installation in the cluster.
   bool has_argocd = 2;
+  // True if the operator detected the Argo Rollouts CRD in the cluster.
+  bool has_rollouts = 3;
+  // True if the operator detected Flux CD CRDs in the cluster.
+  bool has_flux = 4;
 }
 
 // Network policy definition matching Kubernetes NetworkPolicy format
@@ -1342,6 +1346,31 @@ enum DatadogQueryType {
   ARGOCD_GET_APP_STATUS = 11;     // GET  /api/v1/applications/{name}
   ARGOCD_LIST_APPS = 12;          // GET  /api/v1/applications
   ARGOCD_ROLLBACK_APP = 13;       // POST /api/v1/applications/{name}/rollback
+
+  // Argo Rollouts operations, executed against Rollout CRs
+  // (rollouts.argoproj.io/v1alpha1) via the Kubernetes API.
+  // filter carries "namespace/name" (or just "name"); json_body carries
+  // operation-specific parameters.
+  ROLLOUTS_PROMOTE = 14;    // promote a paused canary/blueGreen rollout
+  ROLLOUTS_ABORT = 15;      // abort an in-progress rollout
+  ROLLOUTS_RETRY = 16;      // retry an aborted rollout
+  ROLLOUTS_UNDO = 17;       // rollback to a previous revision
+  ROLLOUTS_PAUSE = 18;      // pause a rollout
+  ROLLOUTS_RESUME = 19;     // resume a paused rollout (unpause)
+  ROLLOUTS_RESTART = 20;    // restart the pods of a rollout
+  ROLLOUTS_GET_STATUS = 21; // get rollout status
+  ROLLOUTS_LIST = 22;       // list rollouts (optionally namespace-scoped)
+
+  // Flux CD operations, executed against Flux CRs (Kustomization,
+  // HelmRelease, GitRepository, HelmRepository, OCIRepository, Bucket)
+  // via the Kubernetes API. filter carries "kind/namespace/name";
+  // json_body carries operation-specific parameters.
+  FLUX_RECONCILE = 23;   // annotate with reconcile.fluxcd.io/requestedAt
+  FLUX_SUSPEND = 24;     // set spec.suspend=true
+  FLUX_RESUME = 25;      // set spec.suspend=false
+  FLUX_GET_STATUS = 26;  // get resource status (Ready condition, revision)
+  FLUX_LIST = 27;        // list Flux resources (optionally kind/ns-scoped)
+  FLUX_GET_EVENTS = 28;  // recent K8s events for a Flux resource
 }
 
 // Datadog query response from operator to server.
