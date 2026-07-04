@@ -1,0 +1,66 @@
+---
+title: "Argo Rollouts"
+description: "Connect Argo Rollouts for progressive delivery actions — promote, abort, retry, and roll back canary and blue-green rollouts in workflows"
+---
+
+The Argo Rollouts integration connects Kestrel to your in-cluster Argo Rollouts installation, enabling AI agents to promote canary deployments, abort or retry failed rollouts, and roll back to previous revisions as part of automated workflows and incident response.
+
+## Prerequisites
+
+- Kestrel Operator deployed in your cluster (see [Kubernetes](/integrations/kubernetes))
+- Argo Rollouts controller and CRDs installed in the same cluster (`argoproj.io/v1alpha1 Rollout`)
+
+## Setup
+
+Argo Rollouts is auto-detected by the Kestrel Operator when the Rollout CRD is present in the cluster. No manual connection or credentials are required.
+
+<Steps>
+  <Step title="Install Argo Rollouts">
+    If Argo Rollouts is not already installed:
+    ```bash
+    kubectl create namespace argo-rollouts
+    kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+    ```
+  </Step>
+  <Step title="Verify detection">
+    The operator probes for the Rollout CRD on each inventory sync. Check the operator logs:
+    ```bash
+    kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "Rollouts"
+    ```
+    Once detected, the integration shows as **Detected** on the Integrations page and Rollouts action blocks become available in the workflow builder.
+  </Step>
+</Steps>
+
+<Note>
+  The integration is enabled by default. To opt out, set `operator.rollouts.enabled: false` in your Helm values and upgrade the operator (this sets `ROLLOUTS_DISABLED=true` on the operator deployment).
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Action blocks:**
+- **Promote Rollout** — promote a paused canary/blue-green rollout to the next step (or fully with `full: true`)
+- **Abort Rollout** — abort an in-progress rollout and revert to the stable version
+- **Retry Rollout** — retry an aborted rollout from the beginning
+- **Rollback Rollout** — roll back a rollout to a previous revision (defaults to the last revision)
+- **Pause Rollout** / **Resume Rollout** — pause or resume rollout progression
+- **Restart Rollout** — restart the pods of a rollout without changing the version
+- **Get Rollout Status** — retrieve current phase, step, and canary weight of a rollout
+- **Wait for Rollout Healthy** — block workflow execution until a rollout reports Healthy (with configurable timeout)
+
+Example: A workflow triggered by a Datadog monitor alert on elevated error rates uses "Abort Rollout" to stop the in-progress canary, then posts the rollout status to Slack for the on-call engineer.
+
+### Scoping
+
+Rollout actions are scoped by **cluster**, **namespace**, and **rollout name** — all populated with dropdowns from live cluster data in the workflow builder.
+
+## Disconnecting
+
+To disable the Argo Rollouts integration, set the following in your Helm values and upgrade the operator:
+
+```yaml
+operator:
+  rollouts:
+    enabled: false
+```

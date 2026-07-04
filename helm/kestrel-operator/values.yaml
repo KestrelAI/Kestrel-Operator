@@ -81,6 +81,18 @@ operator:
     # Namespace where ArgoCD is deployed (e.g., "argocd")
     namespace: ""
 
+  # Argo Rollouts integration
+  # Auto-detected via the Rollout CRD (argoproj.io). Enabled by default;
+  # set enabled: false to opt out.
+  rollouts:
+    enabled: true
+
+  # Flux CD integration
+  # Auto-detected via the Flux CRDs (kustomize/helm/source.toolkit.fluxcd.io).
+  # Enabled by default; set enabled: false to opt out.
+  flux:
+    enabled: true
+
   # Safe-apply configuration for Chat YAML changes
   safeApply:
     # Enable safe-apply permissions for the operator
