@@ -186,6 +186,21 @@ Trigger.nebius_node_not_ready()
 Trigger.nebius_instance_stopped()
 Trigger.nebius_any()
 
+# Jenkins (webhook via notification plugin or post-build step)
+Trigger.jenkins_build_failed()
+Trigger.jenkins_build_unstable()          # e.g. test failures
+Trigger.jenkins_build_succeeded()
+Trigger.jenkins_build_completed()         # any result
+Trigger.jenkins_build_started()
+Trigger.jenkins_any()
+
+# CircleCI (native outbound webhooks, HMAC-signed)
+Trigger.circleci_workflow_failed()        # failed or error
+Trigger.circleci_workflow_succeeded()
+Trigger.circleci_workflow_completed()     # any status
+Trigger.circleci_job_failed()
+Trigger.circleci_any()
+
 # Terraform Cloud (webhook via workspace notification configurations)
 Trigger.terraform_run_created()
 Trigger.terraform_run_needs_attention()   # plan finished, awaiting confirmation
@@ -220,6 +235,8 @@ Trigger.request_github()        # GitHub operations
 Trigger.request_gitlab()        # GitLab operations
 Trigger.request_helm()          # Helm operations
 Trigger.request_vercel()        # Vercel operations
+Trigger.request_jenkins()       # Jenkins operations
+Trigger.request_circleci()      # CircleCI operations
 Trigger.request_terraform()     # Terraform Cloud operations
 Trigger.request_pulumi()        # Pulumi Cloud operations
 Trigger.request_general()       # General (catch-all)
@@ -296,6 +313,23 @@ trigger = (
     .nebius_projects("project-abc")      # omit for all projects the credentials can see
     .nebius_clusters("cluster-xyz")      # optional: restrict to specific clusters
     .nebius_poll_interval("5m")          # 1m | 5m | 15m | 30m
+)
+```
+
+Jenkins and CircleCI triggers are webhook-based — scope to jobs/projects and optionally statuses:
+
+```python
+trigger = (
+    Trigger.jenkins_build_failed()
+    .jenkins_jobs("platform/deploy-api")       # full path for folder-nested jobs; omit for all
+    .jenkins_build_statuses("FAILURE")         # optional: SUCCESS | FAILURE | UNSTABLE | ABORTED
+)
+
+trigger = (
+    Trigger.circleci_workflow_failed()
+    .circleci_projects("gh/acme/api")          # project slugs; omit for all followed projects
+    .circleci_branches("main")                 # optional: filter by branch
+    .circleci_statuses("failed", "error")      # optional: filter by status
 )
 ```
 
@@ -480,6 +514,24 @@ Action.nebius_list_clusters().project_id("{{signal.project_id}}")
 Action.nebius_list_node_groups().cluster_id("{{signal.cluster_id}}")
 Action.nebius_scale_node_group().cluster_id("{{signal.cluster_id}}").node_group_id("{{signal.node_group_id}}").size(3)
 Action.nebius_investigate().config("query", "Why did the GPU node error?")
+
+# Jenkins (job-scoped: .job(); build-scoped: .build_number())
+Action.jenkins_trigger_build().job("platform/deploy-api").parameters("ENV=staging\nVERSION=1.2.3")
+Action.jenkins_wait_for_build().job("{{signal.job_name}}").build_number("{{signal.build_number}}").timeout_minutes(30)
+Action.jenkins_get_build_status().job("{{signal.job_name}}").build_number("{{signal.build_number}}")
+Action.jenkins_stop_build().job("{{signal.job_name}}").build_number("{{signal.build_number}}")   # gate behind approval
+Action.jenkins_get_console_log().job("{{signal.job_name}}").build_number("{{signal.build_number}}").max_lines(200)
+Action.jenkins_investigate().query("Why did the nightly build fail?").job("{{signal.job_name}}")
+
+# CircleCI (project-scoped: .project_slug(); workflow-scoped: .workflow_id())
+Action.circleci_trigger_pipeline().project_slug("gh/acme/api").branch("main").parameters("deploy_env=staging")
+Action.circleci_wait_for_pipeline().project_slug("{{signal.project_slug}}").pipeline_id("{{signal.pipeline_id}}").timeout_minutes(30)
+Action.circleci_get_workflow_status().project_slug("{{signal.project_slug}}").pipeline_id("{{signal.pipeline_id}}")
+Action.circleci_rerun_workflow().workflow_id("{{signal.workflow_id}}").from_failed(True)
+Action.circleci_cancel_workflow().workflow_id("{{signal.workflow_id}}")
+Action.circleci_approve_job().workflow_id("{{signal.workflow_id}}").job_name("hold-production")   # gate behind approval
+Action.circleci_get_job_tests().project_slug("{{signal.project_slug}}").job_number("{{signal.job_number}}")
+Action.circleci_investigate().query("Why did the main-branch workflow fail?").project_slug("{{signal.project_slug}}")
 
 # Terraform Cloud (workspace-scoped: .workspace(); run-scoped: .run_id())
 Action.terraform_list_workspaces()

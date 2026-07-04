@@ -134,6 +134,8 @@
         "integrations/datadog",
         "integrations/opentelemetry",
         "integrations/argocd",
+        "integrations/jenkins",
+        "integrations/circleci",
         "integrations/argo-rollouts",
         "integrations/fluxcd",
         "integrations/terraform",

@@ -1,0 +1,84 @@
+---
+title: "CircleCI"
+description: "Connect CircleCI for pipeline triggering, workflow rerun/cancel, on-hold job approval, test-result retrieval, failure webhooks, and AI investigation in workflows"
+---
+
+The CircleCI integration connects Kestrel to your CircleCI organization through the CircleCI v2 API, enabling pipeline and job events to trigger workflows and letting workflows trigger pipelines on a branch or tag, rerun failed workflows, cancel stuck runs, approve on-hold jobs, fetch test results, and run read-only AI investigations across pipelines, workflows, and jobs.
+
+Events are delivered by CircleCI's **native outbound webhooks** (`workflow-completed` and `job-completed`), signed with HMAC-SHA256 (`circleci-signature` header) using the webhook secret Kestrel generates at connect time. Kestrel verifies the signature before evaluating workflows.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A CircleCI organization with at least one project
+- A CircleCI **personal API token** for a user that follows the projects your workflows will manage
+
+## Setup
+
+<Steps>
+  <Step title="Create an API token">
+    In CircleCI (`app.circleci.com`), go to **User Settings → Personal API Tokens** and click **Create New Token**. Give it a name (e.g. `kestrel`) and copy the token — it is shown only once.
+
+    The token is sent as the `Circle-Token` header to the CircleCI v2 API. Kestrel sees the projects the token's user **follows**, so follow the projects you want available in workflows.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → CircleCI** in your Kestrel dashboard.
+    2. Paste your **API token**.
+    3. Optionally set a custom **API base URL** for self-hosted CircleCI server installs (defaults to `https://circleci.com/api/v2`).
+    4. Click **Connect CircleCI** — Kestrel validates the token by listing your followed projects and generates a **webhook secret** for signed deliveries.
+  </Step>
+  <Step title="Register webhooks (for triggers)">
+    Actions work as soon as the token is connected. To have CircleCI events **trigger** workflows, add an outbound webhook to each project you care about:
+
+    1. On the Kestrel CircleCI integration page, copy the **Webhook URL** and the **Webhook secret**.
+    2. In each CircleCI project, open **Project Settings → Webhooks → Add Webhook**.
+    3. Set the **Receiver URL** to the copied webhook URL and paste the webhook secret as the **Secret token**.
+    4. Select the **workflow-completed** and/or **job-completed** events and save.
+  </Step>
+</Steps>
+
+<Warning>
+  The API token can trigger pipelines and approve gated jobs that deploy real infrastructure. Treat it as a secret — Kestrel stores it encrypted. Gate destructive workflow actions (Trigger Pipeline on production branches, Approve On-Hold Job) behind Approval nodes.
+</Warning>
+
+<Note>
+  Project slugs use the `vcs/org/repo` form, e.g. `gh/acme/api`. The project dropdowns in the workflow builder list your followed projects automatically.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks (webhook):**
+- **Workflow Failed** — fires when a workflow completes with `failed` or `error` status
+- **Workflow Succeeded** — fires when a workflow completes successfully
+- **Workflow Completed (any status)** — fires when a workflow finishes with any status
+- **Job Failed** — fires when a job completes with `failed` status (finer-grained than workflow-completed)
+
+Filter triggers by project slug, branch, and status. Trigger events expose template variables such as `{{signal.project_slug}}`, `{{signal.pipeline_id}}`, `{{signal.workflow_id}}`, `{{signal.workflow_name}}`, `{{signal.job_name}}`, `{{signal.job_number}}`, `{{signal.status}}`, and `{{signal.branch}}` for downstream steps.
+
+**Action blocks:**
+- **Trigger Pipeline** — trigger a pipeline on a branch or tag, optionally with pipeline parameters (one `KEY=VALUE` per line)
+- **Wait for Pipeline** — poll a pipeline's workflows until they all finish and branch on the overall result
+- **Get Workflow Status** — fetch a pipeline's workflow statuses without waiting
+- **Rerun Workflow** — rerun a workflow, optionally only its failed jobs (the go-to auto-remediation for flaky builds)
+- **Cancel Workflow** — cancel a running workflow (stop stuck or unwanted runs to free credits)
+- **Approve On-Hold Job** — approve an on-hold approval job so a gated workflow can proceed (e.g. auto-approve staging deploys after checks pass; gate behind an Approval node for production)
+- **Get Job Test Results** — fetch a job's test results with a failure summary (great for Slack posts or AI analysis)
+- **Investigate CircleCI** — run a read-only AI investigation across pipelines, workflows, jobs, and test results
+
+Project and pipeline selects use dynamic dropdowns backed by the CircleCI API and accept template variables like `{{signal.project_slug}}` and `{{signal.workflow_id}}` from the trigger.
+
+Example (CI failure RCA — the flagship CircleCI flow): When a **workflow fails** on `main`, fetch the failed job's test results, run an **AI investigation**, then post the root cause to Slack `#ci` and open a Jira ticket.
+
+Example (flaky-build remediation): When a workflow fails, **rerun from failed** once automatically; if the rerun also fails, page on-call via PagerDuty with the investigation summary.
+
+Example (gated deploys): When a staging workflow succeeds, run smoke checks, then **approve the on-hold** production deploy job — or route a Slack approval first.
+
+## Disconnecting
+
+1. Navigate to **Integrations → CircleCI**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops all CircleCI workflow triggers and actions. Webhooks configured in CircleCI will keep sending deliveries until you remove them there; deliveries with an invalid signature are rejected. You can reconnect at any time.
