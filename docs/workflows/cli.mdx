@@ -308,6 +308,22 @@ kestrel integrations test <name>
 
 Supported for token integrations and knowledge sources.
 
+### Webhook secrets
+
+Some integrations deliver events to Kestrel through webhooks you create in the third-party product. Where the secret comes from depends on the integration:
+
+- **Kestrel generates the secret** (Cloudflare, Jenkins, CircleCI, Pulumi, Terraform Cloud): `connect` prints the secret — paste it into the webhook you create in the third-party product.
+- **The vendor generates the secret** (Vercel, PlanetScale) or **you choose one** (Railway, Supabase): create the webhook first, then save the signing secret in Kestrel:
+
+```bash
+kestrel integrations webhook-secret <name>            # prompts (hidden input)
+kestrel integrations webhook-secret vercel --secret <secret>
+```
+
+Your API token stays untouched — you don't need to re-run `connect`. For PlanetScale (one secret per database webhook), run the command once per secret; new secrets are merged with the ones already stored.
+
+`connect` also offers optional webhook-secret prompts interactively — press Enter to skip and add the secret later with `webhook-secret`.
+
 ### Disconnect an integration
 
 ```bash
