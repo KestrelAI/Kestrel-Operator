@@ -234,3 +234,84 @@ kestrel workflows catalog          # Available triggers and actions
 kestrel workflows integrations     # Integration connection status
 kestrel workflows suggestions      # AI-suggested workflows
 ```
+
+## Integration Commands
+
+Connect, test, and disconnect integrations (cloud providers, CI/CD, databases, alerting, knowledge sources, and more) directly from the terminal. Aliases: `kestrel integration`, `kestrel int`.
+
+<Note>
+Your API key needs the `integrations:read` and `integrations:manage` scopes to manage integrations. The key created during onboarding includes them by default.
+</Note>
+
+### List integrations
+
+Shows every integration with its type and current connection status:
+
+```bash
+kestrel integrations list
+```
+
+### Connect an integration
+
+Each integration has its own `connect` subcommand:
+
+```bash
+kestrel integrations connect <name>
+```
+
+You can pass credentials as flags, but you don't have to — running the bare command walks you through setup interactively:
+
+- The CLI prints setup instructions for the integration (where to create the API token, which permissions to grant, etc.), mirroring the platform UI.
+- It prompts for each required value. **Secrets are read with hidden input** — they never appear on the command line or in your shell history.
+
+```bash
+$ kestrel integrations connect cloudflare
+Connecting Cloudflare
+
+  API token: Cloudflare dashboard -> My Profile -> API Tokens -> Create Token -> ...
+  Account ID: in the dashboard URL — dash.cloudflare.com/<account-id>/home.
+
+API token (hidden):
+Cloudflare account ID: 023e105f4ecef8ad9ca31a8372d0c353
+✓ Cloudflare connected
+```
+
+To see the flags and setup instructions for any integration:
+
+```bash
+kestrel integrations connect <name> --help
+```
+
+Non-secret values can be passed as flags; file-based credentials support a `--<flag>-file` variant:
+
+```bash
+kestrel integrations connect terraform --organization my-org
+kestrel integrations connect nebius --credentials-file authorized-key.json
+kestrel integrations connect confluence --base-url https://acme.atlassian.net --email me@acme.com
+```
+
+### Connection types
+
+| Type | Integrations | How it works |
+|------|--------------|--------------|
+| Token | Cloudflare, PagerDuty, Datadog, ArgoCD, Jenkins, CircleCI, Terraform Cloud, Pulumi Cloud, Vercel, Railway, Fly.io, Nebius, Beam, Daytona, Supabase, PlanetScale, Neon, ClickHouse, PostHog, and more | Prompts for API tokens/credentials (hidden input) and connects immediately |
+| OAuth | GitHub, GitLab, Slack | Prints an authorization/install URL to open in your browser |
+| Knowledge | Jira, Linear, Confluence, Notion, Glean | Connects and immediately runs a connection test |
+| Cluster | Kubernetes | Mints an operator token, writes a Helm values file, and prints the `helm install` command |
+| Cloud | AWS, OCI | AWS is a two-step IAM role flow (bootstrap, then verify with `--role-arn`); OCI prompts for API key details |
+
+### Test a connection
+
+```bash
+kestrel integrations test <name>
+```
+
+Supported for token integrations and knowledge sources.
+
+### Disconnect an integration
+
+```bash
+kestrel integrations disconnect <name>
+```
+
+OAuth, cluster, and cloud integrations must be disconnected in the Kestrel UI.

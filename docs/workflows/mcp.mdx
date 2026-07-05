@@ -125,6 +125,19 @@ If `kestrel` isn't on your PATH, use the full path (e.g., `/usr/local/bin/kestre
 | `get_catalog` | Available signal triggers and action blocks |
 | `get_integrations_status` | Integration connection status |
 
+### Integration Management
+
+| Tool | Description |
+|------|-------------|
+| `list_integrations` | List every integration with its type, required credential fields, and connection status |
+| `connect_integration` | Connect a token or knowledge-source integration, or get the browser URL for OAuth integrations (GitHub, GitLab, Slack) |
+| `test_integration` | Test a connected integration's credentials |
+| `disconnect_integration` | Disconnect a token integration or knowledge source |
+
+<Note>
+Kubernetes, AWS, and OCI use multi-step flows and must be connected with the [CLI](/workflows/cli#integration-commands) (`kestrel integrations connect <name>`) instead of MCP tools. For credential safety, prefer the CLI's interactive hidden prompts for secrets rather than pasting tokens into an agent chat.
+</Note>
+
 ## Example Conversations
 
 **Creating a workflow:**
@@ -144,3 +157,9 @@ The agent calls `list_workflows`, `list_executions`, then `get_execution` for fa
 > "Are there any pending approvals? Approve the production deployment one"
 
 The agent calls `list_pending_approvals`, identifies the right one, and calls `approve_step`.
+
+**Connecting an integration:**
+
+> "Connect our PagerDuty account to Kestrel"
+
+The agent calls `list_integrations` to find the required credential fields, asks you for the values, then calls `connect_integration` and verifies with `test_integration`.
