@@ -3,7 +3,7 @@ title: "Introduction"
 description: "Kestrel documentation - AI Agents for Platform Engineering"
 ---
 
-Kestrel is the agentic platform for platform engineering. Build workflows that automate incident response, cloud provisioning, CI/CD pipelines, and developer requests — using natural language, a drag-and-drop canvas, CLI, SDK, or MCP. Monitor Kubernetes and cloud infrastructure 24/7 with AI agents that detect, investigate, and fix incidents in seconds. Ask any question about your infrastructure through a conversational AI copilot. Connect 15+ integrations, describe what you want, and let AI agents handle the rest.
+Kestrel is the agentic platform for platform engineering. Build workflows that automate incident response, cloud provisioning, CI/CD pipelines, and developer requests — using natural language, a drag-and-drop canvas, CLI, SDK, or MCP. Monitor Kubernetes and cloud infrastructure 24/7 with AI agents that detect, investigate, and fix incidents in seconds. Ask any question about your infrastructure through a conversational AI copilot. Connect 30+ integrations, describe what you want, and let AI agents handle the rest.
 
 {/* Screenshot placeholder: Kestrel platform overview showing the workflow canvas */}
 
@@ -25,7 +25,7 @@ Kestrel is the agentic platform for platform engineering. Build workflows that a
 
 <Steps>
   <Step title="Connect your integrations">
-    Link Kubernetes clusters, cloud accounts, observability tools, notification channels, code repositories, and knowledge sources from the Kestrel platform. Each integration takes less than two minutes to setup. Once connected, Kestrel automatically starts monitoring for Kubernetes and cloud incidents across both infrastructure and application layers. The Cloud AI Copilot also becomes available immediately — ask any question about your infrastructure through the dashboard chat or the Slack `/kestrel` command.
+    Link Kubernetes clusters, cloud accounts, PaaS and deployment platforms, databases, CI/CD pipelines, observability tools, notification channels, code repositories, and knowledge sources from the Kestrel platform. Each integration takes less than two minutes to setup. Once connected, Kestrel automatically starts monitoring for Kubernetes and cloud incidents across both infrastructure and application layers. The Cloud AI Copilot also becomes available immediately — ask any question about your infrastructure through the dashboard chat or the Slack `/kestrel` command.
   </Step>
   <Step title="Build workflows">
     Describe what you want in natural language to the Workflow Agent — or drag and drop actions on the canvas, configuring triggers and actions using template variables. Kestrel's AI assembles and validates the workflow for you.
@@ -37,26 +37,86 @@ Kestrel is the agentic platform for platform engineering. Build workflows that a
 
 ## Integrations
 
-Kestrel connects to your clouds, clusters, observability tools, CI/CD pipelines, notification channels, and knowledge sources.
+Kestrel connects to your clouds, clusters, PaaS and deployment platforms, AI compute and sandbox providers, databases, CI/CD pipelines, IaC platforms, observability tools, notification channels, and knowledge sources.
+
+### Clouds & Infrastructure
 
 | Integration | Purpose |
 |---|---|
 | [Kubernetes](/integrations/kubernetes) | Cluster monitoring, incident detection, resource inventory. **Workflows:** trigger on pod crashes, node failures, rollout issues; actions include RCA, fix generation, manifest creation, kubectl investigations |
 | [AWS](/integrations/aws) | Cloud resource inventory, incident detection, VPC Flow Logs. **Workflows:** trigger on IAM, S3, EC2, RDS, Lambda events; actions include cloud RCA, Terraform/CLI generation, cost queries, anomaly detection, forecasting |
 | [OCI](/integrations/oci) | Oracle Cloud resource inventory, incident detection, VCN Flow Logs |
-| [Slack](/integrations/slack) | Notifications, interactive Q&A, `/kestrel` copilot, `/kestrel-workflow` triggers. **Workflows:** trigger from Slack requests; actions include sending messages, threaded replies, approval requests, DMs |
+| [Nebius](/integrations/nebius) | AI cloud GPU infrastructure. **Workflows:** trigger on GPU/node lifecycle events; actions include instance start/stop/restart, managed Kubernetes node-group scaling, AI investigation |
+| [Cloudflare](/integrations/cloudflare) | Edge, DNS, and security automation. **Workflows:** trigger on security events, health check failures, Worker failures, SSL expiration; actions include DNS records, WAF/firewall rules, cache purges, Worker deploys/rollbacks, load balancer pools, tunnels |
+
+### PaaS & Deployment Platforms
+
+| Integration | Purpose |
+|---|---|
+| [Vercel](/integrations/vercel) | Deployment events and build management. **Workflows:** trigger on deployment failures/successes, error anomalies; actions include getting deployments, build logs, rollbacks, promotions, AI investigation |
+| [Railway](/integrations/railway) | Deployment automation. **Workflows:** trigger on deployment events; actions include deployment logs, redeploys, restarts, rollbacks, environment variables, AI investigation |
+| [Fly.io](/integrations/flyio) | Machine lifecycle management. **Workflows:** trigger on machine start/stop/crash/create/destroy; actions include machine start/stop/restart, secrets, AI investigation |
+
+### AI Compute & Sandboxes
+
+| Integration | Purpose |
+|---|---|
+| [Beam](/integrations/beam) | Serverless AI compute. **Workflows:** trigger on task, container, deployment, and machine events; actions include deployment scaling/start/stop, sandbox lifecycle, running commands, AI investigation |
+| [Daytona](/integrations/daytona) | Dev sandboxes. **Workflows:** trigger on sandbox, snapshot, and volume lifecycle events; actions include sandbox management, command execution, file transfer, AI investigation |
+
+### Databases
+
+| Integration | Purpose |
+|---|---|
+| [Supabase](/integrations/supabase) | Project and branch automation. **Workflows:** actions include project/branch/backup/read-replica lifecycle, network restrictions, AI investigation |
+| [Neon](/integrations/neon) | Serverless Postgres. **Workflows:** actions include branch lifecycle, compute suspend/resume and autoscaling, reset-from-parent, credential rotation, AI investigation |
+| [PlanetScale](/integrations/planetscale) | MySQL branching and schema migrations. **Workflows:** trigger on branch/deploy-request events; actions include branch, deploy-request (schema migration), backup, and credential automation |
+| [ClickHouse](/integrations/clickhouse) | ClickHouse Cloud services. **Workflows:** trigger on error spikes; actions include service start/stop/scale, IP access lists, backups, ClickPipes ingestion, usage costs, AI investigation |
+
+### CI/CD & GitOps
+
+| Integration | Purpose |
+|---|---|
 | [GitHub](/integrations/github) | GitOps deployments, causal PR detection, IaC remediation. **Workflows:** actions include creating PRs/issues, triggering Actions, waiting for runs, AI code investigation, AI code fix generation |
 | [GitLab](/integrations/gitlab) | GitOps deployments, merge request remediation. **Workflows:** actions include creating MRs/issues, triggering pipelines, waiting for pipeline completion |
+| [Jenkins](/integrations/jenkins) | Build automation. **Workflows:** trigger on build failures; actions include triggering builds (with parameters), monitoring builds, console logs, stopping runaway builds, AI investigation |
+| [CircleCI](/integrations/circleci) | Pipeline automation. **Workflows:** trigger on pipeline/workflow failures; actions include triggering pipelines, rerunning/canceling workflows, approving on-hold jobs, test results, AI investigation |
+| [ArgoCD](/integrations/argocd) | GitOps deployment management. **Workflows:** actions include triggering syncs, waiting for sync completion, checking application health status |
+| [Argo Rollouts](/integrations/argo-rollouts) | Progressive delivery. **Workflows:** actions include promoting, aborting, retrying, and rolling back canary and blue-green rollouts |
+| [Flux CD](/integrations/fluxcd) | GitOps reconciliation. **Workflows:** actions include reconciling, suspending, and resuming Kustomizations, HelmReleases, and sources |
+| [Helm](/integrations/helm) | Release management. **Workflows:** actions include installing, upgrading, rolling back, and uninstalling Helm releases |
+
+### Infrastructure as Code
+
+| Integration | Purpose |
+|---|---|
+| [Terraform Cloud](/integrations/terraform) | Run lifecycle automation. **Workflows:** trigger on run events; actions include plan/apply/discard/cancel, workspace locking, variables, state outputs, drift detection, AI investigation |
+| [Pulumi Cloud](/integrations/pulumi) | Stack automation. **Workflows:** trigger on stack/deployment events; actions include stack updates, drift detection and remediation, deployment queue control, stack tags and outputs, AI investigation |
+
+### Observability & Analytics
+
+| Integration | Purpose |
+|---|---|
+| [Datadog](/integrations/datadog) | Metrics, monitors, and observability context. **Workflows:** actions include querying metrics, creating monitors, sending events, muting monitors |
+| [OpenTelemetry](/integrations/opentelemetry) | Metrics for incident root cause analysis and copilot context |
+| [PostHog](/integrations/posthog) | Product analytics events and session replay. **Workflows:** trigger on exceptions, rage clicks, console errors, log alerts; actions include session summaries, event queries, error issue details |
+
+### Incident Management & Ticketing
+
+| Integration | Purpose |
+|---|---|
 | [PagerDuty](/integrations/pagerduty) | On-call alerting with RCA context and auto-resolution. **Workflows:** trigger on PD incidents; actions include creating/acknowledging/resolving alerts, adding notes, escalation |
 | [Jira](/integrations/jira) | Ticket creation and incident tracking. **Workflows:** actions include creating tickets, adding comments, transitioning ticket status |
-| [Confluence](/integrations/confluence) | RCA publishing, postmortems, runbooks. **Workflows:** actions include publishing RCA pages, postmortems, runbook entries, updating existing pages. Also used as a knowledge source during incident investigation |
-| [Datadog](/integrations/datadog) | Metrics, monitors, and observability context. **Workflows:** actions include querying metrics, creating monitors, sending events, muting monitors |
-| [ArgoCD](/integrations/argocd) | GitOps deployment management. **Workflows:** actions include triggering syncs, waiting for sync completion, checking application health status |
-| [PostHog](/integrations/posthog) | Product analytics events and session replay. **Workflows:** trigger on exceptions, rage clicks, console errors, log alerts; actions include session summaries, event queries, error issue details |
-| [Vercel](/integrations/vercel) | Deployment events and build management. **Workflows:** trigger on deployment failures/successes, error anomalies; actions include getting deployments, build logs, rollbacks, promotions, AI investigation |
 | [Linear](/integrations/linear) | Issue tracking. **Workflows:** actions include creating issues. Also used as a knowledge source |
+
+### Notifications & Knowledge
+
+| Integration | Purpose |
+|---|---|
+| [Slack](/integrations/slack) | Notifications, interactive Q&A, `/kestrel` copilot, `/kestrel-workflow` triggers. **Workflows:** trigger from Slack requests; actions include sending messages, threaded replies, approval requests, DMs |
+| [Confluence](/integrations/confluence) | RCA publishing, postmortems, runbooks. **Workflows:** actions include publishing RCA pages, postmortems, runbook entries, updating existing pages. Also used as a knowledge source during incident investigation |
 | [Glean](/integrations/glean) | Enterprise knowledge search during incident investigation |
-| [OpenTelemetry](/integrations/opentelemetry) | Metrics for incident root cause analysis and copilot context |
+| [Knowledge Sources](/integrations/knowledge-sources) | Connect Slack, Confluence, Jira, Linear, Notion, and Glean as knowledge sources so incident investigations include similar past incidents, runbooks, and postmortems |
 
 ## Enterprise Security
 

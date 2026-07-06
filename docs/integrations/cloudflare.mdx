@@ -1,0 +1,90 @@
+---
+title: "Cloudflare"
+description: "Connect Cloudflare for DNS, WAF, cache, Workers, load balancer, and tunnel automation, plus security event and health check triggers in workflows"
+---
+
+The Cloudflare integration connects Kestrel to your Cloudflare account, enabling security events, health check failures, Worker deployment failures, and SSL expirations to trigger workflows — and giving AI agents the ability to manage DNS records, WAF and firewall rules, cache purges, Workers, load balancer pools, tunnels, and Access policies.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- Cloudflare account with permission to create API tokens
+
+## Setup
+
+<Steps>
+  <Step title="Create an API token">
+    In the Cloudflare dashboard, go to **My Profile → API Tokens → Create Token → Custom Token** and grant the following permissions:
+
+    | Scope | Permission |
+    |---|---|
+    | Zone → Zone | Read |
+    | Zone → DNS | Edit |
+    | Zone → Firewall Services | Edit |
+    | Zone → WAF | Edit |
+    | Zone → Cache Purge | Purge |
+    | Zone → Page Rules | Edit |
+    | Zone → Zone Settings | Edit |
+    | Account → Workers Scripts | Edit |
+    | Account → Load Balancing: Monitors and Pools | Edit |
+    | Account → Cloudflare Tunnel | Edit |
+    | Account → Access: Apps | Edit |
+
+    Set **Account Resources** to your account and **Zone Resources** to all zones (or the specific zones you want Kestrel to manage). You can omit permissions for features you don't plan to automate.
+  </Step>
+  <Step title="Find your Account ID">
+    Your Account ID is in the dashboard URL: `dash.cloudflare.com/[account_id]/home`.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Cloudflare** in your Kestrel dashboard
+    2. Click **Connect**
+    3. Paste the API token and enter the Account ID
+    4. Save — your Cloudflare account appears as connected.
+  </Step>
+  <Step title="Set up notifications for triggers (optional)">
+    To use Cloudflare trigger blocks, configure Cloudflare Notifications to send events to Kestrel:
+
+    1. Copy the **webhook URL** and **webhook secret** shown on the Cloudflare integration page
+    2. In the Cloudflare dashboard, go to **Notifications → Destinations → Webhooks → Create**, paste the URL, and use the secret as the secret value
+    3. Go to **All Notifications → Add**, select an alert type, and choose the webhook as the destination
+
+    Supported alert types: **HTTP DDoS Attack**, **WAF Attack**, **Firewall Events**, **Health Check Status**, **Workers Event**, and **SSL Certificate Expiration**.
+  </Step>
+</Steps>
+
+<Note>
+  Actions work without any notification setup — webhooks are only needed for Cloudflare trigger blocks.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+- **Security Event** — fires on WAF events, DDoS attacks, or firewall rule matches
+- **Health Check Failure** — fires when a Cloudflare health check detects an origin is down
+- **Worker Deployment Failure** — fires when a Workers deployment fails
+- **SSL Certificate Expiring** — fires when an SSL certificate is approaching expiration
+
+Filter triggers by zone and event type.
+
+**Action blocks:**
+- **DNS** — create, update, delete, and list DNS records
+- **Cache** — purge everything or purge selectively by URL, tag, or host
+- **Security** — create firewall rules, block IPs and ASNs, toggle WAF rulesets, update rate limits, update Access policies
+- **Workers** — deploy a Worker, roll back to a previous version, get Worker logs
+- **Load Balancing** — enable/disable pools, update pool weights
+- **Tunnels** — create and delete Cloudflare Tunnels
+- **Other** — create health checks, create page rules
+
+Zone, record, Worker, pool, and tunnel selects are populated dynamically from your account, and accept template variables like `{{signal.zone_name}}` from the trigger.
+
+Example: A workflow triggers on a WAF attack, blocks the offending IP, toggles a stricter WAF ruleset, and posts a summary to Slack for approval before reverting.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Cloudflare**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This disables all Cloudflare triggers and actions. You can reconnect at any time.
