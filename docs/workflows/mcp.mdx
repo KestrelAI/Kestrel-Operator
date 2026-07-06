@@ -90,7 +90,8 @@ If `kestrel` isn't on your PATH, use the full path (e.g., `/usr/local/bin/kestre
 | Tool | Description |
 |------|-------------|
 | `generate_workflow` | Generate a workflow from natural language |
-| `request_workflow` | Submit a request to trigger a matching workflow |
+| `request_workflow` | Submit a request to trigger a matching workflow. If nothing matches, returns `pending_confirmation` with a `request_id` |
+| `confirm_workflow_request` | Resolve a `pending_confirmation` request: confirm to send it to the platform team, or dismiss it. The agent asks you before calling this |
 | `list_suggested_workflows` | Get AI-suggested workflows |
 
 ### Execution Management
@@ -163,3 +164,9 @@ The agent calls `list_pending_approvals`, identifies the right one, and calls `a
 > "Connect our PagerDuty account to Kestrel"
 
 The agent calls `list_integrations` to find the required credential fields, asks you for the values, then calls `connect_integration` and verifies with `test_integration`.
+
+**Requesting a change with no matching workflow:**
+
+> "Request a Redis cluster for the cache layer"
+
+The agent calls `request_workflow`. When no workflow matches, it gets back `pending_confirmation` and asks whether you want to send the request to your platform team; based on your answer, it calls `confirm_workflow_request` to file or dismiss it.
