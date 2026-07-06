@@ -1,0 +1,97 @@
+---
+title: "Beam"
+description: "Connect Beam.cloud for serverless deployment, container/sandbox lifecycle, task monitoring, and AI investigation in workflows"
+---
+
+The Beam integration connects Kestrel to your Beam.cloud workspace, enabling serverless task, container, deployment, and machine events to trigger workflows and giving AI agents access to deployment state, running containers/sandboxes, and task status across your workspace.
+
+Beam does not send tenant-wide outbound webhooks. Kestrel detects task failures and container/deployment/machine lifecycle events by polling the Beam API on a configurable interval, authenticating with a workspace bearer token.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- Beam.cloud account with a workspace
+- A Beam workspace API token
+
+## Setup
+
+<Steps>
+  <Step title="Create a workspace token">
+    Create a workspace API token from the Beam dashboard (under **Settings**) or with the Beam CLI (`beam config`). The token is sent as a bearer token to `https://app.beam.cloud/api/v1/gateway` to read deployment, container, and task state and perform actions across your workspace.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Beam** in your Kestrel dashboard
+    2. Paste your **Beam workspace token**.
+    3. Choose a **Poll Interval** for trigger detection.
+    4. Click **Connect Beam** — your Beam workspace appears as connected.
+  </Step>
+</Steps>
+
+<Warning>
+  The workspace token grants access to your Beam deployments and containers. Treat it as a secret — Kestrel stores it encrypted.
+</Warning>
+
+<Note>
+  No webhook setup is required inside Beam. Kestrel polls the Beam API on your configured interval to detect task, container, deployment, and machine events.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+- **Task Failed** — fires when a Beam task transitions to FAILED
+- **Task Timed Out** — fires when a task transitions to TIMEOUT
+- **Container Stopped** — fires when a container, pod, or sandbox leaves a running state
+- **Deployment Scaled to Zero** — fires when a deployment drops to zero warm containers
+- **Queue Depth High** — fires when a deployment's task queue backlog grows
+- **Machine Down** — fires when a machine leaves a ready state (pool capacity loss)
+- **Sandbox Execution Failed** — fires when a Kestrel-created sandbox ends failed/errored or with a non-zero exit code
+- **Sandbox Terminated** — fires when a Kestrel-created sandbox ends/terminates cleanly
+
+Filter triggers by deployment and event type. Kestrel polls the Beam API on your configured interval to detect these conditions.
+
+<Note>
+  Sandbox triggers observe only the sandboxes Kestrel creates (via the **Create Sandbox** action), not arbitrary workspace sandboxes.
+</Note>
+
+**Action blocks:**
+- **List Deployments** — list the deployments in the workspace
+- **Get Deployment** — retrieve a deployment's state and version
+- **Scale Deployment** — set the desired container count for a deployment
+- **Start Deployment** — activate a stopped deployment
+- **Stop Deployment** — deactivate a running deployment
+- **List Containers** — list running containers, pods, and sandboxes
+- **Get Container Status** — retrieve a container or sandbox status
+- **Stop Container** — stop a running container, pod, or sandbox
+- **List Tasks** — list recent tasks with their status
+- **Get Task Status** — fetch the status and detail of a task
+- **List Machines** — list machines, optionally scoped to a compute pool
+- **Investigate Beam** — run an AI investigation of failing tasks, stuck containers, and scaling issues
+
+**Sandbox action blocks:**
+- **Create Sandbox** — provision an ephemeral sandbox (Python or a registry base image, with declared packages, CPU/memory, and exposable ports). Outputs a `sandbox_id`.
+- **Run Command in Sandbox** — run a shell command or Python code in a sandbox and capture `stdout`/`stderr`/`exit_code`
+- **Upload File to Sandbox** — write file content into a sandbox path
+- **Download File from Sandbox** — read a file from a sandbox into step outputs (capped at 256KB)
+- **Expose Sandbox Port** — expose a port and get back a public, authenticated URL
+- **Terminate Sandbox** — terminate a sandbox to free resources
+- **List Sandboxes** — list the sandboxes Kestrel is currently tracking, with last-observed status
+
+Beam deployment, container, and machine selects accept template variables like `{{signal.deployment_id}}`, `{{signal.container_id}}`, `{{signal.task_id}}`, and `{{signal.machine_id}}` from the trigger.
+
+### Sandbox lifecycle (chaining sandbox blocks)
+
+Sandboxes are persistent across workflow steps. A **Create Sandbox** step outputs a `sandbox_id`; downstream sandbox blocks reference it (the **Sandbox** select defaults to `{{step_outputs.action-1.sandbox_id}}`) to run commands, move files, and expose ports against the same sandbox. Always add a **Terminate Sandbox** step when finished to free resources — sandboxes also auto-reap based on their Keep Warm setting and Kestrel stops tracking them after 24 hours.
+
+Example: A workflow creates a sandbox with `requests` installed, uploads an input file, runs a Python data transform, downloads the result, posts a summary to Slack, then terminates the sandbox.
+
+Example: A workflow triggers on a failed task, runs an AI investigation to diagnose the failure, posts a summary to Slack, and opens a Jira bug ticket.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Beam**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops Beam polling and all Beam workflow triggers. You can reconnect at any time.
