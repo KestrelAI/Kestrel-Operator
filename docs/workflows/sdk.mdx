@@ -268,7 +268,15 @@ result = client.workflows.request("create a configmap for my-app in production")
 # If clarification is needed:
 if result.status == "awaiting_params":
     reply = client.workflows.request_reply(result.id, "use the prod-cluster, namespace=payments")
+
+# If no workflow matches, the request is held as pending_confirmation.
+# Confirm to send it to the platform team, or dismiss it:
+if result.status == "pending_confirmation":
+    client.workflows.request_confirm(result.id, True)   # file for the platform team
+    # client.workflows.request_confirm(result.id, False)  # dismiss
 ```
+
+The async client mirrors this via `client.requests.confirm(request_id, confirm)`.
 
 # Custom Webhook
 Trigger.custom_webhook("my-event-type")

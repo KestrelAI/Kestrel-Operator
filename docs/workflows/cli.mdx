@@ -33,6 +33,29 @@ sudo mv kestrel /usr/local/bin/
 
 ## Authentication
 
+### Create an Account
+
+New to Kestrel? You can sign up directly from the terminal:
+
+```bash
+kestrel register
+```
+
+You'll be prompted for a work email and password (8–30 characters, hidden input). If email verification is enabled on the server, a 6-character code is sent to your inbox — enter it at the prompt and you're logged in automatically. You can also verify later:
+
+```bash
+kestrel verify-email <code>
+```
+
+Non-interactive usage (e.g. from a coding agent or script):
+
+```bash
+kestrel register --email you@company.com --password '...' --server https://platform.usekestrel.ai
+kestrel verify-email ABC123
+```
+
+After verification the CLI saves your session to `~/.kestrel/config.json` and prints suggested next steps (`kestrel integrations connect ...`).
+
 ### API Key (recommended)
 
 Create an API key in the Kestrel platform under **Workflows > API Keys**, then:
@@ -170,6 +193,24 @@ $ kestrel workflows request "create a configmap"
   ✓ Matched workflow: On-Demand K8s Resource Provision
   ✓ Workflow is now executing.
 ```
+
+If no workflow matches your request, the CLI asks whether you want to send it to your platform team as a workflow request (instead of filing one automatically):
+
+```
+$ kestrel workflows request "set up a Redis cluster for the cache layer"
+  Routing request: set up a Redis cluster for the cache layer
+
+  ✗ No matching workflow found
+  Category: general
+
+  Send this to your platform team as a workflow request? They can
+  create a workflow to handle this type of request. [y/N]: y
+
+  ✓ Request sent to your platform team.
+  Request ID: 4f8a...
+```
+
+Answering `n` (or pressing Enter) dismisses the request — it won't appear in the platform's Workflow Requests page.
 
 ## Execution Commands
 
