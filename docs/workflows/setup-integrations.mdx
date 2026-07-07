@@ -20,7 +20,7 @@ Prefer the terminal? Every integration can also be connected with the [Kestrel C
     **Triggers:** Deployment Replicas Failing, Pod CrashLoopBackOff, Pod ImagePullBackOff, Pod OOMKilled, Pods Failing, Pods Restarting, StatefulSet Replicas Failing, Node Memory/Disk Pressure, DaemonSet Failing, and more. **Actions:** Trigger K8s RCA & Generate Fix, Apply YAML Fix, Generate K8s Manifest, Apply K8s Manifest, Investigate Kubernetes.
   </Card>
   <Card title="AWS" icon="aws" href="/integrations/aws">
-    **Triggers:** IAM Security Event, Root Account Activity, S3 Bucket Change, EC2/Lambda/RDS/DynamoDB Issues, VPC/Network Change, CloudWatch Alarm, Cost Anomaly, Budget Threshold, and more. **Actions:** Trigger Cloud RCA & Generate Fix, Generate Cloud Resource (Terraform/CloudFormation/CLI), Execute Cloud CLI, Query Cost Explorer, Get Cost Anomalies/Forecast/Budget Status, Investigate Cloud.
+    **Triggers:** IAM Security Event, Root Account Activity, S3 Bucket Change, EC2/Lambda/RDS/DynamoDB Issues, VPC/Network Change, CloudWatch Alarm, Cost Anomaly, Budget Threshold, Forecast Overrun, Spend Spike, Idle Resource, and more. **Actions:** Trigger Cloud RCA & Generate Fix, Generate Cloud Resource (Terraform/CloudFormation/CLI), Execute Cloud CLI, Query Cost Explorer, Get Cost Anomalies/Forecast/Budget Status, Rightsizing/Savings Plans/Reservation Recommendations, Find Idle Resources, Cost Remediation (Stop EC2, Delete EBS Volumes, Release EIPs, Delete Snapshots), Investigate Cloud.
   </Card>
   <Card title="OCI" icon="cloud" href="/integrations/oci">
     Connect Oracle Cloud Infrastructure for resource inventory and incident detection.
@@ -131,7 +131,16 @@ Prefer the terminal? Every integration can also be connected with the [Kestrel C
 
 ## Cost Management
 
-AWS Cost features (Query Cost Explorer, Get Cost Anomalies, Get Cost Forecast, Get Budget Status, AI Cost Analysis) are available through the [AWS integration](/integrations/aws). No separate setup is required — cost management actions are enabled when you connect an AWS account.
+AWS Cost features are available through the [AWS integration](/integrations/aws). No separate setup is required — cost management actions are enabled when you connect an AWS account.
+
+- **Insights (read-only):** Query Cost Explorer, Get Cost Anomalies, Get Cost Forecast, Get Budget Status, Get Rightsizing Recommendations, Get Savings Plans Recommendations, Get Reservation Recommendations, Get Commitment Utilization, Compare Cost Periods, Find Idle Resources, Get Compute Optimizer Recommendations, Get Trusted Advisor Cost Checks, AI Cost Analysis
+- **Remediation (destructive — place behind an Approval block):** Stop EC2 Instances, Delete Unattached EBS Volumes, Release Elastic IPs, Delete Old Snapshots
+- **Cost triggers:** Cost Anomaly Detected, Budget Threshold Exceeded, Forecast Exceeds Budget, Spend Spike Detected, Idle Resource Detected
+- **Scheduled workflows:** combine the [Recurring Schedule trigger](/workflows/create-workflows#schedule) with cost actions for periodic reports and cleanup scans
+
+<Note>
+Accounts connected before the cost-optimization release need a CloudFormation stack update to grant the new Cost Explorer, Budgets, Compute Optimizer, and remediation IAM permissions.
+</Note>
 
 ## Knowledge Sources
 

@@ -93,6 +93,16 @@ You can enable/disable flow logs on individual VPCs.
 - **Any AWS Cloud Incident** — fires on any AWS cloud incident detected by Kestrel
 - **Cost Anomaly Detected** — fires when AWS Cost Anomaly Detection identifies unusual spend
 - **Budget Threshold Exceeded** — fires when an AWS Budget threshold is breached
+- **Forecast Exceeds Budget** — fires when the Cost Explorer forecast projects a budget overrun before it happens
+- **Spend Spike Detected** — fires when day-over-day spend rises beyond a configurable percentage threshold
+- **Idle Resource Detected** — fires when a daily scan finds idle resources (unattached EBS volumes, unassociated Elastic IPs, low-CPU instances, old snapshots)
+
+**Cost optimization action blocks:**
+
+Connected accounts unlock the Cloud Cost action blocks in workflows:
+
+- *Insights (read-only)*: Query Cost Explorer, Get Cost Anomalies, Get Cost Forecast, Get Budget Status, Get Rightsizing Recommendations, Get Savings Plans Recommendations, Get Reservation Recommendations, Get Commitment Utilization, Compare Cost Periods, Find Idle Resources, Get Compute Optimizer Recommendations, Get Trusted Advisor Cost Checks
+- *Remediation (mutates infrastructure — place behind an Approval block)*: Stop EC2 Instances, Delete Unattached EBS Volumes, Release Elastic IPs, Delete Old Snapshots. Resources tagged `kestrel:protected` are always skipped.
 
 Cloud operations (querying resources, describing instances, checking security groups, generating Terraform fixes, creating IaC remediation PRs) are provided by Kestrel's built-in action blocks and are available in any workflow alongside these triggers.
 
@@ -121,8 +131,13 @@ The CloudFormation-created IAM role includes **read-only** access to:
 - CloudTrail (event history)
 - EKS (clusters, node groups)
 - Lambda, ECS, and other compute services
+- Cost Explorer, Budgets, Compute Optimizer, and Trusted Advisor (cost and usage data, recommendations)
 
-Write permissions are limited to VPC Flow Log management (creating/deleting flow log configurations).
+Write permissions are limited to VPC Flow Log management (creating/deleting flow log configurations) and the cost-remediation actions (`ec2:StopInstances`, `ec2:DeleteVolume`, `ec2:ReleaseAddress`, `ec2:DeleteSnapshot`) used by the Cloud Cost remediation workflow blocks.
+
+<Note>
+  If you connected your account before the cost-optimization blocks were released, update your CloudFormation stack to the latest template to grant the new Cost Explorer, Budgets, Compute Optimizer, and remediation permissions. Blocks that lack permissions fail with an actionable error pointing at the stack update.
+</Note>
 
 ## Managing Connections
 

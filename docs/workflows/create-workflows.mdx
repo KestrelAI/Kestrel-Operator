@@ -128,6 +128,19 @@ Triggered when Kestrel detects a cloud infrastructure incident. Filter by AWS ac
 | Any AWS Cloud Incident | Triggers on any AWS cloud incident |
 | Cost Anomaly Detected | Triggers when AWS Cost Anomaly Detection finds an anomaly |
 | Budget Threshold Exceeded | Triggers when an AWS Budget threshold is breached |
+| Forecast Exceeds Budget | Triggers when the AWS cost forecast projects a budget overrun before it happens |
+| Spend Spike Detected | Triggers when day-over-day spend rises beyond a configurable percentage threshold |
+| Idle Resource Detected | Triggers when a daily scan finds idle resources (unattached EBS volumes, unassociated Elastic IPs, low-CPU instances, old snapshots) |
+
+### Schedule
+
+Triggered on a recurring cadence rather than by an external event. Ideal for periodic cost reports, cleanup scans, and audits. Configure the interval (hourly, daily, weekly, or monthly), the time of day (UTC), and — for weekly/monthly schedules — the day of week or day of month.
+
+| Trigger Block | Description |
+|---|---|
+| Recurring Schedule | Triggers on a recurring schedule (hourly, daily, weekly, or monthly) |
+
+Scheduled triggers expose `{{signal.schedule_interval}}`, `{{signal.fired_at}}`, and `{{signal.fired_date}}` to downstream steps.
 
 ### Slack Requests
 
@@ -321,8 +334,8 @@ Actions are grouped by integration. Each action produces output variables that d
   <Card title="Datadog" icon="chart-line">
     Query Metrics, Create Monitor, Send Event, Mute Monitor
   </Card>
-  <Card title="Cloud Cost" icon="dollar-sign">
-    Query Cost Explorer, Get Cost Anomalies, Get Cost Forecast, Get Budget Status
+  <Card title="Cloud Cost" icon="aws">
+    Query Cost Explorer, Get Cost Anomalies, Get Cost Forecast, Get Budget Status, Get Rightsizing Recommendations, Get Savings Plans Recommendations, Get Reservation Recommendations, Get Commitment Utilization, Compare Cost Periods, Find Idle Resources, Get Compute Optimizer Recommendations, Get Trusted Advisor Cost Checks, Stop EC2 Instances, Delete Unattached EBS Volumes, Release Elastic IPs, Delete Old Snapshots
   </Card>
   <Card title="PostHog" icon="chart-bar">
     Get Session Summary, Get Session Recording, Query Events, List Session Recordings, Get Error Issue
@@ -352,6 +365,10 @@ Actions are grouped by integration. Each action produces output variables that d
     Create custom action blocks to call any API endpoint, and custom webhook triggers to start workflows from external systems. See [Custom Integrations](/workflows/custom-integrations).
   </Card>
 </CardGroup>
+
+<Warning>
+The Cloud Cost remediation blocks (**Stop EC2 Instances**, **Delete Unattached EBS Volumes**, **Release Elastic IPs**, **Delete Old Snapshots**) mutate real infrastructure. Always place them behind an [Approval Gate](#approval-gates). Resources tagged `kestrel:protected` are always skipped, every remediation block is pinned to an explicit region, and safety caps limit how many resources a single run can touch.
+</Warning>
 
 ---
 
@@ -421,6 +438,10 @@ Template variables let you pass data between workflow steps. Use double curly br
 | `{{signal.deployment_id}}` | Pulumi Cloud trigger | Pulumi Deployments run ID (deployment events) |
 | `{{signal.update_url}}` | Pulumi Cloud trigger | Link to the update in the Pulumi Cloud console |
 | `{{signal.user}}` | Pulumi Cloud trigger | User who initiated the operation |
+| `{{signal.aws_account_id}}` | AWS cost trigger | AWS account ID for cost anomaly, budget, forecast, spend spike, and idle resource signals |
+| `{{signal.schedule_interval}}` | Schedule trigger | Configured cadence (hourly, daily, weekly, monthly) |
+| `{{signal.fired_at}}` | Schedule trigger | UTC timestamp (RFC3339) when the schedule fired |
+| `{{signal.fired_date}}` | Schedule trigger | UTC date (YYYY-MM-DD) when the schedule fired |
 
 ### Variable Picker
 
@@ -664,6 +685,43 @@ On **Request changes**, the reviewer's free-text guidance re-runs the RCA agent 
 | **Action 1** | Query Cost Explorer | Account: `{{signal.aws_account_id}}`, time range: 7 days |
 | **Action 2** | AI Cost Analysis | Type: anomaly |
 | **Action 3** | Slack Send Message | Channel: `#finops`, message: `{{step_outputs.action-2.summary}}` |
+
+### Weekly Schedule → Cost Report → Savings Recommendations → Slack
+
+**Workflow Agent prompt:** *"Every Monday at 9am UTC, query last week's AWS costs grouped by service, get savings plans recommendations, run an AI cost analysis, and post an executive summary to #finops in Slack."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Recurring Schedule | Weekly, Monday, 09:00 UTC |
+| **Action 1** | Query Cost Explorer | Time range: 7 days, group by: Service |
+| **Action 2** | Get Savings Plans Recommendations | Term: 1 year, payment: no upfront |
+| **Action 3** | AI Cost Analysis | Type: summary |
+| **Action 4** | Slack Send Message | Channel: `#finops`, message: `{{step_outputs.action-3.formatted_slack_message}}` |
+
+### Idle Resource Scan → Approval → Cleanup → Slack
+
+**Workflow Agent prompt:** *"Every day at 8am UTC, scan for idle resources (unattached EBS volumes and unassociated Elastic IPs), ask for approval in #finops, and if approved delete the unattached volumes (snapshot first) and release the idle Elastic IPs."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Recurring Schedule | Daily, 08:00 UTC |
+| **Action 1** | Find Idle Resources | Resource types: EBS volumes, Elastic IPs; all enabled regions |
+| **Action 2** | Wait for Slack Approval | Channel: `#finops`, message includes `{{step_outputs.action-1.idle_count}}` idle resources, est. savings `{{step_outputs.action-1.estimated_monthly_savings}}` |
+| **On Approved → Action 3** | Delete Unattached EBS Volumes | Volume IDs: `{{step_outputs.action-1.idle_volume_ids}}`, snapshot first |
+| **On Approved → Action 4** | Release Elastic IPs | Allocation IDs: `{{step_outputs.action-1.idle_eip_allocation_ids}}` |
+| **Action 5** | Slack Send Message | Channel: `#finops`, message: cleanup summary |
+
+### Forecast Overrun → Compare Periods → Rightsizing → Slack
+
+**Workflow Agent prompt:** *"When the AWS cost forecast projects a budget overrun, compare this month's spend to last month to find the biggest movers, get rightsizing recommendations, and post the analysis to #finops in Slack."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Forecast Exceeds Budget | All AWS accounts |
+| **Action 1** | Compare Cost Periods | This month vs last month, group by: Service |
+| **Action 2** | Get Rightsizing Recommendations | All recommendation types |
+| **Action 3** | AI Cost Analysis | Type: optimization |
+| **Action 4** | Slack Send Message | Channel: `#finops`, message: `{{step_outputs.action-3.summary}}` |
 
 ---
 
