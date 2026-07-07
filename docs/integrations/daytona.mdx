@@ -67,6 +67,7 @@ Filter triggers by sandbox and event type. Kestrel receives these as webhook del
 
 **Action blocks:**
 - **List Sandboxes** — list the sandboxes in the organization
+- **Create Sandbox** — create a sandbox from a prebuilt snapshot or a Docker image (image references must carry a specific version tag or digest, e.g. `python:3.12` — untagged images and `latest`/`lts`/`stable` are rejected by Daytona)
 - **Get Sandbox** — retrieve a sandbox's state and metadata
 - **Start Sandbox** — start a stopped sandbox
 - **Stop Sandbox** — stop a running sandbox (preserves state for restart)
@@ -75,13 +76,15 @@ Filter triggers by sandbox and event type. Kestrel receives these as webhook del
 - **Run Command in Sandbox** — execute a shell command in a sandbox and capture exit code and output
 - **Set Auto-Stop Interval** — set a sandbox's inactivity auto-stop interval for cost control
 - **List Snapshots** — list the snapshots in the organization
-- **Create Snapshot** — create a snapshot from a Docker image
+- **Create Snapshot** — create a snapshot from a Docker image (the image must carry a specific version tag or digest)
 - **Delete Snapshot** — delete a snapshot by name or ID
 - **List Volumes** — list the volumes in the organization
 - **Get Volume** — retrieve a volume's state
+- **Create Volume** — create a volume for sharing data across sandboxes
+- **Delete Volume** — permanently delete a volume (gate behind an Approval node)
 - **Investigate Daytona** — run an AI investigation of failing sandboxes, snapshots, and volumes
 
-Daytona sandbox, snapshot, and volume selects accept template variables like `{{signal.sandbox_id}}`, `{{signal.snapshot}}`, and `{{signal.volume}}` from the trigger.
+Daytona sandbox, snapshot, and volume selects accept template variables like `{{signal.sandbox_id}}`, `{{signal.snapshot}}`, and `{{signal.volume}}` from the trigger. Create Sandbox outputs `sandbox_id`, `sandbox_name`, and `sandbox_state`, so downstream blocks can reference a just-created sandbox with `{{step_outputs.<step>.sandbox_id}}`; Create Volume similarly outputs `volume_id`, `volume_name`, and `volume_state`.
 
 Example: A workflow triggers on a sandbox error, runs an AI investigation to diagnose the failure, posts a summary to Slack, and opens a Jira bug ticket.
 
