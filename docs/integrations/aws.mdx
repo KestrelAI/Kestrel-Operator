@@ -133,7 +133,7 @@ The CloudFormation-created IAM role includes **read-only** access to:
 - Lambda, ECS, and other compute services
 - Cost Explorer, Budgets, Compute Optimizer, and Trusted Advisor (cost and usage data, recommendations)
 
-Write permissions are limited to VPC Flow Log management (creating/deleting flow log configurations) and the cost-remediation actions (`ec2:StopInstances`, `ec2:DeleteVolume`, `ec2:ReleaseAddress`, `ec2:DeleteSnapshot`) used by the Cloud Cost remediation workflow blocks.
+Write permissions are limited to VPC Flow Log management (creating/deleting flow log configurations) and the cost-remediation actions (`ec2:StopInstances`, `ec2:DeleteVolume`, `ec2:ReleaseAddress`, `ec2:DeleteSnapshot`, plus `ec2:CreateSnapshot` for pre-deletion safety snapshots) used by the Cloud Cost remediation workflow blocks.
 
 <Note>
   If you connected your account before the cost-optimization blocks were released, update your CloudFormation stack to the latest template to grant the new Cost Explorer, Budgets, Compute Optimizer, and remediation permissions. Blocks that lack permissions fail with an actionable error pointing at the stack update.
