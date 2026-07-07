@@ -173,8 +173,6 @@
     "prompt": "Search documentation..."
   },
   "metadata": {
-    "og:title": "Kestrel AI Documentation",
-    "og:description": "AI Agents for Platform Engineering. Automate incident response, cloud provisioning, CI/CD, and more with intelligent workflows.",
     "og:image": "https://usekestrel.ai/og-image.png",
     "twitter:card": "summary_large_image"
   },
