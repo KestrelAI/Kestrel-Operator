@@ -127,9 +127,18 @@ Trigger.aws_service_health()
 # AWS — Cost & Budget
 Trigger.aws_cost_anomaly()
 Trigger.aws_budget_alert()
+Trigger.aws_forecast_overrun()            # forecast projects a budget overrun
+Trigger.aws_spend_spike()                 # day-over-day spend spike
+Trigger.aws_idle_resource()               # daily idle-resource scan hit
 
 # AWS — Catch-all
 Trigger.aws_any()
+
+# Schedule (recurring workflows — no external event needed)
+Trigger.schedule_hourly()                                  # fires every hour
+Trigger.schedule_daily("09:00")                            # daily at 09:00 UTC
+Trigger.schedule_weekly(day_of_week=1, time_utc="09:00")   # Mondays 09:00 UTC (0=Sunday)
+Trigger.schedule_monthly(day_of_month=1, time_utc="06:00") # 1st of month 06:00 UTC
 
 # PagerDuty
 Trigger.pagerduty_triggered()
@@ -468,11 +477,31 @@ Action.helm_rollback().cluster_id("...").release_name("my-app").namespace("produ
 Action.helm_uninstall().cluster_id("...").release_name("my-app").namespace("production")
 Action.helm_status().cluster_id("...").release_name("my-app").namespace("production")
 
-# AWS Cost
+# AWS Cost — insights (read-only)
 Action.aws_query_cost_explorer().aws_account("123456789012").time_range("30d")
 Action.aws_get_cost_anomalies().aws_account("123456789012")
 Action.aws_get_cost_forecast().aws_account("123456789012")
 Action.aws_get_budget_status().aws_account("123456789012")
+Action.aws_get_rightsizing_recommendations().aws_account("123456789012")
+Action.aws_get_savings_plans_recommendations().aws_account("123456789012")
+Action.aws_get_reservation_recommendations().aws_account("123456789012")
+Action.aws_get_commitment_utilization().aws_account("123456789012")
+Action.aws_compare_cost_periods().aws_account("123456789012")
+Action.aws_find_idle_resources().aws_account("123456789012")
+Action.aws_get_compute_optimizer_recommendations().aws_account("123456789012")
+Action.aws_get_trusted_advisor_cost_checks().aws_account("123456789012")
+
+# AWS Cost — remediation (destructive; place behind an Approval block.
+# Resources tagged kestrel:protected are always skipped.)
+Action.aws_stop_ec2_instances().aws_account("123456789012") \
+    .config("instance_ids", "{{step_outputs.scan.idle_instance_ids}}").config("region", "us-east-1")
+Action.aws_delete_unattached_ebs_volumes().aws_account("123456789012") \
+    .config("volume_ids", "{{step_outputs.scan.idle_volume_ids}}").config("region", "us-east-1") \
+    .config("snapshot_first", True)
+Action.aws_release_elastic_ips().aws_account("123456789012") \
+    .config("allocation_ids", "{{step_outputs.scan.idle_eip_allocation_ids}}").config("region", "us-east-1")
+Action.aws_delete_old_snapshots().aws_account("123456789012") \
+    .config("region", "us-east-1").config("age_days", 90)
 
 # PostHog
 Action.posthog_get_session_summary().session_ids("{{signal.session_id}}")
