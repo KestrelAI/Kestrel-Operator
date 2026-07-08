@@ -17,6 +17,7 @@ import (
 	"operator/pkg/datadog_executor"
 	"operator/pkg/argocd_executor"
 	"operator/pkg/flux_executor"
+	"operator/pkg/karpenter_executor"
 	"operator/pkg/rollouts_executor"
 	"operator/pkg/shell_executor"
 	smartcache "operator/pkg/smart_cache"
@@ -84,6 +85,7 @@ type StreamClient struct {
 	argoCDExecutor   *argocd_executor.ArgoCDExecutor
 	rolloutsExecutor *rollouts_executor.RolloutsExecutor
 	fluxExecutor     *flux_executor.FluxExecutor
+	karpenterExecutor *karpenter_executor.KarpenterExecutor
 
 	// OTEL Metrics Store for local metrics storage and querying
 	metricsStore *metrics_store.MetricsStore
@@ -537,15 +539,17 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		logger.Info("ArgoCD integration not configured (ARGOCD_NAMESPACE not set)")
 	}
 
-	// Initialize Argo Rollouts and Flux CD executors. Both are CRD-based
-	// (no external API auth) and probe cheaply, so they are always created;
-	// availability is determined by the CRD probe before the inventory commit.
-	// Set ROLLOUTS_DISABLED / FLUX_DISABLED to opt out entirely.
+	// Initialize Argo Rollouts, Flux CD, and Karpenter executors. All are
+	// CRD-based (no external API auth) and probe cheaply, so they are always
+	// created; availability is determined by the CRD probe before the
+	// inventory commit. Set ROLLOUTS_DISABLED / FLUX_DISABLED /
+	// KARPENTER_DISABLED to opt out entirely.
 	var rolloutsExecutor *rollouts_executor.RolloutsExecutor
 	var fluxExecutor *flux_executor.FluxExecutor
+	var karpenterExecutor *karpenter_executor.KarpenterExecutor
 	dynamicClient, dynErr := k8s_helper.NewDynamicClient()
 	if dynErr != nil {
-		logger.Warn("Failed to create dynamic client — Argo Rollouts and Flux CD integrations disabled", zap.Error(dynErr))
+		logger.Warn("Failed to create dynamic client — Argo Rollouts, Flux CD, and Karpenter integrations disabled", zap.Error(dynErr))
 	} else {
 		if os.Getenv("ROLLOUTS_DISABLED") != "true" {
 			rolloutsExecutor = rollouts_executor.NewRolloutsExecutor(logger, dynamicClient)
@@ -558,6 +562,12 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 			logger.Info("Flux CD executor initialized (availability determined by CRD probe)")
 		} else {
 			logger.Info("Flux CD integration disabled (FLUX_DISABLED=true)")
+		}
+		if os.Getenv("KARPENTER_DISABLED") != "true" {
+			karpenterExecutor = karpenter_executor.NewKarpenterExecutor(logger, dynamicClient)
+			logger.Info("Karpenter executor initialized (availability determined by CRD probe)")
+		} else {
+			logger.Info("Karpenter integration disabled (KARPENTER_DISABLED=true)")
 		}
 	}
 
@@ -609,6 +619,7 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		argoCDExecutor:  argoExecutor,
 		rolloutsExecutor: rolloutsExecutor,
 		fluxExecutor:     fluxExecutor,
+		karpenterExecutor: karpenterExecutor,
 		metricsStore:  metricsStoreInstance,
 		podResolver:   podResolver,
 		otelReceiver:  otelReceiverInstance,
@@ -1263,19 +1274,29 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			probeCancel()
 		}
 
+		// Probe for Karpenter before sending inventory commit
+		hasKarpenter := false
+		if s.karpenterExecutor != nil {
+			probeCtx, probeCancel := context.WithTimeout(ctx, 10*time.Second)
+			hasKarpenter = s.karpenterExecutor.Probe(probeCtx)
+			probeCancel()
+		}
+
 		// Send inventory commit message to signal that initial inventory is complete
 		s.Logger.Info("Sending inventory commit message to server",
 			zap.Bool("has_datadog", hasDatadog),
 			zap.Bool("has_argocd", hasArgoCD),
 			zap.Bool("has_rollouts", hasRollouts),
-			zap.Bool("has_flux", hasFlux))
+			zap.Bool("has_flux", hasFlux),
+			zap.Bool("has_karpenter", hasKarpenter))
 		commitMsg := &v1.StreamDataRequest{
 			Request: &v1.StreamDataRequest_InventoryCommit{
 				InventoryCommit: &v1.InventoryCommit{
-					HasDatadog:  hasDatadog,
-					HasArgocd:   hasArgoCD,
-					HasRollouts: hasRollouts,
-					HasFlux:     hasFlux,
+					HasDatadog:   hasDatadog,
+					HasArgocd:    hasArgoCD,
+					HasRollouts:  hasRollouts,
+					HasFlux:      hasFlux,
+					HasKarpenter: hasKarpenter,
 				},
 			},
 		}
@@ -3940,8 +3961,9 @@ func (s *StreamClient) handleDatadogQueryRequestOnDataStream(ctx context.Context
 }
 
 // executeGitOpsQuery routes a query type >= 10 to the matching GitOps
-// executor (ArgoCD: 10-13, Argo Rollouts: 14-22, Flux CD: 23-28) and returns
-// the response, or an error response when the executor is unavailable.
+// executor (ArgoCD: 10-13, Argo Rollouts: 14-22, Flux CD: 23-28,
+// Karpenter: 29-35) and returns the response, or an error response when the
+// executor is unavailable.
 func (s *StreamClient) executeGitOpsQuery(ctx context.Context, ddRequest *v1.DatadogQueryRequest) *v1.DatadogQueryResponse {
 	qt := ddRequest.QueryType
 	switch {
@@ -3975,6 +3997,16 @@ func (s *StreamClient) executeGitOpsQuery(ctx context.Context, ddRequest *v1.Dat
 			}
 		}
 		return s.fluxExecutor.ExecuteQuery(ctx, ddRequest)
+	case qt >= v1.DatadogQueryType_KARPENTER_LIST_NODEPOOLS && qt <= v1.DatadogQueryType_KARPENTER_DELETE_NODECLAIM:
+		if s.karpenterExecutor == nil {
+			return &v1.DatadogQueryResponse{
+				RequestId:    ddRequest.RequestId,
+				Success:      false,
+				ErrorMessage: "Karpenter integration is not available on this operator",
+				StatusCode:   503,
+			}
+		}
+		return s.karpenterExecutor.ExecuteQuery(ctx, ddRequest)
 	default:
 		return &v1.DatadogQueryResponse{
 			RequestId:    ddRequest.RequestId,

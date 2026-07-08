@@ -138,6 +138,7 @@
         "integrations/argocd",
         "integrations/argo-rollouts",
         "integrations/fluxcd",
+        "integrations/karpenter",
         "integrations/helm",
         "integrations/terraform",
         "integrations/pulumi",

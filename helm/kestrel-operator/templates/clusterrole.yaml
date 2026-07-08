@@ -155,6 +155,15 @@ rules:
     resources: ["gitrepositories", "helmrepositories", "helmcharts", "ocirepositories", "buckets"]
     verbs: ["get", "list", "watch", "patch"]
 
+  # Allow Karpenter management (workflow automation: list/scale nodepools,
+  # tune disruption budgets, apply nodepool specs, recycle nodeclaims)
+  - apiGroups: ["karpenter.sh"]
+    resources: ["nodepools", "nodepools/status"]
+    verbs: ["get", "list", "watch", "patch", "create", "update"]
+  - apiGroups: ["karpenter.sh"]
+    resources: ["nodeclaims", "nodeclaims/status"]
+    verbs: ["get", "list", "watch", "delete"]
+
   # Allow Helm release management (workflow automation)
   # Helm stores release metadata in secrets, and manages services, configmaps, etc.
   - apiGroups: [""]

@@ -125,6 +125,12 @@ spec:
               value: "true"
             {{- end }}
 
+            # Karpenter integration (auto-detected; opt-out via values)
+            {{- if not .Values.operator.karpenter.enabled }}
+            - name: KARPENTER_DISABLED
+              value: "true"
+            {{- end }}
+
             # OTEL Metrics Store configuration
             {{- if .Values.operator.otel.enabled }}
             - name: ENABLE_OTEL_METRICS_STORE

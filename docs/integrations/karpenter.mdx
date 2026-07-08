@@ -1,0 +1,66 @@
+---
+title: "Karpenter"
+description: "Connect Karpenter for node autoscaling actions — scale NodePool limits, tune disruption settings, and recycle nodes in workflows"
+---
+
+The Karpenter integration connects Kestrel to your in-cluster Karpenter installation, enabling AI agents to inspect and scale NodePools, tune consolidation behavior, and recycle nodes as part of automated workflows and incident response.
+
+## Prerequisites
+
+- Kestrel Operator deployed in your cluster (see [Kubernetes](/integrations/kubernetes))
+- Karpenter installed in the same cluster with its CRDs present (`nodepools.karpenter.sh`, `nodeclaims.karpenter.sh`)
+
+## Setup
+
+Karpenter is auto-detected by the Kestrel Operator when the Karpenter CRDs are present in the cluster. No manual connection or credentials are required.
+
+<Steps>
+  <Step title="Install Karpenter">
+    If Karpenter is not already installed, follow the [Karpenter getting started guide](https://karpenter.sh/docs/getting-started/) for your cloud provider.
+  </Step>
+  <Step title="Verify detection">
+    The operator probes for the Karpenter CRDs on each inventory sync. Check the operator logs:
+    ```bash
+    kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "Karpenter"
+    ```
+    Once detected, the integration shows as **Detected** on the Integrations page and Karpenter action blocks become available in the workflow builder.
+  </Step>
+</Steps>
+
+<Note>
+  The integration is enabled by default. To opt out, set `operator.karpenter.enabled: false` in your Helm values and upgrade the operator (this sets `KARPENTER_DISABLED=true` on the operator deployment).
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+- **Node Provisioning Failed** — fires when Karpenter fails to launch or register a node for a NodeClaim (insufficient capacity, launch failure, registration failure)
+- **Node Interrupted** — fires when a Karpenter-managed node is interrupted or forcibly terminated (spot reclaim, drain failure, termination-grace expiry)
+- **NodePool Limit Reached** — fires when pods cannot be scheduled because a NodePool's resource limits are exceeded
+
+**Action blocks:**
+- **List NodePools** — list all NodePools with their limits, current resource usage, disruption settings, and readiness
+- **Get NodePool Status** — read a NodePool's limits, usage, disruption settings, and live NodeClaim counts
+- **List NodeClaims** — list provisioned nodes with instance type, capacity type, zone, and readiness, optionally scoped to one NodePool
+- **Scale NodePool Limits** — update a NodePool's resource limits (`spec.limits`) to allow more capacity or cap spend — this is how you scale up/down with Karpenter
+- **Set Disruption Policy** — update consolidation policy and consolidate-after delay to control how aggressively Karpenter removes underutilized nodes
+- **Apply NodePool** — create or update a NodePool from a full manifest
+- **Delete NodeClaim** — recycle a node; Karpenter drains it gracefully and provisions a replacement if capacity is still needed
+
+Example: A developer asks in the request chat to scale up the `default` NodePool. The workflow raises the NodePool's CPU limit, waits for capacity, and posts a confirmation to the platform team's Slack channel.
+
+### Scoping
+
+Karpenter actions are scoped by **cluster** and **NodePool** — both populated with dropdowns from live cluster data in the workflow builder.
+
+## Disconnecting
+
+To disable the Karpenter integration, set the following in your Helm values and upgrade the operator:
+
+```yaml
+operator:
+  karpenter:
+    enabled: false
+```
