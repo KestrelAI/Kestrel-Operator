@@ -44,7 +44,7 @@ Build workflows using typed classes with full IDE autocompletion:
 
 ```python
 from kestrel import KestrelClient
-from kestrel.workflows import Workflow, Trigger, Action, Condition, Approval
+from kestrel.workflows import Workflow, Trigger, Action, Condition, Approval, PollUntil
 
 wf = (
     Workflow("Pod Crash RCA + Jira")
@@ -403,6 +403,8 @@ Action.kestrel_create_iac_pr().repo("org/infra-repo")
 
 # Kestrel — Flow Control
 Action.kestrel_wait().duration(5).unit("minutes")
+PollUntil(Action.daytona_get_sandbox().sandbox_id("{{signal.sandbox_id}}"),
+          Condition.equals("sandbox_state", "stopped")).every(seconds=60).timeout(minutes=30)
 
 # Slack
 Action.slack_send_message().channel("incidents").message("{{incident.title}}").include_rca(True)
@@ -627,6 +629,41 @@ wf = (
 ```
 
 Available operators: `equals`, `not_equals`, `contains`, `not_contains`, `exists`, `not_exists`.
+
+The value-comparing factories accept multiple candidate values — `equals`/`contains` are met when the field matches **any** value, `not_equals`/`not_contains` only when it matches **none**:
+
+```python
+Condition.equals("sandbox_state", "stopped", "error")       # met if stopped OR error
+Condition.not_equals("phase", "Failed", "Degraded")         # met only if neither
+```
+
+### Poll Until (Loops)
+
+`PollUntil` builds a self-looping node that repeatedly executes ONE embedded catalog action at a fixed interval and exits on the **met** branch when the condition holds against that iteration's output, or on the **timeout** branch when the timeout elapses. Wire the branches with `.on_met()` / `.on_timeout()`:
+
+```python
+wf = (
+    Workflow("Snapshot stopped sandbox")
+    .trigger(Trigger.custom_webhook("sandbox.watch"))
+    .then(
+        PollUntil(
+            Action.daytona_get_sandbox().sandbox_id("{{signal.sandbox_id}}"),
+            Condition.equals("sandbox_state", "stopped", "error"),
+        )
+        .every(seconds=60)
+        .timeout(minutes=30)
+        .label("Poll until sandbox stops")
+    )
+    .on_met(Action.daytona_create_snapshot().name("post-stop-{{signal.sandbox_id}}"))
+    .on_timeout(Action.slack_send_message().channel("ops").message("Sandbox never stopped"))
+)
+```
+
+- `.every(seconds=..., minutes=...)` — polling interval (default 60s, minimum 30s).
+- `.timeout(minutes=..., hours=...)` — loop timeout (default 60 minutes).
+- Downstream steps on the **met** branch can reference the final iteration's output fields via `{{step_outputs.<loop-id>.<field>}}`.
+
+Polling is durable across server restarts: an in-flight interval resumes its countdown rather than restarting.
 
 ### Approvals
 

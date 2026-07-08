@@ -504,6 +504,29 @@ The loop repeats until you approve or reject, capped by **Max Refine Rounds** (d
 
 ---
 
+## Poll Until (Loops)
+
+The **Poll Until** block (Flow Control) repeatedly runs a single catalog action at a fixed interval and evaluates an exit condition against each iteration's output. It's the building block for "wait for X to reach state Y" automation — waiting for a sandbox to stop, a deployment to become healthy, a pipeline to finish, or a cloud resource to reach a target state.
+
+Drag **Poll Until** from the sidebar (next to Conditions) onto the canvas, then configure:
+
+- **Action to Poll** — any catalog action (searchable dropdown). Its config fields appear below and behave exactly like the standalone action block, including dynamic dropdowns (e.g. Cluster → Namespace scoping) and template variables.
+- **Output Field Path** — which output field of the polled action to test, chosen from the action's known outputs.
+- **Operator + Value** — `equals`, `not_equals`, `contains`, `not_contains`, `exists`, `not_exists`. Where the output has known discrete values (states, statuses) or refers to live resources (cluster IDs), the Value field is a dropdown. You can select **multiple values**: `equals`/`contains` are met when the output matches ANY selected value; `not_equals`/`not_contains` are met only when it matches NONE.
+- **Poll Interval** — how often to re-run the action (default 60s, minimum 30s).
+- **Timeout** — how long to keep polling (default 60 minutes).
+
+The block has two outgoing branches:
+
+- **met** — the exit condition held on some iteration; downstream steps see the final iteration's output.
+- **timeout** — the timeout elapsed before the condition was met.
+
+<Note>
+Polling is durable. The loop's schedule is persisted server-side, so a server restart mid-interval resumes the countdown where it left off instead of restarting the interval — and in-flight loops survive redeployments.
+</Note>
+
+---
+
 ## Generating Runbooks
 
 The **Generate Runbook** action (Kestrel) distills a completed RCA and its fixes into a reusable, generalized runbook for that *class* of incident — symptom, diagnosis steps, remediation steps, verification, and rollback. It requires an upstream RCA step. The generated runbook is available to downstream steps as `{{runbook_html}}` / `{{runbook_markdown}}`, and **Publish Runbook Entry** (Confluence) consumes `runbook_html` automatically.
