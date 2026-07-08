@@ -75,11 +75,19 @@ Filter triggers by project, cluster, and event type. Kestrel polls the Nebius AP
 - **List Clusters** — list managed Kubernetes clusters for a project
 - **List Node Groups** — list node groups for a managed Kubernetes cluster
 - **Scale Node Group** — scale a node group to a target size
+- **Create Instance** — provision a new GPU or CPU instance with its boot disk (platform, preset, subnet, image, disk size, optional SSH key)
+- **Delete Instance** — delete an instance and, by default, its boot disk
+- **Create Node Group** — provision a new GPU/CPU worker pool in a managed Kubernetes cluster
+- **Delete Node Group** — delete a node group, tearing down its nodes
 - **Investigate Nebius** — run an AI investigation of GPU errors, node failures, and configuration issues
 
 Nebius project, instance, cluster, and node-group selects accept template variables like `{{signal.project_id}}`, `{{signal.instance_id}}`, `{{signal.cluster_id}}`, and `{{signal.node_name}}` from the trigger.
 
+Provisioning and deletion blocks (Create/Delete Instance, Create/Delete Node Group) create or destroy billable GPU capacity — gate them behind an Approval node in production workflows. Create Instance outputs an `instance_id` that downstream blocks can reference via `{{step_outputs.<id>.instance_id}}`.
+
 Example: A workflow triggers on a GPU error, runs an AI investigation to diagnose the failure, scales the affected node group to replace the bad node, and posts a summary to Slack.
+
+Example: A developer requests an H100 instance via Slack (`req-nebius` trigger); the workflow waits for approval, provisions the instance with Create Instance, and DMs the requester the new instance ID.
 
 ## Disconnecting
 
