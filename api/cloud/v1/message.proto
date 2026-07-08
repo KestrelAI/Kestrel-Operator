@@ -248,6 +248,8 @@ message InventoryCommit {
   bool has_rollouts = 3;
   // True if the operator detected Flux CD CRDs in the cluster.
   bool has_flux = 4;
+  // True if the operator detected Karpenter CRDs (nodepools.karpenter.sh) in the cluster.
+  bool has_karpenter = 5;
 }
 
 // Network policy definition matching Kubernetes NetworkPolicy format
@@ -1371,6 +1373,18 @@ enum DatadogQueryType {
   FLUX_GET_STATUS = 26;  // get resource status (Ready condition, revision)
   FLUX_LIST = 27;        // list Flux resources (optionally kind/ns-scoped)
   FLUX_GET_EVENTS = 28;  // recent K8s events for a Flux resource
+
+  // Karpenter operations, executed against Karpenter CRs (NodePool,
+  // NodeClaim in karpenter.sh; EC2NodeClass in karpenter.k8s.aws) via the
+  // Kubernetes API. NodePool/NodeClaim are cluster-scoped. filter carries
+  // the resource name; json_body carries operation-specific parameters.
+  KARPENTER_LIST_NODEPOOLS = 29;     // list NodePools with status summary
+  KARPENTER_GET_NODEPOOL_STATUS = 30; // get one NodePool (limits, usage, conditions)
+  KARPENTER_LIST_NODECLAIMS = 31;    // list NodeClaims (optionally per NodePool)
+  KARPENTER_SCALE_NODEPOOL = 32;     // patch spec.limits (cpu/memory)
+  KARPENTER_SET_DISRUPTION = 33;     // patch spec.disruption (policy/consolidateAfter)
+  KARPENTER_APPLY_NODEPOOL = 34;     // create or update a NodePool from a spec
+  KARPENTER_DELETE_NODECLAIM = 35;   // delete a NodeClaim (recycle a node)
 }
 
 // Datadog query response from operator to server.

@@ -44,6 +44,7 @@ Kestrel connects to your clouds, clusters, PaaS and deployment platforms, AI com
 | Integration | Purpose |
 |---|---|
 | [Kubernetes](/integrations/kubernetes) | Cluster monitoring, incident detection, resource inventory. **Workflows:** trigger on pod crashes, node failures, rollout issues; actions include RCA, fix generation, manifest creation, kubectl investigations |
+| [Karpenter](/integrations/karpenter) | Node autoscaling. **Workflows:** trigger on provisioning failures, node interruptions, NodePool limit exhaustion; actions include scaling NodePool limits, tuning disruption policy, applying NodePools, recycling nodes |
 | [AWS](/integrations/aws) | Cloud resource inventory, incident detection, VPC Flow Logs. **Workflows:** trigger on IAM, S3, EC2, RDS, Lambda events; actions include cloud RCA, Terraform/CLI generation, cost queries, anomaly detection, forecasting |
 | [OCI](/integrations/oci) | Oracle Cloud resource inventory, incident detection, VCN Flow Logs |
 | [Cloudflare](/integrations/cloudflare) | Edge, DNS, and security automation. **Workflows:** trigger on security events, health check failures, Worker failures, SSL expiration; actions include DNS records, WAF/firewall rules, cache purges, Worker deploys/rollbacks, load balancer pools, tunnels |

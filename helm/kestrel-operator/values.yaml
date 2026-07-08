@@ -93,6 +93,12 @@ operator:
   flux:
     enabled: true
 
+  # Karpenter integration
+  # Auto-detected via the Karpenter CRDs (karpenter.sh). Enabled by default;
+  # set enabled: false to opt out.
+  karpenter:
+    enabled: true
+
   # Safe-apply configuration for Chat YAML changes
   safeApply:
     # Enable safe-apply permissions for the operator
