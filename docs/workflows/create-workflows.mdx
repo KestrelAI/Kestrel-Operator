@@ -527,6 +527,28 @@ Polling is durable. The loop's schedule is persisted server-side, so a server re
 
 ---
 
+## For Each (Fan-Out)
+
+The **For Each** block (Flow Control) resolves a list from an upstream step's output at runtime and runs a single catalog action once per element, in order. It's the building block for "do X for every Y" automation — creating a Jira ticket for each new audit finding, sending a message per failed service, or opening an issue for every flagged resource — without knowing the number of items in advance.
+
+Drag **For Each** from the sidebar (Flow Control) onto the canvas, then configure:
+
+- **Items to Iterate Over** — a template that resolves to a list, e.g. `{{step_outputs.action-1.outputs.new_findings}}` from an Execute Script step that wrote an array to its outputs. JSON-encoded array strings and comma-separated strings also work.
+- **Action per Item** — any catalog action (searchable dropdown). Its config fields appear below and behave exactly like the standalone action block. Inside these fields, three extra template variables are available:
+  - `{{item}}` — the current element (rendered as JSON when it's an object)
+  - `{{item.<field>}}` — a field of the current element, e.g. `{{item.title}}`
+  - `{{item_index}}` — the zero-based index of the current element
+- **Max Items** — caps the fan-out (default 25, hard cap 100). Extra items are skipped and the aggregated output is marked `truncated`.
+- **Continue on Error** — when enabled, a failed item doesn't fail the whole block; remaining items still run.
+
+The block emits **one aggregated output**: `items_total`, `items_processed`, `succeeded`, `failed`, per-item `results`, and a flat `summary` string usable in downstream templates. Its outgoing edges fire after **all** items have been processed.
+
+<Note>
+For Each runs items once each, immediately and sequentially. To repeatedly re-run an action until a condition holds, use **Poll Until** instead.
+</Note>
+
+---
+
 ## Generating Runbooks
 
 The **Generate Runbook** action (Kestrel) distills a completed RCA and its fixes into a reusable, generalized runbook for that *class* of incident — symptom, diagnosis steps, remediation steps, verification, and rollback. It requires an upstream RCA step. The generated runbook is available to downstream steps as `{{runbook_html}}` / `{{runbook_markdown}}`, and **Publish Runbook Entry** (Confluence) consumes `runbook_html` automatically.
