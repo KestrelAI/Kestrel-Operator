@@ -83,7 +83,7 @@ Filter triggers by project, cluster, and event type. Kestrel polls the Nebius AP
 
 Nebius project, instance, cluster, and node-group selects accept template variables like `{{signal.project_id}}`, `{{signal.instance_id}}`, `{{signal.cluster_id}}`, and `{{signal.node_name}}` from the trigger.
 
-Provisioning and deletion blocks (Create/Delete Instance, Create/Delete Node Group) create or destroy billable GPU capacity — gate them behind an Approval node in production workflows. Create Instance outputs an `instance_id` that downstream blocks can reference via `{{step_outputs.<id>.instance_id}}`.
+Provisioning and deletion blocks (Create/Delete Instance, Create/Delete Node Group) create or destroy billable GPU capacity; add an Approval node before them if you want a human sign-off step. Create Instance outputs an `instance_id` that downstream blocks can reference via `{{step_outputs.<id>.instance_id}}`.
 
 Example: A workflow triggers on a GPU error, runs an AI investigation to diagnose the failure, scales the affected node group to replace the bad node, and posts a summary to Slack.
 
