@@ -665,6 +665,44 @@ wf = (
 
 Polling is durable across server restarts: an in-flight interval resumes its countdown rather than restarting.
 
+### For Each (Fan-Out)
+
+`ForEach` builds a fan-out node that resolves a list from an upstream step's output at runtime and executes ONE embedded catalog action per element, sequentially. Per-item config templates may reference `{{item}}` (the current element), `{{item.<field>}}` (a field of an object element), and `{{item_index}}` (the zero-based index):
+
+```python
+from kestrel.workflows import Workflow, Trigger, Action, ForEach
+
+wf = (
+    Workflow("Ticket per audit finding")
+    .trigger(Trigger.schedule_weekly())
+    # Script writes an array of finding objects to outputs.json:
+    .then(Action("kestrel", "kestrel-execute-script")
+          .config("script", AUDIT_SCRIPT)
+          .label("Audit cluster"))
+    .then(
+        ForEach(
+            "{{step_outputs.action-1.outputs.new_findings}}",
+            Action.jira_create_ticket()
+            .project("SEC")
+            .title("[Audit] {{item.title}}")
+            .body("{{item.description}}"),
+        )
+        .max_items(50)
+        .continue_on_error()
+        .label("Create ticket per finding")
+    )
+    # Runs once, after ALL items have been processed:
+    .then(Action.slack_send_message().channel("security")
+          .message("Filed {{step_outputs.foreach-1.succeeded}} tickets"))
+)
+```
+
+- The items expression must resolve to a list: an array output, a JSON-encoded array string, or a comma-separated string.
+- `.max_items(n)` — caps the fan-out (server default 25, hard cap 100).
+- `.continue_on_error()` — a failed item doesn't fail the node; remaining items still run.
+- The node emits one aggregated output (`items_total`, `items_processed`, `succeeded`, `failed`, per-item `results`, and a flat `summary`), referenced as `{{step_outputs.<foreach-id>.<field>}}`.
+- `ForEach` runs items once each, immediately. To repeatedly re-run an action until a condition holds, use `PollUntil` instead.
+
 ### Approvals
 
 ```python
