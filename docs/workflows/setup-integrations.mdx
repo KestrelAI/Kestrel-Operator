@@ -132,6 +132,17 @@ Prefer the terminal? Every integration can also be connected with the [Kestrel C
   </Card>
 </CardGroup>
 
+## Secret Management
+
+<CardGroup cols={2}>
+  <Card title="HashiCorp Vault" icon="vault" href="/integrations/vault">
+    **Triggers (poll-based):** Vault Sealed/Unsealed, Health Degraded, Secret Version Created, Secret Stale, Policy Created/Deleted, Auth Method Enabled/Disabled. **Actions:** Read/Write/Delete Secret, List Secrets, Get Secret Metadata, Rotate Static Role, List Mounts, List/Read/Write Policy, List Auth Methods, List/Revoke/Renew Lease, Get Health, List/Revoke Token Accessor, Investigate Vault.
+  </Card>
+  <Card title="Infisical" icon="key" href="/integrations/infisical">
+    **Triggers (poll-based):** Secret Created/Updated/Deleted, Approval Requested, Secret Sync Failed, Identity Created. **Actions:** Get/Create/Update/Delete Secret, List Secrets, List Projects/Environments/Folders, Create Folder, List/Trigger Secret Sync, List Approval Requests, Get Audit Logs, List Identities, Investigate Infisical.
+  </Card>
+</CardGroup>
+
 ## Cost Management
 
 AWS Cost features are available through the [AWS integration](/integrations/aws). No separate setup is required — cost management actions are enabled when you connect an AWS account.

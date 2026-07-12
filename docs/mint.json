@@ -144,6 +144,8 @@
         "integrations/pulumi",
         "integrations/jenkins",
         "integrations/circleci",
+        "integrations/vault",
+        "integrations/infisical",
         "integrations/knowledge-sources"
       ]
     },
