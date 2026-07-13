@@ -1,0 +1,87 @@
+---
+title: "HashiCorp Vault"
+description: "Connect HashiCorp Vault for secret rotation automation, seal-status monitoring, stale-secret detection, policy and auth-method change alerts, lease management, and AI investigation in workflows"
+---
+
+The HashiCorp Vault integration connects Kestrel to your Vault cluster (self-hosted or HCP Vault Dedicated) through the Vault HTTP API, enabling seal-status, secret-version, policy, and auth-method changes to trigger workflows and letting workflows read and write KV v2 secrets, rotate database static roles, manage ACL policies, revoke leases and tokens, and run read-only AI investigations.
+
+Vault has no outbound control-plane webhooks (Vault Enterprise event notifications require a WebSocket subscriber inside your network), so Kestrel polls the Vault API on a per-tenant cadence to detect seal-status changes, new secret versions, stale secrets, and policy or auth-method changes. Polling reads **only metadata** — secret values are never read or stored by the pollers.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A reachable Vault cluster (the Kestrel control plane must be able to reach the Vault address over HTTPS)
+- A Vault **token** for Kestrel — a periodic service token bound to a dedicated policy is recommended over a root token
+- KV v2 secrets engines for secret triggers and secret actions; the database secrets engine for static-role rotation
+
+## Setup
+
+<Steps>
+  <Step title="Create a policy and token for Kestrel">
+    Create a dedicated policy that grants only what your workflows need. A typical policy grants `read`, `list` on `sys/health`, `sys/mounts`, `sys/policies/acl/*`, and `sys/auth`, plus `read`, `list` on the metadata paths of the KV mounts you want monitored (e.g. `secret/metadata/*`), and — only if your workflows write secrets or rotate credentials — `create`, `update` on the matching `secret/data/*` and `database/rotate-role/*` paths.
+
+    Then create a token bound to that policy:
+
+    ```bash
+    vault token create -policy=kestrel -period=768h -orphan
+    ```
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Vault** in your Kestrel dashboard.
+    2. Enter your **Vault address** (e.g. `https://vault.example.com:8200`).
+    3. Paste the **token**.
+    4. Optionally set a **namespace** (Vault Enterprise / HCP Vault).
+    5. Click **Connect Vault** — Kestrel validates the connection by reading `sys/health` and starts polling.
+  </Step>
+</Steps>
+
+<Warning>
+  The token can read and write real secrets, depending on the policy you attach. Scope the policy to the narrowest set of paths your workflows need, and gate destructive workflow actions (Delete Secret, Revoke Lease, Revoke Token) behind Approval nodes. Kestrel stores the token encrypted.
+</Warning>
+
+<Note>
+  All Vault triggers are detected by polling, so there may be up to one poll interval of delay before a workflow fires. The poll cadence is configurable per trigger (1m–30m; seal-status checks default to 1 minute, secret and policy checks to 5 minutes). Pollers read only KV **metadata** — never secret values.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks (all poll-based):**
+- **Vault Sealed / Vault Unsealed** — fire when the cluster's seal status changes (a sealed Vault cannot serve secrets)
+- **Health Degraded** — fires when Vault becomes unreachable or reports an unhealthy status
+- **Secret Version Created** — fires when a KV v2 secret gets a new version (metadata diff; values are never read)
+- **Secret Stale** — fires when a secret's latest version exceeds a rotation age threshold (default 90 days, configurable per trigger)
+- **Policy Created / Deleted** — fires when ACL policies change
+- **Auth Method Enabled / Disabled** — fires when authentication methods change
+
+Filter secret triggers by mount and secret-path prefix. Trigger events expose template variables such as `{{signal.mount}}`, `{{signal.secret_path}}`, `{{signal.secret_version}}`, `{{signal.secret_age_days}}`, `{{signal.policy_name}}`, and `{{signal.auth_method}}` for downstream steps.
+
+**Action blocks:**
+- **Read Secret** — read a KV v2 secret (the value output is marked sensitive: it is redacted in run history but can be templated into downstream steps, e.g. to sync into another system)
+- **Write Secret** — create or update a KV v2 secret (creates a new version); the data can reference previous step outputs, e.g. a freshly generated credential
+- **Delete Secret** — soft-delete the latest version, or permanently destroy all versions (gate behind an Approval node)
+- **List Secrets** / **Get Secret Metadata** — enumerate secret names and check version/age metadata without reading values
+- **Rotate Static Role** — rotate the credentials of a database static role immediately
+- **List Mounts** / **List Auth Methods** — inventory of secrets engines and auth methods
+- **List Policies** / **Read Policy** / **Write Policy** — inspect and manage ACL policies from HCL
+- **List Leases** / **Revoke Lease** / **Renew Lease** — manage dynamic-credential leases (revoke during credential-leak response)
+- **Get Health** — check seal/init status and server version
+- **List Token Accessors** / **Revoke Token Accessor** — audit and revoke tokens without knowing the token itself
+- **Investigate Vault** — run a read-only AI investigation across health, mounts, secret metadata, policies, and leases (the investigation can never read secret values)
+
+Mount, secret path, policy, and static-role selects use dynamic dropdowns backed by the Vault API and accept template variables like `{{signal.mount}}` and `{{signal.secret_path}}` from the trigger.
+
+Example (rotation — the flagship Vault flow): When a **secret goes stale** in `secret/app/prod`, post the secret's metadata to Slack with approve/reject buttons, then **Rotate Static Role** (or write a newly generated value with **Write Secret**) on approval and confirm the new version.
+
+Example (incident): When **Vault seals**, page on-call via PagerDuty with the health summary and open a Jira ticket, then post an all-clear to Slack when the **Unsealed** trigger fires.
+
+Example (security): When an **auth method is enabled**, run an AI investigation of recent policy and auth changes and post the findings to your security Slack channel.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Vault**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops polling and all Vault workflow triggers and actions. The stored token is deleted from Kestrel; revoke it in Vault (`vault token revoke`) if it is no longer needed. You can reconnect at any time.

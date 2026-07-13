@@ -233,6 +233,27 @@ Trigger.pulumi_stack_created()
 Trigger.pulumi_stack_deleted()
 Trigger.pulumi_any()
 
+# HashiCorp Vault (poll-based; metadata only — secret values are never read)
+Trigger.vault_sealed()
+Trigger.vault_unsealed()
+Trigger.vault_health_degraded()
+Trigger.vault_secret_version_created()    # KV v2 metadata diff
+Trigger.vault_secret_stale()              # age threshold via .vault_secret_max_age_days()
+Trigger.vault_policy_created()
+Trigger.vault_policy_deleted()
+Trigger.vault_auth_method_enabled()
+Trigger.vault_auth_method_disabled()
+Trigger.vault_any()
+
+# Infisical (poll-based via audit log; secret values are never read)
+Trigger.infisical_secret_created()
+Trigger.infisical_secret_updated()
+Trigger.infisical_secret_deleted()
+Trigger.infisical_approval_requested()
+Trigger.infisical_secret_sync_failed()
+Trigger.infisical_identity_created()
+Trigger.infisical_any()
+
 # Developer Requests (on-demand via Slack /kestrel-workflow, Kestrel Platform UI, or CLI)
 Trigger.request_kubernetes()    # Kubernetes operations
 Trigger.request_cloud()         # AWS / Cloud operations
@@ -248,6 +269,8 @@ Trigger.request_jenkins()       # Jenkins operations
 Trigger.request_circleci()      # CircleCI operations
 Trigger.request_terraform()     # Terraform Cloud operations
 Trigger.request_pulumi()        # Pulumi Cloud operations
+Trigger.request_vault()         # HashiCorp Vault operations
+Trigger.request_infisical()     # Infisical operations
 Trigger.request_general()       # General (catch-all)
 ```
 
@@ -367,6 +390,26 @@ trigger = (
     Trigger.pulumi_update_failed()
     .pulumi_stacks("my-project/prod")    # project/stack refs or bare stack names; omit or "*" for all
     .pulumi_projects("my-project")       # optional: filter by Pulumi project name
+)
+```
+
+Vault and Infisical triggers are poll-based (no outbound webhooks; only metadata and audit events are read — never secret values). Scope secret triggers and tune the poll cadence:
+
+```python
+trigger = (
+    Trigger.vault_secret_stale()
+    .vault_mounts("secret/")                   # KV v2 mounts; omit or "*" for all
+    .vault_secret_paths("app/prod")            # path prefixes within the mount
+    .vault_secret_max_age_days(60)             # rotation age threshold (default 90)
+    .vault_poll_interval("15m")                # 1m | 5m | 15m | 30m
+)
+
+trigger = (
+    Trigger.infisical_secret_updated()
+    .infisical_projects("proj-id")             # project IDs; omit or "*" for all
+    .infisical_environments("prod")            # environment slugs
+    .infisical_secret_paths("/backend")        # folder path prefixes
+    .infisical_poll_interval("5m")             # 1m | 5m | 15m | 30m
 )
 ```
 
@@ -608,6 +651,45 @@ Action.pulumi_get_drift().stack("my-project/prod")
 Action.pulumi_set_stack_tag().stack("{{signal.stack}}").tag_name("kestrel:quarantined").tag_value("true")
 Action.pulumi_delete_stack_tag().stack("{{signal.stack}}").tag_name("kestrel:quarantined")
 Action.pulumi_investigate().query("Why did the update fail?").stack("{{signal.stack}}")
+
+# HashiCorp Vault (KV-scoped: .mount() + .path(); read-secret values are sensitive
+# — redacted in run history but usable in downstream templates)
+Action.vault_read_secret().mount("secret/").path("app/prod/db").secret_key("password")
+Action.vault_write_secret().mount("secret/").path("app/prod/db").secret_data('{"password": "{{step_outputs.action-1.value}}"}')
+Action.vault_delete_secret().mount("secret/").path("app/old").destroy()    # gate behind approval
+Action.vault_list_secrets().mount("secret/").path("app/prod")
+Action.vault_get_secret_metadata().mount("{{signal.mount}}").path("{{signal.secret_path}}")
+Action.vault_rotate_static_role().mount("database/").role("app-db")
+Action.vault_list_mounts()
+Action.vault_list_policies()
+Action.vault_read_policy().name("{{signal.policy_name}}")
+Action.vault_write_policy().name("app-read").policy_hcl('path "secret/data/app/*" { capabilities = ["read"] }')
+Action.vault_list_auth_methods()
+Action.vault_list_leases().lease_prefix("database/creds")
+Action.vault_revoke_lease().lease_id("{{step_outputs.action-1.keys}}")     # credential-leak response
+Action.vault_renew_lease().lease_id("database/creds/app/abc").increment(3600)
+Action.vault_get_health()
+Action.vault_list_token_accessors()
+Action.vault_revoke_token_accessor().accessor("hmac.abc123")               # gate behind approval
+Action.vault_investigate().query("Why is this secret stale?").mount("{{signal.mount}}")
+
+# Infisical (project-scoped: .infisical_project() + .environment() + .secret_path();
+# get-secret values are sensitive — redacted in run history but usable in templates)
+Action.infisical_get_secret().infisical_project("backend").environment("prod").secret_path("/api").secret_key("DB_PASSWORD")
+Action.infisical_create_secret().infisical_project("backend").environment("prod").secret_key("API_KEY").secret_value("{{step_outputs.action-1.value}}")
+Action.infisical_update_secret().infisical_project("backend").environment("prod").secret_key("API_KEY").secret_value("...")
+Action.infisical_delete_secret().infisical_project("backend").environment("prod").secret_key("OLD_KEY")   # gate behind approval
+Action.infisical_list_secrets().infisical_project("backend").environment("prod")   # key names only, never values
+Action.infisical_list_projects()
+Action.infisical_list_environments().infisical_project("backend")
+Action.infisical_list_folders().infisical_project("backend").environment("prod").path("/")
+Action.infisical_create_folder().infisical_project("backend").environment("prod").path("/").name("payments")
+Action.infisical_list_secret_syncs().infisical_project("{{signal.project_id}}")
+Action.infisical_trigger_secret_sync().sync_id("{{signal.sync_id}}")       # retry a failed sync
+Action.infisical_list_approval_requests().infisical_project("{{signal.project_id}}")
+Action.infisical_get_audit_logs().infisical_project("{{signal.project_id}}").event_type("delete-secret").limit(100)
+Action.infisical_list_identities()
+Action.infisical_investigate().query("Which syncs are failing and why?")
 
 # Approval Gates
 Action.approval_manual()

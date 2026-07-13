@@ -287,6 +287,31 @@ Triggered by Pulumi Cloud stack, update, deployment, drift, and policy events, d
 | Stack Created | Triggers when a new stack is created in the organization |
 | Stack Deleted | Triggers when a stack is deleted from the organization |
 
+### HashiCorp Vault
+
+Triggered by changes detected by **polling** the Vault API (Vault has no outbound control-plane webhooks). Pollers read only KV metadata — never secret values. Filter secret triggers by mount and secret-path prefix; the poll cadence is configurable per trigger (1m–30m).
+
+| Trigger Block | Description |
+|---|---|
+| Vault Sealed | Triggers when the cluster seals (secrets become unavailable) |
+| Vault Unsealed | Triggers when the cluster is unsealed |
+| Health Degraded | Triggers when Vault becomes unreachable or reports an unhealthy status |
+| Secret Version Created | Triggers when a KV v2 secret gets a new version (metadata diff) |
+| Secret Stale | Triggers when a secret's latest version exceeds a rotation age threshold (default 90 days) |
+| Policy Created / Deleted | Triggers when ACL policies change |
+| Auth Method Enabled / Disabled | Triggers when authentication methods change |
+
+### Infisical
+
+Triggered by changes detected by **polling** the Infisical audit log and project APIs. Pollers never read secret values. Filter secret triggers by project, environment slug, and folder-path prefix; the poll cadence is configurable per trigger (1m–30m, default 5m).
+
+| Trigger Block | Description |
+|---|---|
+| Secret Created / Updated / Deleted | Trigger when secrets change in a project (derived from the audit log) |
+| Approval Requested | Triggers when a secret-change approval request is opened |
+| Secret Sync Failed | Triggers when a secret sync to an external destination fails |
+| Identity Created | Triggers when a new machine identity appears in the organization |
+
 ### Custom Webhook
 
 Triggered by an HTTP POST to a unique webhook URL. Accepts any JSON payload with optional HMAC signature verification. See [Custom Integrations](/workflows/custom-integrations) for details.
@@ -358,6 +383,12 @@ Actions are grouped by integration. Each action produces output variables that d
   <Card title="Pulumi Cloud" icon="layer-group">
     List/Get Stack, List/Get Update, Run Deployment, Get/Wait for/Cancel Deployment, Pause/Resume Deployments, Get Stack Outputs, Get Drift Status, Set/Delete Stack Tag, Investigate Pulumi
   </Card>
+  <Card title="HashiCorp Vault" icon="vault">
+    Read/Write/Delete Secret, List Secrets, Get Secret Metadata, Rotate Static Role, List Mounts, List/Read/Write Policy, List Auth Methods, List/Revoke/Renew Lease, Get Health, List/Revoke Token Accessor, Investigate Vault
+  </Card>
+  <Card title="Infisical" icon="key">
+    Get/Create/Update/Delete Secret, List Secrets, List Projects/Environments/Folders, Create Folder, List/Trigger Secret Sync, List Approval Requests, Get Audit Logs, List Identities, Investigate Infisical
+  </Card>
   <Card title="Approval Gates" icon="shield-check">
     Wait for Manual Approval, Wait for Slack Approval, Wait for PR/MR Approval, Refine RCA with Feedback
   </Card>
@@ -423,6 +454,17 @@ Template variables let you pass data between workflow steps. Use double curly br
 | `{{signal.job_number}}` | CircleCI trigger | Number of the job (job-completed events) |
 | `{{signal.status}}` | CircleCI trigger | Workflow/job status (success, failed, error, canceled) |
 | `{{signal.branch}}` | CircleCI trigger | VCS branch the pipeline ran on |
+| `{{signal.mount}}` | Vault trigger | Secrets engine mount (secret events, e.g. `secret/`) |
+| `{{signal.secret_path}}` | Vault / Infisical trigger | Secret path (Vault) or folder path (Infisical); values are never included |
+| `{{signal.secret_version}}` | Vault trigger | New version number (secret.version_created events) |
+| `{{signal.secret_age_days}}` | Vault trigger | Days since the last version (secret.stale events) |
+| `{{signal.policy_name}}` | Vault trigger | ACL policy name (policy events) |
+| `{{signal.auth_method}}` | Vault trigger | Auth method path (auth_method events) |
+| `{{signal.project_id}}` | Infisical trigger | Infisical project the event is about |
+| `{{signal.environment}}` | Infisical trigger | Environment slug (secret events, e.g. `prod`) |
+| `{{signal.secret_key}}` | Infisical trigger | Secret key name (secret events; values are never included) |
+| `{{signal.sync_id}}` | Infisical trigger | Secret sync (sync.failed events) |
+| `{{signal.actor}}` | Infisical trigger | Who performed the action (user email or identity name) |
 | `{{signal.session_id}}` | PostHog trigger | PostHog session ID |
 | `{{signal.workspace}}` | Terraform Cloud trigger | Workspace name |
 | `{{signal.run_id}}` | Terraform Cloud trigger | Run ID (run-...) |
@@ -463,7 +505,7 @@ Cooldowns prevent a workflow from firing repeatedly for the same event. Configur
 |--------|----------|-------------|
 | No cooldown | 0 | — |
 | 5 minutes | 5m | — |
-| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, Nebius, Jenkins, CircleCI, Terraform Cloud, Pulumi Cloud, custom webhook triggers |
+| 10 minutes | 10m | Slack, PostHog, Vercel, Railway, Fly.io, Nebius, Jenkins, CircleCI, Terraform Cloud, Pulumi Cloud, Vault, Infisical, custom webhook triggers |
 | 30 minutes | 30m | — |
 | 1 hour | 1h | — |
 | 3 hours | 3h | — |
@@ -687,6 +729,29 @@ On **Request changes**, the reviewer's free-text guidance re-runs the RCA agent 
 | **Action 4** | PagerDuty Create Alert | Summary: `{{step_outputs.action-3.summary}}` |
 
 ### PostHog Exception → Investigation → Slack
+
+### Vault Stale Secret → Slack Approval → Rotate → Confirm
+
+**Workflow Agent prompt:** *"When a secret in secret/app/prod hasn't been rotated in 60 days, post its metadata to #secrets in Slack and ask for approval, then rotate the database static role and confirm the rotation."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Vault Secret Stale | Mount: `secret/`, paths: `app/prod`, max age: 60 days |
+| **Action 1** | Get Secret Metadata | Mount: `{{signal.mount}}`, Path: `{{signal.secret_path}}` |
+| **Action 2** | Wait for Slack Approval | Channel: `#secrets`, message includes `{{signal.secret_path}}` age `{{signal.secret_age_days}}` days |
+| **On Approved → Action 3** | Rotate Static Role | Mount: `database/`, Role: `app-db` |
+| **Action 4** | Slack Send Message | Channel: `#secrets`, message: `{{step_outputs.action-3.summary}}` |
+
+### Infisical Sync Failure → Slack Approval → Retry Sync
+
+**Workflow Agent prompt:** *"When an Infisical secret sync fails, ask for approval in #secrets, then re-trigger the sync and report the result."*
+
+| Step | Type | Configuration |
+|------|------|---------------|
+| **Trigger** | Infisical Secret Sync Failed | All projects |
+| **Action 1** | Wait for Slack Approval | Channel: `#secrets`, message includes `{{signal.sync_name}}` in `{{signal.project_name}}` |
+| **On Approved → Action 2** | Trigger Secret Sync | Sync: `{{signal.sync_id}}` |
+| **Action 3** | Slack Send Message | Channel: `#secrets`, message: `{{step_outputs.action-2.summary}}` |
 
 **Workflow Agent prompt:** *"When PostHog captures a frontend exception, generate an AI summary of the user's session including what they were doing before the error, and send the summary with the replay URL to #product-alerts in Slack."*
 

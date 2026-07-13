@@ -1,0 +1,83 @@
+---
+title: "Infisical"
+description: "Connect Infisical for secret change monitoring, approval-request and failed-sync alerts, machine-identity tracking, secret and folder management, and AI investigation in workflows"
+---
+
+The Infisical integration connects Kestrel to your Infisical organization (Infisical Cloud or self-hosted) through the Infisical REST API, enabling secret changes, approval requests, failed secret syncs, and new machine identities to trigger workflows and letting workflows read and manage secrets, organize folders, trigger secret syncs, review approval requests, and query audit logs.
+
+Infisical has no outbound control-plane webhooks for organization-level events (its per-project webhooks only signal that *something* changed), so Kestrel polls the Infisical **audit log** and project APIs on a per-tenant cadence to detect secret creates/updates/deletes, new approval requests, failed syncs, and new identities. Polling reads **only metadata and audit events** — secret values are never read or stored by the pollers.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- An Infisical organization with at least one project
+- A **Universal Auth machine identity** for Kestrel with access to the projects your workflows manage
+- Audit-log triggers (secret created/updated/deleted, identity created) require an Infisical plan with **audit log API access**
+
+## Setup
+
+<Steps>
+  <Step title="Create a machine identity">
+    In Infisical, go to **Organization → Access Control → Machine Identities** and press **Create Organization Machine Identity** (e.g. `kestrel`). Universal Auth is added as its authentication method by default.
+  </Step>
+  <Step title="Get the Universal Auth credentials">
+    On the identity's page, open the **Universal Auth** method under **Authentication** and copy its **Client ID** (this is different from the identity's ID shown in Details), then create a **Client Secret** — the secret is shown only once.
+  </Step>
+  <Step title="Add the identity to your projects">
+    Press **Add to Project** in the **Projects** section (or go to **Project → Access Control → Machine Identities**) for each project your workflows should manage, with a role that matches what your workflows do — **Viewer** for read-only monitoring, or a role with secret write permissions if workflows create or update secrets.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Infisical** in your Kestrel dashboard.
+    2. Paste the **Client ID** and **Client Secret**.
+    3. Optionally set a custom **Site URL** for self-hosted Infisical (defaults to `https://app.infisical.com`).
+    4. Click **Connect Infisical** — Kestrel validates the credentials by logging in and listing your projects, then starts polling.
+  </Step>
+</Steps>
+
+<Warning>
+  The machine identity can read and write real secrets, depending on the project roles you grant it. Give it the narrowest project access your workflows need, and gate destructive workflow actions (Delete Secret) behind Approval nodes. Kestrel stores the credentials encrypted.
+</Warning>
+
+<Note>
+  All Infisical triggers are detected by polling, so there may be up to one poll interval of delay before a workflow fires. The poll cadence is configurable per trigger (1m–30m, default 5 minutes). Secret-change triggers are derived from the audit log; pollers never read secret values.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks (all poll-based):**
+- **Secret Created / Updated / Deleted** — fire when secrets change in a project (derived from the audit log; values are never read)
+- **Approval Requested** — fires when a secret-change approval request is opened in a project
+- **Secret Sync Failed** — fires when a secret sync to an external destination (AWS, GitHub, etc.) fails
+- **Identity Created** — fires when a new machine identity appears in the organization
+
+Filter secret triggers by project, environment slug, and folder-path prefix. Trigger events expose template variables such as `{{signal.project_id}}`, `{{signal.project_name}}`, `{{signal.environment}}`, `{{signal.secret_path}}`, `{{signal.secret_key}}`, `{{signal.sync_id}}`, `{{signal.sync_name}}`, and `{{signal.actor}}` for downstream steps.
+
+**Action blocks:**
+- **Get Secret** — read a secret (the value output is marked sensitive: it is redacted in run history but can be templated into downstream steps, e.g. to sync into another system)
+- **Create Secret** / **Update Secret** — store or rotate a secret; the value can reference previous step outputs, e.g. a freshly generated credential
+- **Delete Secret** — delete a secret (gate behind an Approval node)
+- **List Secrets** — enumerate secret key names (never values) in a project/environment/path
+- **List Projects** / **List Environments** / **List Folders** / **Create Folder** — inventory and organize the secret hierarchy
+- **List Secret Syncs** / **Trigger Secret Sync** — check sync health and re-run a failed sync
+- **List Approval Requests** — review open secret-change approval requests
+- **Get Audit Logs** — query recent audit events, optionally filtered by project and event type
+- **List Identities** — inventory the organization's machine identities
+- **Investigate Infisical** — run a read-only AI investigation across projects, syncs, approvals, identities, and audit logs (the investigation can never read secret values)
+
+Project, environment, folder, and sync selects use dynamic dropdowns backed by the Infisical API and accept template variables like `{{signal.project_id}}` and `{{signal.sync_id}}` from the trigger.
+
+Example (sync recovery — the flagship Infisical flow): When a **secret sync fails**, post the sync name and project to Slack with approve/reject buttons, then **Trigger Secret Sync** to retry on approval.
+
+Example (change review): When a **secret is updated** in the `prod` environment, fetch recent audit logs for the project and post a summary — who changed what, and when — to your security Slack channel.
+
+Example (governance): When an **approval request** is opened, notify the reviewers' Slack channel with the project and environment, and page via PagerDuty if it is still open after an escalation delay.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Infisical**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops polling and all Infisical workflow triggers and actions. The stored credentials are deleted from Kestrel; you can also revoke the machine identity's client secret in Infisical. You can reconnect at any time.
