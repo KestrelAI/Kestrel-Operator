@@ -18,7 +18,7 @@ Infisical has no outbound control-plane webhooks for organization-level events (
 
 <Steps>
   <Step title="Create a machine identity">
-    In Infisical, go to **Organization → Access Control → Identities** and create a machine identity (e.g. `kestrel`). Add a **Universal Auth** method to it and copy the **Client ID** and **Client Secret** — the secret is shown only once.
+    In Infisical, go to **Organization → Access Control → Machine Identities** and press **Create Organization Machine Identity** (e.g. `kestrel`). Add a **Universal Auth** method to it and copy the **Client ID** and **Client Secret** — the secret is shown only once.
 
     Then add the identity to each project your workflows should manage (**Project → Access Control → Machine Identities**), with a role that matches what your workflows do — **Viewer** for read-only monitoring, or a role with secret write permissions if workflows create or update secrets.
   </Step>
