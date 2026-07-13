@@ -18,9 +18,13 @@ Infisical has no outbound control-plane webhooks for organization-level events (
 
 <Steps>
   <Step title="Create a machine identity">
-    In Infisical, go to **Organization → Access Control → Machine Identities** and press **Create Organization Machine Identity** (e.g. `kestrel`). Add a **Universal Auth** method to it and copy the **Client ID** and **Client Secret** — the secret is shown only once.
-
-    Then add the identity to each project your workflows should manage (**Project → Access Control → Machine Identities**), with a role that matches what your workflows do — **Viewer** for read-only monitoring, or a role with secret write permissions if workflows create or update secrets.
+    In Infisical, go to **Organization → Access Control → Machine Identities** and press **Create Organization Machine Identity** (e.g. `kestrel`). Universal Auth is added as its authentication method by default.
+  </Step>
+  <Step title="Get the Universal Auth credentials">
+    On the identity's page, open the **Universal Auth** method under **Authentication** and copy its **Client ID** (this is different from the identity's ID shown in Details), then create a **Client Secret** — the secret is shown only once.
+  </Step>
+  <Step title="Add the identity to your projects">
+    Press **Add to Project** in the **Projects** section (or go to **Project → Access Control → Machine Identities**) for each project your workflows should manage, with a role that matches what your workflows do — **Viewer** for read-only monitoring, or a role with secret write permissions if workflows create or update secrets.
   </Step>
   <Step title="Connect in Kestrel">
     1. Navigate to **Integrations → Infisical** in your Kestrel dashboard.
