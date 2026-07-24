@@ -1,6 +1,6 @@
 ---
 title: "Neon"
-description: "Connect Neon for serverless Postgres branch lifecycle, compute suspend/resume and autoscaling, reset-from-parent, credential rotation, and AI investigation in workflows"
+description: "Connect Neon for serverless Postgres branch lifecycle, point-in-time restore, compute suspend/resume and autoscaling, reset-from-parent, credential rotation, and AI investigation in workflows"
 ---
 
 The Neon integration connects Kestrel to your Neon organization through the Neon API, enabling control-plane events (branches, compute endpoints, operations, and usage) to trigger workflows and giving AI agents read-only access to your projects' state.
@@ -58,6 +58,7 @@ Filter triggers by project ID, branch ID, and event type.
 - **Create Branch** — instant copy-on-write branch (optionally with a compute endpoint), ideal for ephemeral PR preview databases
 - **Delete Branch** — tear down a branch (gate behind an Approval node)
 - **Reset Branch from Parent** — the "reset my preview DB" action (gate behind an Approval node)
+- **Restore Branch (Point-in-Time)** — restore a branch to an earlier timestamp or LSN ("restore main to 2 hours ago"); the pre-restore state is preserved under a backup branch (gate behind an Approval node)
 - **List Compute Endpoints** / **Create Compute Endpoint** / **Delete Compute Endpoint**
 - **Suspend Compute** / **Start Compute** — cut/restore compute cost
 - **Set Autoscaling Limits** — update a compute endpoint's autoscaling min/max compute units
@@ -72,6 +73,8 @@ Example (the flagship Neon flow): When a pull request opens, create a Neon copy-
 Example (cost): When a compute endpoint suspends, notify the team; or on idle detection, suspend the compute to cut cost.
 
 Example (dev requests): A "reset my preview DB" Slack request gates behind an Approval, then resets the branch from its parent.
+
+Example (recovery): After a bad migration or accidental data deletion, an Approval-gated workflow restores the branch to a timestamp just before the incident — the pre-restore state stays available under an auto-created backup branch.
 
 ## Disconnecting
 
