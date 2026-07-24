@@ -52,6 +52,8 @@ Kestrel Workflows let you automate incident response, cloud resource provisionin
     | **CircleCI** | Workflow Failed, Workflow Succeeded, Workflow Completed, Job Failed |
     | **Terraform Cloud** | Run Created, Run Planning, Run Needs Attention, Run Applying, Run Completed, Run Errored, Drift Detected, Assessment Check Failed |
     | **Pulumi Cloud** | Update Succeeded, Update Failed, Preview Failed, Destroy Succeeded, Deployment Started, Deployment Succeeded, Deployment Failed, Drift Detected, Drift Run Failed, Policy Violation, Stack Created, Stack Deleted |
+    | **HashiCorp Vault** | Vault Sealed, Vault Unsealed, Health Degraded, Secret Version Created, Secret Stale, Policy Created/Deleted, Auth Method Enabled/Disabled |
+    | **Infisical** | Secret Created, Secret Updated, Secret Deleted, Approval Requested, Secret Sync Failed, Identity Created |
     | **Custom Webhook** | Any HTTP POST to your workflow's unique webhook endpoint with HMAC signature verification |
 
     Configure trigger-specific filters to control when the workflow fires — for example, limit a K8s trigger to a specific namespace, cluster, or set of AWS accounts.
@@ -94,6 +96,8 @@ Kestrel Workflows let you automate incident response, cloud resource provisionin
 | Vercel deployment failure | Vercel Deployment Failed | Get build logs → AI investigation → Slack notification |
 | Jenkins build failure RCA | Jenkins Build Failed | Get console log → AI investigation → Slack alert to #ci → Jira ticket |
 | CircleCI flaky-build retry | CircleCI Workflow Failed | Rerun from failed → Wait for pipeline → PagerDuty page if it fails again |
+| Vault stale-secret rotation | Vault Secret Stale | Get secret metadata → Slack approval → Rotate static role → Confirm new version |
+| Infisical sync recovery | Infisical Secret Sync Failed | Slack approval → Trigger secret sync → Notify #secrets on result |
 | Terraform apply approval | Terraform Run Needs Attention | Get run plan summary → Slack approval → Apply or Discard run |
 | Pulumi update failure retry | Pulumi Update Failed | AI investigation → Slack approval → Run deployment (update) → Wait for result |
 | PostHog exception alert | PostHog Session Error | Session summary → Slack alert → Jira ticket if critical |
