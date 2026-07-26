@@ -1,0 +1,87 @@
+---
+title: "Okta"
+description: "Connect Okta for identity security automation — react to lockouts, MFA resets, and privileged group changes, and respond with suspensions, session revocation, and group changes in workflows"
+---
+
+The Okta integration connects Kestrel to your Okta organization through the Okta Management API, enabling System Log security events (lockouts, suspicious activity, admin grants, MFA changes, group membership changes) to trigger workflows and letting workflows look up users, query the System Log, and take identity-response actions such as suspending users, clearing sessions, resetting MFA, and changing group membership.
+
+Okta triggers are poll-based: Kestrel tails your org's System Log on a per-tenant cadence, so no webhooks or Event Hooks are needed and triggers work on every Okta plan.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- An Okta admin account for your org
+- An Okta **API token** (SSWS) — the token inherits the permissions of the admin who creates it
+
+## Setup
+
+<Steps>
+  <Step title="Create an API token">
+    In the Okta Admin Console, go to **Security → API → Tokens → Create token**. Copy the token — it is shown only once.
+
+    A read-only admin token is enough for triggers and read blocks; lifecycle and session blocks (suspend, deactivate, clear sessions, reset MFA, group changes) need a super admin or org admin token.
+  </Step>
+  <Step title="Find your org URL">
+    Your Okta domain, e.g. `https://your-org.okta.com`, shown in the Admin Console header.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Okta** in your Kestrel dashboard.
+    2. Enter your **org URL** and paste the **API token**.
+    3. Click **Connect Okta** — Kestrel validates the token and starts polling the System Log.
+  </Step>
+</Steps>
+
+<Warning>
+  The token can change live identity state, depending on the admin role it inherits. Use a dedicated service-account admin with the narrowest role that covers your workflows, and gate destructive actions (Suspend, Deactivate, Reset MFA, group removals) behind Approval nodes. Kestrel stores the token encrypted.
+</Warning>
+
+<Note>
+  All Okta triggers are detected by polling, so there may be up to one poll interval of delay before a workflow fires. The poll cadence is configurable per trigger (1m–30m; 1m is recommended for security-response triggers).
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks (all poll-based via the System Log):**
+- **User Locked Out** — `user.account.lock` (e.g. after repeated sign-in failures)
+- **Suspicious Activity Reported** — end-user report or ThreatInsight `security.threat.detected`
+- **Admin Privilege Granted** — `user.account.privilege.grant`
+- **MFA Factor Changed** — factor deactivated or all factors reset
+- **User Created / User Deactivated** — lifecycle events
+- **Group Membership Changed** — user added to / removed from a group
+- **App Assignment Changed** — user assigned to / removed from an application
+
+Scope triggers by event type, target user, actor, target group, and outcome (SUCCESS/FAILURE). Trigger events expose template variables such as `{{signal.target_user}}`, `{{signal.actor}}`, `{{signal.target_group}}`, `{{signal.outcome}}`, `{{signal.client_ip}}`, and `{{signal.client_location}}` for downstream steps.
+
+**Action blocks (read):**
+- **Get User** — a user's profile and status (ACTIVE, LOCKED_OUT, SUSPENDED, ...)
+- **List Users** — search users by name/email prefix and/or status
+- **Query System Log** — pull recent security events during an investigation
+- **List User's Groups** — blast-radius / privileged-membership check for a user
+- **List Group Members** — audit who is in a (privileged) group
+
+**Action blocks (response):**
+- **Suspend / Unsuspend User** — reversible suspension that keeps app assignments
+- **Unlock User** — clear a LOCKED_OUT state after a verified lockout
+- **Deactivate User** — deprovision (removes app assignments; not simply reversible)
+- **Clear Sessions** — revoke all of a user's sessions, optionally including OAuth tokens — the first response to session hijack or credential compromise
+- **Expire Password** — force a password reset at next sign-in
+- **Reset MFA** — reset all enrolled factors (suspected factor compromise, SIM swap)
+- **Add / Remove User to/from Group** — quarantine a user or strip an unexpected privileged membership
+
+User and group selects use dynamic dropdowns backed by the Okta API and default to `{{signal.target_user}}` when the workflow starts from an Okta trigger.
+
+Example (brute force): When a **user is locked out**, query the System Log for that user's sign-in failures; if the failure count is high, clear their sessions, expire their password, and alert the security Slack channel.
+
+Example (account takeover): When **suspicious activity is reported**, immediately clear the user's sessions, request approval in Slack, then suspend the user and page the on-call via PagerDuty.
+
+Example (privileged access): When someone is **added to the "Okta Administrators" group**, post the actor and target to the security channel for review, with an approval-gated removal path.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Okta**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This stops System Log polling and all Okta workflow triggers and actions. The stored API token is deleted from Kestrel; also revoke it in the Okta Admin Console (**Security → API → Tokens**) if it is no longer needed.

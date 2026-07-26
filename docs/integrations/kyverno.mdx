@@ -1,0 +1,74 @@
+---
+title: "Kyverno"
+description: "Connect Kyverno for policy-as-code automation — react to policy violations and admission blocks, audit compliance, and manage policy enforcement in workflows"
+---
+
+The Kyverno integration connects Kestrel to your in-cluster Kyverno installation, enabling policy violations and admission blocks to trigger workflows and letting workflows list policies, audit violations from PolicyReports, switch policies between Audit and Enforce, and deploy or remove policies as code.
+
+## Prerequisites
+
+- Kestrel Operator deployed in your cluster (see [Kubernetes](/integrations/kubernetes))
+- Kyverno installed in the same cluster with its CRDs present (`clusterpolicies.kyverno.io`, `policies.kyverno.io`)
+
+## Setup
+
+Kyverno is auto-detected by the Kestrel Operator when the Kyverno CRDs are present in the cluster. No manual connection or credentials are required.
+
+<Steps>
+  <Step title="Install Kyverno">
+    If Kyverno is not already installed, follow the [Kyverno installation guide](https://kyverno.io/docs/installation/).
+  </Step>
+  <Step title="Verify detection">
+    The operator probes for the Kyverno CRDs on each inventory sync. Check the operator logs:
+    ```bash
+    kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "Kyverno"
+    ```
+    Once detected, the integration shows as **Detected** on the Integrations page and Kyverno trigger and action blocks become available in the workflow builder.
+  </Step>
+</Steps>
+
+<Note>
+  The integration is enabled by default. To opt out, set `operator.kyverno.enabled: false` in your Helm values and upgrade the operator (this sets `KYVERNO_DISABLED=true` on the operator deployment).
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+- **Policy Violation** — fires when a Kyverno PolicyReport records a new failing result (an Audit-mode violation on a live resource). The operator watches `PolicyReports` and `ClusterPolicyReports` and streams new fail/warn/error results in near-real time.
+- **Admission Blocked** — fires when an Enforce-mode policy blocks a resource at admission.
+
+Scope triggers by cluster, namespace, policy name, and severity (`critical`, `high`, `medium`, `low`, `info` — as annotated on the policy). Trigger events expose template variables such as `{{signal.policy_name}}`, `{{signal.rule_name}}`, `{{signal.severity}}`, `{{signal.resource_kind}}`, `{{signal.resource_name}}`, `{{signal.namespace}}`, and `{{signal.message}}` for downstream steps.
+
+**Action blocks:**
+- **List Policies** — list ClusterPolicies and namespaced Policies with enforcement mode (Audit/Enforce), rule counts, categories, and readiness
+- **Get Policy** — read one policy's enforcement mode, rules (validate/mutate/generate/verifyImages), matched resource kinds, and readiness
+- **List Violations** — list current violations from PolicyReports, filterable by namespace, policy, severity, and result (fail/warn/error)
+- **Set Enforcement Mode** — switch a policy between Audit (report violations) and Enforce (block non-compliant resources at admission) — how you promote a guardrail to blocking mode
+- **Apply Policy** — create or update a ClusterPolicy/Policy from a full manifest, deploying admission guardrails as code
+- **Delete Policy** — remove a policy that is blocking legitimate deployments or is no longer needed
+
+<Warning>
+  Set Enforcement Mode, Apply Policy, and Delete Policy change live admission behavior cluster-wide — gate them behind Approval nodes in your workflows.
+</Warning>
+
+Example (compliance): When a **critical policy violation** fires, post the policy, rule, and violating resource to your security Slack channel and open a Jira ticket.
+
+Example (guardrail promotion): A developer asks in the request chat to enforce the `require-labels` policy. The workflow lists its current violations, requests approval in Slack, then **Set Enforcement Mode** to Enforce and confirms.
+
+Example (audit): On a daily schedule, **List Violations** across the cluster, summarize with AI, and post a compliance digest to Slack.
+
+### Scoping
+
+Kyverno actions are scoped by **cluster** and **policy** — both populated with dropdowns from live cluster data in the workflow builder. Namespaced Policies additionally take a **namespace**; leave it empty for cluster-scoped ClusterPolicies.
+
+## Disconnecting
+
+To disable the Kyverno integration, set the following in your Helm values and upgrade the operator:
+
+```yaml
+operator:
+  kyverno:
+    enabled: false
+```

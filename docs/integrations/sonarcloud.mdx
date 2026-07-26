@@ -1,0 +1,77 @@
+---
+title: "SonarCloud"
+description: "Connect SonarCloud for code quality automation — react to failed quality gates, triage vulnerabilities and hotspots, and track code health in workflows"
+---
+
+The SonarCloud integration connects Kestrel to your SonarCloud organization through the SonarCloud Web API, enabling completed or failed analyses to trigger workflows and letting workflows check quality gates, list issues and security hotspots, fetch code quality metrics, and triage findings (transition, assign, comment, review) with human approval.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A SonarCloud account with access to the organization you want to automate
+- A SonarCloud **API token** and your **organization key**
+
+## Setup
+
+<Steps>
+  <Step title="Generate an API token">
+    In SonarCloud, go to **your avatar → My Account → Security → Generate Token**. Copy the token — it is shown only once.
+  </Step>
+  <Step title="Find your organization key">
+    The key appears in your organization's URL (`sonarcloud.io/organizations/<key>`) or under **Administration → Organization settings**.
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → SonarCloud** in your Kestrel dashboard.
+    2. Enter your **organization key** and paste the **API token**.
+    3. Click **Connect SonarCloud** — Kestrel validates the token against your organization and returns a **webhook secret**.
+  </Step>
+  <Step title="Add the webhook (for triggers)">
+    In SonarCloud, go to your organization (or an individual project) **→ Administration → Webhooks → Create** with:
+    - **URL**: `https://<your-kestrel-server>/api/webhooks/sonarcloud`
+    - **Secret**: the webhook secret returned by the connect step
+
+    SonarCloud signs each delivery with the secret via the `X-Sonar-Webhook-HMAC-SHA256` header; Kestrel rejects unsigned or mis-signed payloads.
+  </Step>
+</Steps>
+
+<Note>
+  Analysis triggers are webhook-delivered in real time. Action blocks work without the webhook — only trigger blocks require it.
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+- **Analysis Completed** — fires when a SonarCloud analysis finishes, with the quality gate result attached
+- **Analysis Failed** — fires when an analysis task breaks
+
+Scope triggers by project key, branch, and quality gate status (`OK`, `ERROR`, `NONE`). Trigger events expose template variables such as `{{signal.project_key}}`, `{{signal.branch}}`, `{{signal.quality_gate_status}}`, `{{signal.failed_conditions}}`, and `{{signal.project_url}}` for downstream steps.
+
+**Action blocks (read):**
+- **Get Quality Gate Status** — a project's quality gate result with its failed conditions
+- **List Issues** — open issues filtered by type (vulnerability/bug/code smell), severity, and new-code-only
+- **List Security Hotspots** — security hotspots awaiting review
+- **Get Project Metrics** — code quality measures such as coverage, duplication, and technical debt
+
+**Action blocks (triage):**
+- **Transition Issue** — confirm, resolve, reopen, mark false positive, or won't-fix an issue
+- **Assign Issue** — assign an issue to a user
+- **Comment on Issue** — add a comment to an issue
+- **Review Hotspot** — resolve a hotspot as SAFE/FIXED/ACKNOWLEDGED or send it back to review
+
+Project and branch selects use dynamic dropdowns backed by the SonarCloud API and default to `{{signal.project_key}}` / `{{signal.branch}}` when the workflow starts from a SonarCloud trigger. Triage actions take an issue or hotspot key — typically `{{item.key}}` inside a For Each over a list step's output — and pair naturally with Approval nodes for human-in-the-loop triage.
+
+Example (security): When the **quality gate fails on main**, list new BLOCKER/CRITICAL vulnerabilities, post them to the security Slack channel, and open a Jira ticket.
+
+Example (triage): A developer asks in the request chat to mark an issue false positive. The workflow requests approval in Slack, transitions the issue, and comments with the approver's name.
+
+Example (code health): On a weekly schedule, fetch project metrics and post a coverage/duplication digest to the team channel.
+
+## Disconnecting
+
+1. Navigate to **Integrations → SonarCloud**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This disables all SonarCloud workflow triggers and actions. The stored API token is deleted from Kestrel; also delete the webhook in SonarCloud and revoke the token under **My Account → Security** if it is no longer needed.
