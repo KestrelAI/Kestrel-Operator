@@ -26,7 +26,7 @@ The SonarCloud integration connects Kestrel to your SonarCloud organization thro
     3. Click **Connect SonarCloud** — Kestrel validates the token against your organization and returns a **webhook secret**.
   </Step>
   <Step title="Add the webhook (for triggers)">
-    In SonarCloud, go to your organization (or an individual project) **→ Administration → Webhooks → Create** with:
+    In SonarCloud, open your organization and select **Webhooks** in the left sidebar (for an individual project: **Administration → Webhooks**), then click **Create** with:
     - **URL**: `https://<your-kestrel-server>/api/webhooks/sonarcloud`
     - **Secret**: the webhook secret returned by the connect step
 
