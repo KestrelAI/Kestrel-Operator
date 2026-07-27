@@ -164,6 +164,15 @@ rules:
     resources: ["nodeclaims", "nodeclaims/status"]
     verbs: ["get", "list", "watch", "delete"]
 
+  # Allow Kyverno policy management (workflow automation) and PolicyReport
+  # watching (violation triggers)
+  - apiGroups: ["kyverno.io"]
+    resources: ["clusterpolicies", "policies"]
+    verbs: ["get", "list", "watch", "patch", "create", "update", "delete"]
+  - apiGroups: ["wgpolicyk8s.io"]
+    resources: ["policyreports", "clusterpolicyreports"]
+    verbs: ["get", "list", "watch"]
+
   # Allow Helm release management (workflow automation)
   # Helm stores release metadata in secrets, and manages services, configmaps, etc.
   - apiGroups: [""]

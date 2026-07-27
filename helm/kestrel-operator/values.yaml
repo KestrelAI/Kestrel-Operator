@@ -99,6 +99,11 @@ operator:
   karpenter:
     enabled: true
 
+  # Auto-detected via the Kyverno CRDs (kyverno.io). Enabled by default;
+  # set enabled: false to opt out.
+  kyverno:
+    enabled: true
+
   # Safe-apply configuration for Chat YAML changes
   safeApply:
     # Enable safe-apply permissions for the operator

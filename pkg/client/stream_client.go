@@ -18,6 +18,7 @@ import (
 	"operator/pkg/argocd_executor"
 	"operator/pkg/flux_executor"
 	"operator/pkg/karpenter_executor"
+	"operator/pkg/kyverno_executor"
 	"operator/pkg/rollouts_executor"
 	"operator/pkg/shell_executor"
 	smartcache "operator/pkg/smart_cache"
@@ -86,6 +87,7 @@ type StreamClient struct {
 	rolloutsExecutor *rollouts_executor.RolloutsExecutor
 	fluxExecutor     *flux_executor.FluxExecutor
 	karpenterExecutor *karpenter_executor.KarpenterExecutor
+	kyvernoExecutor   *kyverno_executor.KyvernoExecutor
 
 	// OTEL Metrics Store for local metrics storage and querying
 	metricsStore *metrics_store.MetricsStore
@@ -539,17 +541,18 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		logger.Info("ArgoCD integration not configured (ARGOCD_NAMESPACE not set)")
 	}
 
-	// Initialize Argo Rollouts, Flux CD, and Karpenter executors. All are
-	// CRD-based (no external API auth) and probe cheaply, so they are always
-	// created; availability is determined by the CRD probe before the
+	// Initialize Argo Rollouts, Flux CD, Karpenter, and Kyverno executors.
+	// All are CRD-based (no external API auth) and probe cheaply, so they are
+	// always created; availability is determined by the CRD probe before the
 	// inventory commit. Set ROLLOUTS_DISABLED / FLUX_DISABLED /
-	// KARPENTER_DISABLED to opt out entirely.
+	// KARPENTER_DISABLED / KYVERNO_DISABLED to opt out entirely.
 	var rolloutsExecutor *rollouts_executor.RolloutsExecutor
 	var fluxExecutor *flux_executor.FluxExecutor
 	var karpenterExecutor *karpenter_executor.KarpenterExecutor
+	var kyvernoExecutor *kyverno_executor.KyvernoExecutor
 	dynamicClient, dynErr := k8s_helper.NewDynamicClient()
 	if dynErr != nil {
-		logger.Warn("Failed to create dynamic client — Argo Rollouts, Flux CD, and Karpenter integrations disabled", zap.Error(dynErr))
+		logger.Warn("Failed to create dynamic client — Argo Rollouts, Flux CD, Karpenter, and Kyverno integrations disabled", zap.Error(dynErr))
 	} else {
 		if os.Getenv("ROLLOUTS_DISABLED") != "true" {
 			rolloutsExecutor = rollouts_executor.NewRolloutsExecutor(logger, dynamicClient)
@@ -568,6 +571,12 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 			logger.Info("Karpenter executor initialized (availability determined by CRD probe)")
 		} else {
 			logger.Info("Karpenter integration disabled (KARPENTER_DISABLED=true)")
+		}
+		if os.Getenv("KYVERNO_DISABLED") != "true" {
+			kyvernoExecutor = kyverno_executor.NewKyvernoExecutor(logger, dynamicClient)
+			logger.Info("Kyverno executor initialized (availability determined by CRD probe)")
+		} else {
+			logger.Info("Kyverno integration disabled (KYVERNO_DISABLED=true)")
 		}
 	}
 
@@ -620,6 +629,7 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		rolloutsExecutor: rolloutsExecutor,
 		fluxExecutor:     fluxExecutor,
 		karpenterExecutor: karpenterExecutor,
+		kyvernoExecutor:   kyvernoExecutor,
 		metricsStore:  metricsStoreInstance,
 		podResolver:   podResolver,
 		otelReceiver:  otelReceiverInstance,
@@ -895,6 +905,21 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 
 		// Create incident detection ingesters
 		eventIngester := ingestion.NewEventIngester(s.Logger, eventChan, sharedClientset, sharedFactory)
+
+		// Create Kyverno policy report ingester (no-op when Kyverno is absent).
+		// It emits synthetic Warning events onto the shared event channel, so
+		// violations ride the existing incident-event pipeline.
+		var policyReportIngester *ingestion.PolicyReportIngester
+		if os.Getenv("KYVERNO_DISABLED") != "true" {
+			var priErr error
+			policyReportIngester, priErr = ingestion.NewPolicyReportIngester(s.Logger, eventChan)
+			if priErr != nil {
+				s.Logger.Warn("Failed to create policy report ingester — Kyverno violation triggers disabled", zap.Error(priErr))
+				policyReportIngester = nil
+			}
+		} else {
+			s.Logger.Info("Policy report ingester disabled (KYVERNO_DISABLED=true)")
+		}
 		podStatusMonitor := ingestion.NewPodStatusMonitor(s.Logger, podStatusChan, sharedClientset, sharedFactory)
 		nodeConditionMonitor := ingestion.NewNodeConditionMonitor(s.Logger, nodeConditionChan, sharedClientset, sharedFactory)
 		rolloutMonitor := ingestion.NewWorkloadRolloutMonitor(s.Logger, rolloutStatusChan, sharedClientset, sharedFactory)
@@ -1033,6 +1058,18 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 				eventSyncDone <- err
 			}
 		}()
+
+		// Kyverno policy report ingester (manages its own informer factory and
+		// sync; not part of the barrier since it's a no-op without Kyverno)
+		if policyReportIngester != nil {
+			policyReportCtx, policyReportCancel := context.WithCancel(ctx)
+			defer policyReportCancel()
+			go func() {
+				if err := policyReportIngester.StartSync(policyReportCtx, nil); err != nil {
+					s.Logger.Error("Policy report ingester failed", zap.Error(err))
+				}
+			}()
+		}
 
 		// Pod status monitor
 		podStatusCtx, podStatusCancel := context.WithCancel(ctx)
@@ -1282,13 +1319,22 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			probeCancel()
 		}
 
+		// Probe for Kyverno before sending inventory commit
+		hasKyverno := false
+		if s.kyvernoExecutor != nil {
+			probeCtx, probeCancel := context.WithTimeout(ctx, 10*time.Second)
+			hasKyverno = s.kyvernoExecutor.Probe(probeCtx)
+			probeCancel()
+		}
+
 		// Send inventory commit message to signal that initial inventory is complete
 		s.Logger.Info("Sending inventory commit message to server",
 			zap.Bool("has_datadog", hasDatadog),
 			zap.Bool("has_argocd", hasArgoCD),
 			zap.Bool("has_rollouts", hasRollouts),
 			zap.Bool("has_flux", hasFlux),
-			zap.Bool("has_karpenter", hasKarpenter))
+			zap.Bool("has_karpenter", hasKarpenter),
+			zap.Bool("has_kyverno", hasKyverno))
 		commitMsg := &v1.StreamDataRequest{
 			Request: &v1.StreamDataRequest_InventoryCommit{
 				InventoryCommit: &v1.InventoryCommit{
@@ -1297,6 +1343,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 					HasRollouts:  hasRollouts,
 					HasFlux:      hasFlux,
 					HasKarpenter: hasKarpenter,
+					HasKyverno:   hasKyverno,
 				},
 			},
 		}
@@ -4007,6 +4054,16 @@ func (s *StreamClient) executeGitOpsQuery(ctx context.Context, ddRequest *v1.Dat
 			}
 		}
 		return s.karpenterExecutor.ExecuteQuery(ctx, ddRequest)
+	case qt >= v1.DatadogQueryType_KYVERNO_LIST_POLICIES && qt <= v1.DatadogQueryType_KYVERNO_DELETE_POLICY:
+		if s.kyvernoExecutor == nil {
+			return &v1.DatadogQueryResponse{
+				RequestId:    ddRequest.RequestId,
+				Success:      false,
+				ErrorMessage: "Kyverno integration is not available on this operator",
+				StatusCode:   503,
+			}
+		}
+		return s.kyvernoExecutor.ExecuteQuery(ctx, ddRequest)
 	default:
 		return &v1.DatadogQueryResponse{
 			RequestId:    ddRequest.RequestId,

@@ -250,6 +250,8 @@ message InventoryCommit {
   bool has_flux = 4;
   // True if the operator detected Karpenter CRDs (nodepools.karpenter.sh) in the cluster.
   bool has_karpenter = 5;
+  // True if the operator detected Kyverno CRDs (clusterpolicies.kyverno.io) in the cluster.
+  bool has_kyverno = 6;
 }
 
 // Network policy definition matching Kubernetes NetworkPolicy format
@@ -1385,6 +1387,17 @@ enum DatadogQueryType {
   KARPENTER_SET_DISRUPTION = 33;     // patch spec.disruption (policy/consolidateAfter)
   KARPENTER_APPLY_NODEPOOL = 34;     // create or update a NodePool from a spec
   KARPENTER_DELETE_NODECLAIM = 35;   // delete a NodeClaim (recycle a node)
+
+  // Kyverno operations, executed against Kyverno CRs (ClusterPolicy/Policy in
+  // kyverno.io; PolicyReport/ClusterPolicyReport in wgpolicyk8s.io) via the
+  // Kubernetes API. filter carries the resource name (or "namespace/name" for
+  // namespaced Policies); json_body carries operation-specific parameters.
+  KYVERNO_LIST_POLICIES = 36;    // list ClusterPolicies + Policies with enforcement mode and readiness
+  KYVERNO_GET_POLICY = 37;       // get one policy (rules, validationFailureAction, background, status)
+  KYVERNO_LIST_VIOLATIONS = 38;  // aggregate PolicyReport/ClusterPolicyReport results (fail/warn/error)
+  KYVERNO_SET_ENFORCEMENT = 39;  // patch validationFailureAction (Audit <-> Enforce)
+  KYVERNO_APPLY_POLICY = 40;     // create or update a policy from a YAML manifest
+  KYVERNO_DELETE_POLICY = 41;    // delete a ClusterPolicy/Policy
 }
 
 // Datadog query response from operator to server.
