@@ -15,7 +15,7 @@ The SonarCloud integration connects Kestrel to your SonarCloud organization thro
 
 <Steps>
   <Step title="Generate an API token">
-    In SonarCloud, go to **your avatar → My Account → Security → Generate Token**. Copy the token — it is shown only once.
+    In SonarCloud, go to **your avatar → My Account → Access Tokens → Generate Token**. Copy the token — it is shown only once.
   </Step>
   <Step title="Find your organization key">
     The key appears in your organization's URL (`sonarcloud.io/organizations/<key>`) or under **Administration → Organization settings**.
@@ -74,4 +74,4 @@ Example (code health): On a weekly schedule, fetch project metrics and post a co
 2. Click **Disconnect**
 3. Confirm the disconnection
 
-This disables all SonarCloud workflow triggers and actions. The stored API token is deleted from Kestrel; also delete the webhook in SonarCloud and revoke the token under **My Account → Security** if it is no longer needed.
+This disables all SonarCloud workflow triggers and actions. The stored API token is deleted from Kestrel; also delete the webhook in SonarCloud and revoke the token under **My Account → Access Tokens** if it is no longer needed.
