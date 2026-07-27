@@ -60,6 +60,9 @@ Scope triggers by project key, branch, and quality gate status (`OK`, `ERROR`, `
 - **Comment on Issue** — add a comment to an issue
 - **Review Hotspot** — resolve a hotspot as SAFE/FIXED/ACKNOWLEDGED or send it back to review
 
+**Action blocks (AI):**
+- **Investigate SonarCloud** — run a read-only AI investigation across quality gates, issues, hotspots, metrics, and analysis history (the investigation can never transition issues or change settings)
+
 Project and branch selects use dynamic dropdowns backed by the SonarCloud API and default to `{{signal.project_key}}` / `{{signal.branch}}` when the workflow starts from a SonarCloud trigger. Triage actions take an issue or hotspot key — typically `{{item.key}}` inside a For Each over a list step's output — and pair naturally with Approval nodes for human-in-the-loop triage.
 
 Example (security): When the **quality gate fails on main**, list new BLOCKER/CRITICAL vulnerabilities, post them to the security Slack channel, and open a Jira ticket.

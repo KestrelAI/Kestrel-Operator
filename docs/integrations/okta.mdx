@@ -70,6 +70,9 @@ Scope triggers by event type, target user, actor, target group, and outcome (SUC
 - **Reset MFA** — reset all enrolled factors (suspected factor compromise, SIM swap)
 - **Add / Remove User to/from Group** — quarantine a user or strip an unexpected privileged membership
 
+**Action blocks (AI):**
+- **Investigate Okta** — run a read-only AI investigation across users, groups, app assignments, MFA factors, and the System Log (the investigation can never suspend users, change groups, or revoke sessions)
+
 User and group selects use dynamic dropdowns backed by the Okta API and default to `{{signal.target_user}}` when the workflow starts from an Okta trigger.
 
 Example (brute force): When a **user is locked out**, query the System Log for that user's sign-in failures; if the failure count is high, clear their sessions, expire their password, and alert the security Slack channel.

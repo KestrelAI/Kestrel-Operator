@@ -48,6 +48,7 @@ Scope triggers by cluster, namespace, policy name, and severity (`critical`, `hi
 - **Set Enforcement Mode** — switch a policy between Audit (report violations) and Enforce (block non-compliant resources at admission) — how you promote a guardrail to blocking mode
 - **Apply Policy** — create or update a ClusterPolicy/Policy from a full manifest, deploying admission guardrails as code
 - **Delete Policy** — remove a policy that is blocking legitimate deployments or is no longer needed
+- **Investigate Kyverno** — run a read-only AI investigation across policies, rules, and PolicyReport violations via the cluster operator (the investigation can never apply, delete, or re-mode a policy)
 
 <Warning>
   Set Enforcement Mode, Apply Policy, and Delete Policy change live admission behavior cluster-wide — gate them behind Approval nodes in your workflows.
