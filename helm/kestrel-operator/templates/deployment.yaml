@@ -130,6 +130,10 @@ spec:
             - name: KARPENTER_DISABLED
               value: "true"
             {{- end }}
+            {{- if not .Values.operator.kyverno.enabled }}
+            - name: KYVERNO_DISABLED
+              value: "true"
+            {{- end }}
 
             # OTEL Metrics Store configuration
             {{- if .Values.operator.otel.enabled }}

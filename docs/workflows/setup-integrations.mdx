@@ -22,6 +22,9 @@ Prefer the terminal? Every integration can also be connected with the [Kestrel C
   <Card title="Karpenter" icon="arrows-up-down" href="/integrations/karpenter">
     **Triggers:** Node Provisioning Failed, Node Interrupted, NodePool Limit Reached. **Actions:** List NodePools, Get NodePool Status, List NodeClaims, Scale NodePool Limits, Set Disruption Policy, Apply NodePool, Delete NodeClaim.
   </Card>
+  <Card title="Kyverno" icon="shield-check" href="/integrations/kyverno">
+    **Triggers:** Policy Violation, Admission Blocked (auto-detected in-cluster, streamed from PolicyReports). **Actions:** List Policies, Get Policy, List Violations, Set Enforcement Mode, Apply Policy, Delete Policy.
+  </Card>
   <Card title="AWS" icon="aws" href="/integrations/aws">
     **Triggers:** IAM Security Event, Root Account Activity, S3 Bucket Change, EC2/Lambda/RDS/DynamoDB Issues, VPC/Network Change, CloudWatch Alarm, Cost Anomaly, Budget Threshold, Forecast Overrun, Spend Spike, Idle Resource, and more. **Actions:** Trigger Cloud RCA & Generate Fix, Generate Cloud Resource (Terraform/CloudFormation/CLI), Execute Cloud CLI, Query Cost Explorer, Get Cost Anomalies/Forecast/Budget Status, Rightsizing/Savings Plans/Reservation Recommendations, Find Idle Resources, Cost Remediation (Stop EC2, Delete EBS Volumes, Release EIPs, Delete Snapshots), Investigate Cloud.
   </Card>
@@ -140,6 +143,17 @@ Prefer the terminal? Every integration can also be connected with the [Kestrel C
   </Card>
   <Card title="Infisical" icon="key" href="/integrations/infisical">
     **Triggers (poll-based):** Secret Created/Updated/Deleted, Approval Requested, Secret Sync Failed, Identity Created. **Actions:** Get/Create/Update/Delete Secret, List Secrets, List Projects/Environments/Folders, Create Folder, List/Trigger Secret Sync, List Approval Requests, Get Audit Logs, List Identities, Investigate Infisical.
+  </Card>
+</CardGroup>
+
+## Platform Security
+
+<CardGroup cols={2}>
+  <Card title="SonarCloud" icon="magnifying-glass-chart" href="/integrations/sonarcloud">
+    **Triggers (webhook):** Analysis Completed (with quality gate result), Analysis Failed. **Actions:** Get Quality Gate Status, List Issues, List Security Hotspots, Get Project Metrics, Transition Issue, Assign Issue, Comment on Issue, Review Hotspot.
+  </Card>
+  <Card title="Okta" icon="id-badge" href="/integrations/okta">
+    **Triggers (poll-based via the System Log):** User Locked Out, Suspicious Activity Reported, Admin Privilege Granted, MFA Factor Changed, User Created/Deactivated, Group Membership Changed, App Assignment Changed. **Actions:** Get User, List Users, Query System Log, List User's Groups, List Group Members, Suspend/Unsuspend User, Unlock User, Deactivate User, Clear Sessions, Expire Password, Reset MFA, Add/Remove User to/from Group.
   </Card>
 </CardGroup>
 

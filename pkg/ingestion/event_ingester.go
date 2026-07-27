@@ -130,10 +130,20 @@ func (ei *EventIngester) sendEvent(event *corev1.Event, action string) {
 		FieldPath:       event.InvolvedObject.FieldPath,
 	}
 
-	// Convert event source
+	// Convert event source. Modern controllers (e.g. Kyverno) populate
+	// reportingComponent/reportingInstance instead of the deprecated
+	// source.component/source.host, so fall back to those.
+	sourceComponent := event.Source.Component
+	if sourceComponent == "" {
+		sourceComponent = event.ReportingController
+	}
+	sourceHost := event.Source.Host
+	if sourceHost == "" {
+		sourceHost = event.ReportingInstance
+	}
 	protoSource := &v1.EventSource{
-		Component: event.Source.Component,
-		Host:      event.Source.Host,
+		Component: sourceComponent,
+		Host:      sourceHost,
 	}
 
 	// Convert timestamps

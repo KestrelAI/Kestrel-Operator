@@ -19,7 +19,7 @@ Karpenter is auto-detected by the Kestrel Operator when the Karpenter CRDs are p
     If Karpenter is not already installed, follow the [Karpenter getting started guide](https://karpenter.sh/docs/getting-started/) for your cloud provider.
   </Step>
   <Step title="Verify detection">
-    The operator probes for the Karpenter CRDs on each inventory sync. Check the operator logs:
+    The operator probes for the Karpenter CRDs periodically. Check the operator logs:
     ```bash
     kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "Karpenter"
     ```

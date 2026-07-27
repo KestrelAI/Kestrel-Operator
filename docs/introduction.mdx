@@ -101,6 +101,14 @@ Kestrel connects to your clouds, clusters, PaaS and deployment platforms, AI com
 | [HashiCorp Vault](/integrations/vault) | Secret lifecycle automation. **Workflows:** trigger on seal-status, secret-version, stale-secret, policy, and auth-method changes (poll-based, metadata only); actions include reading/writing KV secrets, rotating static roles, managing policies and leases, revoking tokens, AI investigation |
 | [Infisical](/integrations/infisical) | Secret management automation. **Workflows:** trigger on secret changes, approval requests, failed syncs, and new identities (poll-based via audit log); actions include managing secrets and folders, triggering syncs, reviewing approvals, querying audit logs, AI investigation |
 
+### Platform Security
+
+| Integration | Purpose |
+|---|---|
+| [SonarCloud](/integrations/sonarcloud) | Code quality and security automation. **Workflows:** trigger on completed/failed analyses with quality gate results (webhook-delivered); actions include quality gate checks, listing issues and security hotspots, project metrics, and approval-gated triage (transition/assign/comment issues, review hotspots) |
+| [Okta](/integrations/okta) | Identity security automation. **Workflows:** trigger on lockouts, suspicious activity, admin grants, MFA changes, and group membership changes (poll-based via the System Log); actions include user lookups, System Log queries, suspensions, session revocation, password expiry, MFA resets, and group changes |
+| [Kyverno](/integrations/kyverno) | Policy-as-code enforcement. **Workflows:** trigger on policy violations and admission blocks (auto-detected in-cluster, streamed from PolicyReports); actions include listing policies and violations, switching policies between Audit and Enforce, applying and deleting policies |
+
 ### Observability & Analytics
 
 | Integration | Purpose |

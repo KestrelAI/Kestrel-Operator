@@ -23,7 +23,7 @@ Argo Rollouts is auto-detected by the Kestrel Operator when the Rollout CRD is p
     ```
   </Step>
   <Step title="Verify detection">
-    The operator probes for the Rollout CRD on each inventory sync. Check the operator logs:
+    The operator probes for the Rollout CRD periodically. Check the operator logs:
     ```bash
     kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "Rollouts"
     ```
