@@ -25,7 +25,7 @@ Flux CD is auto-detected by the Kestrel Operator when the Flux CRDs are present 
     ```
   </Step>
   <Step title="Verify detection">
-    The operator probes for the Flux CRDs on each inventory sync. Check the operator logs:
+    The operator probes for the Flux CRDs periodically. Check the operator logs:
     ```bash
     kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "Flux"
     ```

@@ -19,7 +19,7 @@ Kyverno is auto-detected by the Kestrel Operator when the Kyverno CRDs are prese
     If Kyverno is not already installed, follow the [Kyverno installation guide](https://kyverno.io/docs/installation/).
   </Step>
   <Step title="Verify detection">
-    The operator probes for the Kyverno CRDs on each inventory sync. Check the operator logs:
+    The operator probes for the Kyverno CRDs periodically. Check the operator logs:
     ```bash
     kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "Kyverno"
     ```
