@@ -344,6 +344,12 @@ func extractTrivyFinding(report *unstructured.Unstructured, reportKind trivyRepo
 		WorkloadName: labels["trivy-operator.resource.name"],
 		Container:    labels["trivy-operator.container.name"],
 	}
+	// Names that are not valid label values (e.g. Role
+	// "cert-manager-webhook:dynamic-serving") are stored by trivy-operator in
+	// an annotation instead of the label.
+	if finding.WorkloadName == "" {
+		finding.WorkloadName = report.GetAnnotations()["trivy-operator.resource.name"]
+	}
 	if ns := labels["trivy-operator.resource.namespace"]; ns != "" && finding.Namespace == "" {
 		finding.Namespace = ns
 	}

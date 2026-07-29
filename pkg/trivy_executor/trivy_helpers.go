@@ -41,10 +41,16 @@ func canonicalKind(kind string) string {
 }
 
 // reportWorkload resolves the scanned workload from the report's
-// trivy-operator labels.
+// trivy-operator labels. Names that are not valid label values (e.g. Role
+// "cert-manager-webhook:dynamic-serving") are stored by trivy-operator in an
+// annotation instead of the label, so fall back to it.
 func reportWorkload(report *unstructured.Unstructured) (kind, name string) {
 	labels := report.GetLabels()
-	return labels[labelResourceKind], labels[labelResourceName]
+	kind, name = labels[labelResourceKind], labels[labelResourceName]
+	if name == "" {
+		name = report.GetAnnotations()[labelResourceName]
+	}
+	return kind, name
 }
 
 // imageRef reconstructs the scanned image reference from report.artifact.
