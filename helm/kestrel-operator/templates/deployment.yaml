@@ -134,6 +134,10 @@ spec:
             - name: KYVERNO_DISABLED
               value: "true"
             {{- end }}
+            {{- if not .Values.operator.trivy.enabled }}
+            - name: TRIVY_DISABLED
+              value: "true"
+            {{- end }}
 
             # OTEL Metrics Store configuration
             {{- if .Values.operator.otel.enabled }}
