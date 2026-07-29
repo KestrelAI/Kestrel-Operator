@@ -19,6 +19,7 @@ import (
 	"operator/pkg/flux_executor"
 	"operator/pkg/karpenter_executor"
 	"operator/pkg/kyverno_executor"
+	"operator/pkg/trivy_executor"
 	"operator/pkg/rollouts_executor"
 	"operator/pkg/shell_executor"
 	smartcache "operator/pkg/smart_cache"
@@ -88,6 +89,7 @@ type StreamClient struct {
 	fluxExecutor     *flux_executor.FluxExecutor
 	karpenterExecutor *karpenter_executor.KarpenterExecutor
 	kyvernoExecutor   *kyverno_executor.KyvernoExecutor
+	trivyExecutor     *trivy_executor.TrivyExecutor
 
 	// OTEL Metrics Store for local metrics storage and querying
 	metricsStore *metrics_store.MetricsStore
@@ -550,6 +552,7 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 	var fluxExecutor *flux_executor.FluxExecutor
 	var karpenterExecutor *karpenter_executor.KarpenterExecutor
 	var kyvernoExecutor *kyverno_executor.KyvernoExecutor
+	var trivyExecutor *trivy_executor.TrivyExecutor
 	dynamicClient, dynErr := k8s_helper.NewDynamicClient()
 	if dynErr != nil {
 		logger.Warn("Failed to create dynamic client — Argo Rollouts, Flux CD, Karpenter, and Kyverno integrations disabled", zap.Error(dynErr))
@@ -577,6 +580,12 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 			logger.Info("Kyverno executor initialized (availability determined by CRD probe)")
 		} else {
 			logger.Info("Kyverno integration disabled (KYVERNO_DISABLED=true)")
+		}
+		if os.Getenv("TRIVY_DISABLED") != "true" {
+			trivyExecutor = trivy_executor.NewTrivyExecutor(logger, dynamicClient)
+			logger.Info("Trivy executor initialized (availability determined by CRD probe)")
+		} else {
+			logger.Info("Trivy integration disabled (TRIVY_DISABLED=true)")
 		}
 	}
 
@@ -630,6 +639,7 @@ func NewStreamClient(ctx context.Context, logger *zap.Logger, config ServerConfi
 		fluxExecutor:     fluxExecutor,
 		karpenterExecutor: karpenterExecutor,
 		kyvernoExecutor:   kyvernoExecutor,
+		trivyExecutor:     trivyExecutor,
 		metricsStore:  metricsStoreInstance,
 		podResolver:   podResolver,
 		otelReceiver:  otelReceiverInstance,
@@ -920,6 +930,21 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 		} else {
 			s.Logger.Info("Policy report ingester disabled (KYVERNO_DISABLED=true)")
 		}
+
+		// Create Trivy report ingester (no-op when trivy-operator is absent).
+		// It emits synthetic Warning events onto the shared event channel, so
+		// findings ride the existing incident-event pipeline.
+		var trivyReportIngester *ingestion.TrivyReportIngester
+		if os.Getenv("TRIVY_DISABLED") != "true" {
+			var triErr error
+			trivyReportIngester, triErr = ingestion.NewTrivyReportIngester(s.Logger, eventChan)
+			if triErr != nil {
+				s.Logger.Warn("Failed to create Trivy report ingester — Trivy triggers disabled", zap.Error(triErr))
+				trivyReportIngester = nil
+			}
+		} else {
+			s.Logger.Info("Trivy report ingester disabled (TRIVY_DISABLED=true)")
+		}
 		podStatusMonitor := ingestion.NewPodStatusMonitor(s.Logger, podStatusChan, sharedClientset, sharedFactory)
 		nodeConditionMonitor := ingestion.NewNodeConditionMonitor(s.Logger, nodeConditionChan, sharedClientset, sharedFactory)
 		rolloutMonitor := ingestion.NewWorkloadRolloutMonitor(s.Logger, rolloutStatusChan, sharedClientset, sharedFactory)
@@ -1067,6 +1092,18 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			go func() {
 				if err := policyReportIngester.StartSync(policyReportCtx, nil); err != nil {
 					s.Logger.Error("Policy report ingester failed", zap.Error(err))
+				}
+			}()
+		}
+
+		// Trivy report ingester (manages its own informer factory and sync;
+		// not part of the barrier since it's a no-op without trivy-operator)
+		if trivyReportIngester != nil {
+			trivyReportCtx, trivyReportCancel := context.WithCancel(ctx)
+			defer trivyReportCancel()
+			go func() {
+				if err := trivyReportIngester.StartSync(trivyReportCtx, nil); err != nil {
+					s.Logger.Error("Trivy report ingester failed", zap.Error(err))
 				}
 			}()
 		}
@@ -1327,6 +1364,14 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			probeCancel()
 		}
 
+		// Probe for trivy-operator before sending inventory commit
+		hasTrivy := false
+		if s.trivyExecutor != nil {
+			probeCtx, probeCancel := context.WithTimeout(ctx, 10*time.Second)
+			hasTrivy = s.trivyExecutor.Probe(probeCtx)
+			probeCancel()
+		}
+
 		// Send inventory commit message to signal that initial inventory is complete
 		s.Logger.Info("Sending inventory commit message to server",
 			zap.Bool("has_datadog", hasDatadog),
@@ -1334,7 +1379,8 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 			zap.Bool("has_rollouts", hasRollouts),
 			zap.Bool("has_flux", hasFlux),
 			zap.Bool("has_karpenter", hasKarpenter),
-			zap.Bool("has_kyverno", hasKyverno))
+			zap.Bool("has_kyverno", hasKyverno),
+			zap.Bool("has_trivy", hasTrivy))
 		commitMsg := &v1.StreamDataRequest{
 			Request: &v1.StreamDataRequest_InventoryCommit{
 				InventoryCommit: &v1.InventoryCommit{
@@ -1344,6 +1390,7 @@ func (s *StreamClient) StartOperator(ctx context.Context) error {
 					HasFlux:      hasFlux,
 					HasKarpenter: hasKarpenter,
 					HasKyverno:   hasKyverno,
+					HasTrivy:     hasTrivy,
 				},
 			},
 		}
@@ -4064,6 +4111,16 @@ func (s *StreamClient) executeGitOpsQuery(ctx context.Context, ddRequest *v1.Dat
 			}
 		}
 		return s.kyvernoExecutor.ExecuteQuery(ctx, ddRequest)
+	case qt >= v1.DatadogQueryType_TRIVY_LIST_VULNERABILITIES && qt <= v1.DatadogQueryType_TRIVY_RESCAN_WORKLOAD:
+		if s.trivyExecutor == nil {
+			return &v1.DatadogQueryResponse{
+				RequestId:    ddRequest.RequestId,
+				Success:      false,
+				ErrorMessage: "Trivy integration is not available on this operator",
+				StatusCode:   503,
+			}
+		}
+		return s.trivyExecutor.ExecuteQuery(ctx, ddRequest)
 	default:
 		return &v1.DatadogQueryResponse{
 			RequestId:    ddRequest.RequestId,

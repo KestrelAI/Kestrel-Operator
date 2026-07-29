@@ -173,6 +173,15 @@ rules:
     resources: ["policyreports", "clusterpolicyreports"]
     verbs: ["get", "list", "watch"]
 
+  # Allow trivy-operator report reading (Trivy workflow triggers/actions) and
+  # VulnerabilityReport deletion (rescan action)
+  - apiGroups: ["aquasecurity.github.io"]
+    resources: ["vulnerabilityreports", "configauditreports", "exposedsecretreports", "rbacassessmentreports", "infraassessmentreports", "clustercompliancereports"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["aquasecurity.github.io"]
+    resources: ["vulnerabilityreports"]
+    verbs: ["delete"]
+
   # Allow Helm release management (workflow automation)
   # Helm stores release metadata in secrets, and manages services, configmaps, etc.
   - apiGroups: [""]

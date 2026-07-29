@@ -104,6 +104,11 @@ operator:
   kyverno:
     enabled: true
 
+  # Auto-detected via the trivy-operator CRDs (aquasecurity.github.io).
+  # Enabled by default; set enabled: false to opt out.
+  trivy:
+    enabled: true
+
   # Safe-apply configuration for Chat YAML changes
   safeApply:
     # Enable safe-apply permissions for the operator

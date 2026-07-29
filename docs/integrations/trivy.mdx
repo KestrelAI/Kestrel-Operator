@@ -1,0 +1,82 @@
+---
+title: "Trivy"
+description: "Connect Trivy for cluster security scanning automation — react to new CVEs, exposed secrets, misconfigurations, and compliance failures, and query scan results in workflows"
+---
+
+The Trivy integration connects Kestrel to your in-cluster [trivy-operator](https://github.com/aquasecurity/trivy-operator) installation, enabling new security findings to trigger workflows and letting workflows list image vulnerabilities, exposed secrets, and misconfigurations, read compliance reports, and force workload rescans.
+
+## Prerequisites
+
+- Kestrel Operator deployed in your cluster (see [Kubernetes](/integrations/kubernetes))
+- trivy-operator installed in the same cluster with its CRDs present (`vulnerabilityreports.aquasecurity.github.io` and friends)
+
+## Setup
+
+Trivy is auto-detected by the Kestrel Operator when the trivy-operator CRDs are present in the cluster. No manual connection or credentials are required.
+
+<Steps>
+  <Step title="Install trivy-operator">
+    If trivy-operator is not already installed:
+    ```bash
+    helm repo add aquasecurity https://aquasecurity.github.io/helm-charts
+    helm install trivy-operator aquasecurity/trivy-operator \
+      -n trivy-system --create-namespace
+    ```
+  </Step>
+  <Step title="Verify detection">
+    The operator probes for the trivy-operator CRDs periodically. Check the operator logs:
+    ```bash
+    kubectl logs -n kestrel-ai deploy/kestrel-operator | grep -i "Trivy"
+    ```
+    Once detected, the integration shows as **Detected** on the Integrations page and Trivy trigger and action blocks become available in the workflow builder.
+  </Step>
+</Steps>
+
+<Note>
+  The integration is enabled by default. To opt out, set `operator.trivy.enabled: false` in your Helm values and upgrade the operator (this sets `TRIVY_DISABLED=true` on the operator deployment).
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+- **Vulnerability Detected** — fires when trivy-operator records new or changed image CVEs in a workload's `VulnerabilityReport` (a vulnerable image shipped to the cluster)
+- **Exposed Secret Detected** — fires when a secret (AWS keys, tokens, private keys) is found baked into a container image
+- **Config Audit Failed** — fires when a workload or RBAC object fails security checks (privileged containers, missing runAsNonRoot, wildcard RBAC)
+- **Compliance Check Failed** — fires when a cluster compliance report (CIS, NSA, Pod Security Standards) has failing controls
+
+Triggers deduplicate by report content, so trivy-operator's periodic report recreation (its report TTL) does not re-fire unchanged findings — only new or changed findings trigger workflows.
+
+Scope triggers by cluster, namespace, severity (`critical`, `high`, `medium`, `low`), and scanned resource kind. Trigger events expose template variables such as `{{signal.image}}`, `{{signal.workload_kind}}`, `{{signal.workload_name}}`, `{{signal.namespace}}`, `{{signal.severity}}`, `{{signal.cve_ids}}`, `{{signal.critical_count}}`, `{{signal.high_count}}`, `{{signal.check_ids}}`, `{{signal.secret_rules}}`, and `{{signal.compliance_report}}` for downstream steps.
+
+**Action blocks:**
+- **List Vulnerabilities** — aggregate image CVEs across the cluster, filterable by namespace, workload, severity, and fix availability
+- **Get Vulnerability Report** — read one workload's full vulnerability picture: per-container images, severity counts, and the CVE list
+- **List Exposed Secrets** — list secrets baked into container images with rule, severity, target file, and workload
+- **List Misconfigurations** — list failed security checks from config audit, RBAC assessment, and infra assessment reports
+- **Get Compliance Report** — read one cluster compliance report's pass/fail counts and failing controls
+- **Rescan Workload** — force trivy-operator to rescan a workload by deleting its VulnerabilityReports (verify a patched image actually cleared its CVEs)
+- **Investigate Trivy** — run a read-only AI investigation across CVEs, exposed secrets, misconfigurations, and compliance via the cluster operator (the investigation can never rescan or mutate anything)
+
+Example (vulnerability response): When a **critical CVE** ships to production, post the image, workload, and top CVEs to your security Slack channel and open a Jira ticket with the fix versions.
+
+Example (secret hygiene): When an **exposed secret** is detected in an image, alert the owning team immediately so the credential can be rotated, and file a tracking ticket.
+
+Example (patch verification): A developer asks in the request chat to rescan the `nginx` deployment after deploying a patched image. The workflow **Rescan Workload**, waits, then **Get Vulnerability Report** and confirms the CVEs are gone.
+
+Example (posture reporting): On a weekly schedule, **List Vulnerabilities** with fixable-only, summarize with AI, and post a patch-priority digest to Slack.
+
+### Scoping
+
+Trivy actions are scoped by **cluster** (populated with a dropdown of clusters where trivy-operator was detected) and, for workload-level actions, **namespace** and **workload** (accepts `kind/name` like `deployment/nginx`). Compliance reads are scoped by **report name** (e.g. `cis`, `nsa`), also populated from live cluster data.
+
+## Disconnecting
+
+To disable the Trivy integration, set the following in your Helm values and upgrade the operator:
+
+```yaml
+operator:
+  trivy:
+    enabled: false
+```

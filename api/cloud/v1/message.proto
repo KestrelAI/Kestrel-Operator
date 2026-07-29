@@ -252,6 +252,8 @@ message InventoryCommit {
   bool has_karpenter = 5;
   // True if the operator detected Kyverno CRDs (clusterpolicies.kyverno.io) in the cluster.
   bool has_kyverno = 6;
+  // True if the operator detected trivy-operator CRDs (vulnerabilityreports.aquasecurity.github.io) in the cluster.
+  bool has_trivy = 7;
 }
 
 // Network policy definition matching Kubernetes NetworkPolicy format
@@ -1398,6 +1400,20 @@ enum DatadogQueryType {
   KYVERNO_SET_ENFORCEMENT = 39;  // patch validationFailureAction (Audit <-> Enforce)
   KYVERNO_APPLY_POLICY = 40;     // create or update a policy from a YAML manifest
   KYVERNO_DELETE_POLICY = 41;    // delete a ClusterPolicy/Policy
+
+  // Trivy operations, executed against trivy-operator report CRs
+  // (aquasecurity.github.io/v1alpha1: VulnerabilityReport, ConfigAuditReport,
+  // ExposedSecretReport, RbacAssessmentReport, InfraAssessmentReport,
+  // ClusterComplianceReport) via the Kubernetes API. filter carries the
+  // resource scope (e.g. "namespace/workload"); json_body carries
+  // operation-specific parameters.
+  TRIVY_LIST_VULNERABILITIES = 42;     // aggregate VulnerabilityReports (severity/namespace/workload filters)
+  TRIVY_GET_VULNERABILITY_REPORT = 43; // vulnerability reports for one workload (by owner refs)
+  TRIVY_LIST_EXPOSED_SECRETS = 44;     // aggregate ExposedSecretReports
+  TRIVY_LIST_MISCONFIGURATIONS = 45;   // aggregate ConfigAudit/RbacAssessment/InfraAssessment failed checks
+  TRIVY_GET_COMPLIANCE_REPORT = 46;    // one ClusterComplianceReport (pass/fail controls)
+  TRIVY_LIST_COMPLIANCE_REPORTS = 47;  // list ClusterComplianceReport names (dropdowns)
+  TRIVY_RESCAN_WORKLOAD = 48;          // delete a workload's VulnerabilityReports to force a rescan
 }
 
 // Datadog query response from operator to server.

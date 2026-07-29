@@ -140,6 +140,7 @@
         "integrations/fluxcd",
         "integrations/karpenter",
         "integrations/kyverno",
+        "integrations/trivy",
         "integrations/helm",
         "integrations/terraform",
         "integrations/pulumi",
