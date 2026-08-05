@@ -15,7 +15,7 @@ The Databricks integration connects Kestrel to your Databricks workspace through
 
 <Steps>
   <Step title="Generate an access token">
-    In your Databricks workspace, go to **Settings → Developer → Access tokens → Generate new token**. Copy the token — it is shown only once. For production, create the token for a service principal with access scoped to the jobs, clusters, pipelines, and warehouses you want to automate.
+    In your Databricks workspace, go to **Settings → Developer → Access tokens → Generate new token**. Under **Scope**, choose **Other APIs** and select the **jobs**, **clusters**, **pipelines**, **sql**, and **query-history** API scopes — these cover every Kestrel trigger and action block (avoid "all APIs"). Copy the token — it is shown only once. For production, create the token for a service principal with access scoped to the jobs, clusters, pipelines, and warehouses you want to automate.
   </Step>
   <Step title="Find your workspace URL">
     The workspace base URL from your browser's address bar, e.g. `https://dbc-a1b2c3d4-e5f6.cloud.databricks.com` (Azure: `https://adb-xxxx.azuredatabricks.net`, GCP: `https://xxxx.gcp.databricks.com`).
