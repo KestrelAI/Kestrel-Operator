@@ -133,6 +133,7 @@
         "integrations/planetscale",
         "integrations/neon",
         "integrations/clickhouse",
+        "integrations/databricks",
         "integrations/datadog",
         "integrations/opentelemetry",
         "integrations/argocd",
