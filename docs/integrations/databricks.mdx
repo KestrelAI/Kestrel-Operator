@@ -1,0 +1,78 @@
+---
+title: "Databricks"
+description: "Connect Databricks for data-platform automation — react to failed job runs, cluster terminations, and DLT pipeline failures, repair runs, manage clusters and SQL warehouses, and run data-quality checks in workflows"
+---
+
+The Databricks integration connects Kestrel to your Databricks workspace through the Databricks REST API, enabling failed job runs, unexpected cluster terminations, and Delta Live Tables pipeline failures to trigger workflows, and letting workflows run and repair jobs, fetch run output for triage, manage cluster and SQL warehouse lifecycle, start pipeline updates, execute SQL data-quality checks, and run read-only AI investigations.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A Databricks workspace on AWS, Azure, or GCP
+- A Databricks **personal access token** (a service-principal token is recommended for production) and your **workspace URL**
+
+## Setup
+
+<Steps>
+  <Step title="Generate an access token">
+    In your Databricks workspace, go to **Settings → Developer → Access tokens → Generate new token**. Under **Scope**, choose **Other APIs** and select the **jobs**, **clusters**, **pipelines**, **sql**, and **query-history** API scopes — these cover every Kestrel trigger and action block (avoid "all APIs"). Copy the token — it is shown only once. For production, create the token for a service principal with access scoped to the jobs, clusters, pipelines, and warehouses you want to automate.
+  </Step>
+  <Step title="Find your workspace URL">
+    The workspace base URL from your browser's address bar, e.g. `https://dbc-a1b2c3d4-e5f6.cloud.databricks.com` (Azure: `https://adb-xxxx.azuredatabricks.net`, GCP: `https://xxxx.gcp.databricks.com`).
+  </Step>
+  <Step title="Connect in Kestrel">
+    1. Navigate to **Integrations → Databricks** in your Kestrel dashboard.
+    2. Enter your **workspace URL** and paste the **access token**.
+    3. Click **Connect Databricks** — Kestrel validates the token against your workspace.
+  </Step>
+</Steps>
+
+<Note>
+  No webhooks needed — Databricks has no tenant-wide outbound webhooks, so Kestrel polls the Databricks REST API for job-run, cluster, and pipeline events. The poll cadence is configurable per trigger (1m–30m, default 5m).
+</Note>
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks (polling):**
+- **Job Run Failed** — fires when a job run terminates `FAILED`, `TIMEDOUT`, or `CANCELED`
+- **Job Run Succeeded** — fires when a job run completes successfully
+- **Job Run Exceeded Duration** — fires when a still-running run passes a duration threshold (catch stuck or runaway jobs before they burn compute)
+- **Cluster Terminated Unexpectedly** — fires on error terminations (Spark failures, cloud-provider launch failures, unresponsive drivers); expected user/auto-stop terminations don't fire
+- **DLT Pipeline Update Failed** — fires when a Delta Live Tables pipeline update fails
+
+Scope triggers by job, cluster, or pipeline, and set the duration threshold and poll interval per trigger. Trigger events expose template variables such as `{{signal.job_name}}`, `{{signal.run_id}}`, `{{signal.run_page_url}}`, `{{signal.result_state}}`, `{{signal.error_message}}`, `{{signal.duration_seconds}}`, `{{signal.cluster_name}}`, `{{signal.termination_reason}}`, and `{{signal.pipeline_name}}` for downstream steps.
+
+**Action blocks (jobs):**
+- **Run Job Now** — trigger a job run, optionally with job parameters
+- **Get Run / Get Run Output** — run state, duration, per-task states, errors, stack traces, and notebook output (multi-task runs automatically target the first failed task's output)
+- **Cancel Run** — stop a runaway or stuck run
+- **Repair Run** — re-run only the failed tasks of a run, reusing successful task results — the fastest recovery from a partial failure
+
+**Action blocks (clusters and pipelines):**
+- **Start / Restart / Terminate Cluster** — cluster lifecycle for recovery and cost control
+- **Start Pipeline Update / Stop Pipeline** — re-run a failed DLT pipeline (optionally full-refresh) or stop an in-progress update
+
+**Action blocks (SQL):**
+- **Execute SQL** — run a statement on a SQL warehouse and use the result in later steps (`{{step_outputs.ID.first_value}}` pairs naturally with Condition nodes for data-quality gates)
+- **Start / Stop SQL Warehouse** — warehouse lifecycle for scheduled cost control
+
+**Action blocks (AI):**
+- **Investigate Databricks** — run a read-only AI investigation across jobs, runs, clusters, pipelines, and warehouses (the investigation can never mutate the workspace — every Databricks write is blocked)
+
+Job, cluster, pipeline, and warehouse selects use dynamic dropdowns backed by the Databricks API and default to `{{signal.job_id}}` / `{{signal.run_id}}` / `{{signal.cluster_id}}` / `{{signal.pipeline_id}}` when the workflow starts from a Databricks trigger. Destructive actions (terminate cluster, cancel run, stop pipeline) pair naturally with Approval nodes.
+
+Example (failure recovery): When the **nightly ETL job fails**, fetch the run output, repair the failed tasks, and post the error summary with the run page link to the data-platform Slack channel — escalating to PagerDuty if the repair fails too.
+
+Example (cost control): On a nightly schedule, stop non-production SQL warehouses and terminate idle all-purpose clusters after Slack approval.
+
+Example (data quality): Every morning, execute a freshness SQL check against the lakehouse; if the stale-row count exceeds zero, open a Jira ticket and alert the data-eng channel.
+
+## Disconnecting
+
+1. Navigate to **Integrations → Databricks**
+2. Click **Disconnect**
+3. Confirm the disconnection
+
+This disables all Databricks workflow triggers and actions. The stored access token is deleted from Kestrel; also revoke the token in Databricks under **Settings → Developer → Access tokens** if it is no longer needed.
