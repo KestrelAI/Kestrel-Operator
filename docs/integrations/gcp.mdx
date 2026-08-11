@@ -1,0 +1,161 @@
+---
+title: "Google Cloud"
+description: "Connect your GCP projects to Kestrel with Workload Identity Federation for cost, compute, security, and data automation"
+---
+
+Connect your GCP projects to Kestrel using Workload Identity Federation for keyless access to your cloud resources. Once a project is connected, Kestrel can watch it for cost anomalies, unhealthy workloads, security findings, and failing data pipelines, and can act on what it finds from a workflow.
+
+## Prerequisites
+
+- **Organization Admin** role in Kestrel
+- A GCP project where you can create service accounts and grant IAM roles
+- `gcloud` CLI, authenticated against that project
+- Optional: a [BigQuery billing export](https://cloud.google.com/billing/docs/how-to/export-data-bigquery) if you want the cost and FinOps triggers
+
+## Setup
+
+<Steps>
+  <Step title="Start the connection">
+    1. Navigate to **Integrations → Cloud** in your Kestrel dashboard
+    2. Open the **GCP** tab and click **Connect GCP Project**
+    3. Enter your **Project ID** and pick a **default region**
+    4. Click **Generate Setup Script**
+  </Step>
+  <Step title="Run the setup script">
+    Kestrel generates a `gcloud` script scoped to the project you entered. It creates a Workload Identity Pool and provider, creates a service account for Kestrel to impersonate, and grants that service account the roles listed below.
+
+    Run it in Cloud Shell or any terminal with `gcloud` authenticated:
+
+    ```bash
+    chmod +x kestrel-gcp-setup.sh
+    ./kestrel-gcp-setup.sh
+    ```
+
+    The script prints the service account email and the Workload Identity provider resource name when it finishes.
+  </Step>
+  <Step title="Verify the connection">
+    1. Paste the **service account email** and **Workload Identity provider** into the Kestrel verification dialog
+    2. Click **Verify Connection**
+
+    Kestrel exchanges its own GKE identity for a short-lived token that impersonates your service account, then makes a read call to confirm the grant worked. On success, the project appears as **Connected**.
+  </Step>
+</Steps>
+
+<Note>
+  Kestrel never asks for a service account key. Access is brokered through Workload Identity Federation, so there is no long-lived credential to store, rotate, or leak. Revoking the `roles/iam.serviceAccountTokenCreator` binding on the service account immediately cuts off Kestrel's access.
+</Note>
+
+### Billing export (optional)
+
+The cost triggers and the Cost Explorer style blocks read from a BigQuery billing export, because GCP does not expose detailed cost data through a general-purpose API.
+
+1. Set up a [detailed usage cost export](https://cloud.google.com/billing/docs/how-to/export-data-bigquery-setup) in your billing account
+2. In Kestrel, open the connected project and set the **Billing export table** to the fully-qualified table, for example `my-project.billing.gcp_billing_export_resource_v1_XXXXXX`
+
+Until this is configured, the project still connects and every non-cost block works. Cost blocks report that cost data is pending rather than failing, so a missing export never breaks an unrelated workflow.
+
+<Warning>
+  Queries against your billing export are billed to your project by BigQuery. Kestrel polls cost triggers hourly rather than every minute for this reason, and scopes each query to the smallest time window that answers the question.
+</Warning>
+
+### Security Command Center (optional)
+
+The **Security Command Center Finding** trigger reads findings at the organization level, which project-level roles cannot grant. To use it, grant the Kestrel service account `roles/securitycenter.findingsViewer` on your **organization** rather than the project. The setup script prints the exact command. Every other security trigger works with project-level access alone.
+
+## How It's Used
+
+### In Workflows
+
+**Trigger blocks:**
+
+*Cost and FinOps:*
+- **Cost Anomaly Detected** — fires when spend for a service deviates from its recent baseline
+- **Budget Threshold Exceeded** — fires when a budget's month-to-date spend crosses a percentage of its amount
+- **Cost Forecast Overrun** — fires when the projected month-end spend exceeds the budget, before the overrun happens
+- **Daily Spend Spike** — fires when daily spend rises beyond a configurable percentage over the trailing baseline
+- **Idle Resource Detected** — fires when a scan finds idle VMs, unattached disks, unused static IPs, or stale snapshots
+
+*Compute and operations:*
+- **Instance Preempted** — fires when a Spot or preemptible VM is reclaimed
+- **Instance Terminated Abnormally** — fires when a VM stops for a reason other than a normal shutdown
+- **Instance Group Unhealthy** — fires when a managed instance group has unhealthy instances beyond a threshold
+- **GKE Node Pool Degraded** — fires when a node pool stays degraded past a dwell time, so routine upgrades stay quiet
+- **Cloud Run Revision Failed** — fires when a new Cloud Run revision fails to become ready
+- **Cloud Monitoring Alert Fired** — fires when a Cloud Monitoring alert policy opens an incident
+- **Log Error Pattern Matched** — fires when a Cloud Logging filter matches more than a threshold number of entries
+- **Cloud Build Failed** — fires when a build fails
+
+*Security and IAM:*
+- **Security Command Center Finding** — fires on new SCC findings, filterable by category and severity
+- **Privileged IAM Grant** — fires when a privileged role is granted on the project
+- **Service Account Key Aged** — fires when a user-managed service account key passes a maximum age
+- **Public Storage Bucket Detected** — fires when a bucket becomes publicly readable
+- **Public IAM Binding Detected** — fires when `allUsers` or `allAuthenticatedUsers` is bound to a resource
+
+*Data and storage:*
+- **BigQuery Job Failed** — fires when a BigQuery job fails
+- **Expensive BigQuery Query** — fires when a query scans more than a configurable number of gigabytes
+- **Cloud SQL Instance Unhealthy** — fires when a Cloud SQL instance reports an unhealthy state
+- **Pub/Sub Backlog Growing** — fires when undelivered messages on a subscription exceed a threshold
+- **Dataflow Job Failed** — fires when a Dataflow job fails
+
+Every GCP trigger can be scoped to specific projects, regions, zones, and the individual resources relevant to that event, and each threshold above is configurable in the trigger's panel in the workflow builder.
+
+<Note>
+  GCP does not offer tenant-wide outbound webhooks for these services, so all GCP triggers are poll-based. Cadence defaults differ by family: operations events poll every few minutes, while cost events poll hourly because they query your billing export.
+</Note>
+
+**Action blocks:**
+
+- *Cost insights (read-only)*: Query Billing Data, Get Cost Anomalies, Get Cost Forecast, Get Budget Status, Get Rightsizing Recommendations, Get Committed Use Discount Recommendations, Get Committed Use Discount Utilization, Compare Cost Periods, Find Idle Resources
+- *Cost remediation*: Stop Compute Instances, Delete Unattached Disks, Release Static IP Addresses, Delete Old Snapshots, Downsize Compute Instance
+- *Compute and operations*: Get Instance, Start Instance, Reset Instance, Get Instance Group Health, Resize Instance Group, Recreate Instance Group Members, List GKE Node Pools, Resize GKE Node Pool, Set GKE Node Pool Autoscaling, Get Cloud Run Service, Rollback Cloud Run Service, Set Cloud Run Traffic Split, Query Cloud Monitoring Metrics, Query Cloud Logging, Retry Cloud Build, Investigate (AI)
+- *Security*: List Security Findings, Audit IAM Policy, Audit Service Account Keys, Find Public Buckets, Delete Service Account Key, Disable Service Account, Remove IAM Binding, Remove Public Bucket Access, Quarantine Instance
+- *Data*: Run BigQuery Query, List BigQuery Jobs, Cancel BigQuery Job, List Cloud SQL Instances, Get Cloud SQL Instance, Restart Cloud SQL Instance, Fail Over Cloud SQL Instance, List Pub/Sub Subscriptions, Purge Pub/Sub Subscription, Replay Pub/Sub Subscription, List Dataflow Jobs, Stop Dataflow Job
+
+Blocks that mutate infrastructure are marked as such in the builder and are meant to sit behind an **Approval** block. Destructive blocks enforce a cap on how many resources one step may touch, and always skip resources labeled `kestrel-protected`.
+
+Example: a workflow triggers on **Cloud Run Revision Failed**, reads the service to find the last revision that became ready, posts the failure reason to Slack, waits for approval, then rolls traffic back to that revision.
+
+### In Cloud AI Copilot
+
+- Ask questions about your GCP resources: `Which Cloud SQL instances are not highly available?`
+- Investigate spend: `What drove the increase in BigQuery costs last week?`
+- Investigate findings: `Show me buckets with public access in the prod project`
+
+## IAM Permissions
+
+The setup script grants the Kestrel service account these roles on the project:
+
+**Read-only:**
+
+- `roles/viewer` — resource inventory across services
+- `roles/billing.viewer`, `roles/bigquery.dataViewer`, `roles/bigquery.jobUser` — budgets and billing export queries
+- `roles/recommender.viewer` — rightsizing and commitment recommendations
+- `roles/monitoring.viewer`, `roles/logging.viewer` — metrics, alert policies, and log queries
+- `roles/securitycenter.findingsViewer` — Security Command Center findings
+- `roles/iam.serviceAccountViewer` — service account and key metadata
+
+**Write, scoped to the remediation blocks:**
+
+- `roles/compute.instanceAdmin.v1`, `roles/compute.storageAdmin`, `roles/compute.networkAdmin` — instance lifecycle, disk and snapshot cleanup, static IP release, network tags for quarantine
+- `roles/container.developer` — node pool resize
+- `roles/run.developer` — Cloud Run traffic and rollback
+- `roles/cloudbuild.builds.editor` — build retry
+- `roles/cloudsql.admin` — Cloud SQL restart and failover
+- `roles/pubsub.admin` — subscription seek and purge
+- `roles/dataflow.admin` — Dataflow job cancel and drain
+- `roles/storage.admin` — removing public bucket access
+- `roles/resourcemanager.projectIamAdmin`, `roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountKeyAdmin` — removing IAM bindings and deleting stale keys
+
+Every write role backs a specific action block. If you do not intend to use a family of blocks, you can omit its roles; the affected blocks then fail with an error naming the missing role instead of failing silently.
+
+<Note>
+  If you connected a project before a new block family shipped, Kestrel detects that your grant predates the current role set and prompts you to re-run the setup script. Re-running is safe and idempotent.
+</Note>
+
+## Managing Connections
+
+- **Verify**: Re-checks impersonation and permissions, and refreshes the connection status
+- **Billing export**: Set or change the BigQuery billing export table at any time
+- **Delete**: Removes the connection from Kestrel. The Workload Identity Pool, service account, and role bindings remain in GCP; delete them there if you want the access fully removed.

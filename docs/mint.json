@@ -112,6 +112,7 @@
       "pages": [
         "integrations/kubernetes",
         "integrations/aws",
+        "integrations/gcp",
         "integrations/oci",
         "integrations/cloudflare",
         "integrations/slack",
