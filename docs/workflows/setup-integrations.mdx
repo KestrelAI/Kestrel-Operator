@@ -28,6 +28,9 @@ Prefer the terminal? Every integration can also be connected with the [Kestrel C
   <Card title="AWS" icon="aws" href="/integrations/aws">
     **Triggers:** IAM Security Event, Root Account Activity, S3 Bucket Change, EC2/Lambda/RDS/DynamoDB Issues, VPC/Network Change, CloudWatch Alarm, Cost Anomaly, Budget Threshold, Forecast Overrun, Spend Spike, Idle Resource, and more. **Actions:** Trigger Cloud RCA & Generate Fix, Generate Cloud Resource (Terraform/CloudFormation/CLI), Execute Cloud CLI, Query Cost Explorer, Get Cost Anomalies/Forecast/Budget Status, Rightsizing/Savings Plans/Reservation Recommendations, Find Idle Resources, Cost Remediation (Stop EC2, Delete EBS Volumes, Release EIPs, Delete Snapshots), Investigate Cloud.
   </Card>
+  <Card title="Google Cloud" icon="google" href="/integrations/gcp">
+    **Triggers:** Cost Anomaly, Budget Threshold, Cost Forecast Overrun, Daily Spend Spike, Idle Resource, Instance Preempted/Terminated Abnormally, Instance Group Unhealthy, GKE Node Pool Degraded, Cloud Run Revision Failed, Cloud Monitoring Alert, Log Error Pattern, Cloud Build Failed, Security Command Center Finding, Privileged IAM Grant, Service Account Key Aged, Public Storage Bucket, Public IAM Binding, BigQuery Job Failed, Expensive BigQuery Query, Cloud SQL Unhealthy, Pub/Sub Backlog, Dataflow Job Failed. **Actions:** Query Billing Data, Get Cost Anomalies/Forecast/Budget Status, Rightsizing and Committed Use Discount Recommendations, Find Idle Resources, Cost Remediation (Stop Instances, Delete Unattached Disks, Release Static IPs, Delete Old Snapshots, Downsize Instance), instance and node pool lifecycle, Cloud Run rollback and traffic split, Retry Cloud Build, Query Logs and Metrics, IAM and bucket hardening, BigQuery/Cloud SQL/Pub/Sub/Dataflow operations, Investigate (AI).
+  </Card>
   <Card title="OCI" icon="cloud" href="/integrations/oci">
     Connect Oracle Cloud Infrastructure for resource inventory and incident detection.
   </Card>
@@ -167,6 +170,12 @@ AWS Cost features are available through the [AWS integration](/integrations/aws)
 - **Insights (read-only):** Query Cost Explorer, Get Cost Anomalies, Get Cost Forecast, Get Budget Status, Get Rightsizing Recommendations, Get Savings Plans Recommendations, Get Reservation Recommendations, Get Commitment Utilization, Compare Cost Periods, Find Idle Resources, Get Compute Optimizer Recommendations, Get Trusted Advisor Cost Checks, AI Cost Analysis
 - **Remediation (destructive — place behind an Approval block):** Stop EC2 Instances, Delete Unattached EBS Volumes, Release Elastic IPs, Delete Old Snapshots
 - **Cost triggers:** Cost Anomaly Detected, Budget Threshold Exceeded, Forecast Exceeds Budget, Spend Spike Detected, Idle Resource Detected
+
+GCP cost features work the same way through the [Google Cloud integration](/integrations/gcp). They additionally require a BigQuery billing export, since GCP has no general-purpose detailed cost API. Until the export is configured, cost blocks report that cost data is pending rather than failing.
+
+- **Insights (read-only):** Query Billing Data, Get Cost Anomalies, Get Cost Forecast, Get Budget Status, Get Rightsizing Recommendations, Get Committed Use Discount Recommendations, Get Committed Use Discount Utilization, Compare Cost Periods, Find Idle Resources
+- **Remediation (destructive — place behind an Approval block):** Stop Compute Instances, Delete Unattached Disks, Release Static IP Addresses, Delete Old Snapshots, Downsize Compute Instance
+- **Cost triggers:** Cost Anomaly Detected, Budget Threshold Exceeded, Cost Forecast Overrun, Daily Spend Spike, Idle Resource Detected
 - **Scheduled workflows:** combine the [Recurring Schedule trigger](/workflows/create-workflows#schedule) with cost actions for periodic reports and cleanup scans
 
 <Note>
