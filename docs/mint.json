@@ -86,7 +86,8 @@
         "workflows/observability",
         "workflows/cli",
         "workflows/sdk",
-        "workflows/mcp"
+        "workflows/mcp",
+        "workflows/agent-quickstart"
       ]
     },
     {
