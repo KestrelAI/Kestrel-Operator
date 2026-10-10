@@ -7,14 +7,15 @@ The Kestrel MCP server exposes workflow management as tools that AI coding agent
 
 ## Prerequisites
 
-Install the [Kestrel CLI](/workflows/cli) and authenticate:
+Install the [Kestrel CLI](/workflows/cli):
 
 ```bash
 brew install KestrelAI/tap/kestrel
-kestrel auth kestrel_sk_...
 ```
 
-The MCP server uses your CLI credentials stored at `~/.kestrel/config.json`.
+Authentication is optional up front. The MCP server starts without credentials and exposes only `whoami`, `register`, `verify_email`, `login`, and `create_api_key`; as soon as an API key exists (both `verify_email` and `login` create one, named after the connected harness) the full tool set is registered and `tools/list_changed` is emitted. Credentials live in `~/.kestrel/config.json`, so `kestrel auth kestrel_sk_...` works too if you already have a key.
+
+For the end-to-end agent flow with every human step marked, see the [Agent Quickstart](/workflows/agent-quickstart).
 
 ## Setup
 
@@ -72,13 +73,27 @@ If `kestrel` isn't on your PATH, use the full path (e.g., `/usr/local/bin/kestre
 
 ## Available Tools
 
+### Bootstrap and Status
+
+Available before authentication (bootstrap) and after it (status).
+
+| Tool | Description |
+|------|-------------|
+| `whoami` | Server, auth mode (none / session / API key), user, tenant; tells an unauthenticated agent what to call next |
+| `register` | Create an account; the user then reads a 6-character code from their inbox (human step) |
+| `verify_email` | Finish registration with the code; logs in, creates an API key, unlocks all tools |
+| `login` | Existing account with email/password; same key creation. 2FA/SSO accounts are told to create a key in the web app |
+| `create_api_key` | Create a key (name, scopes, expiry); adopted automatically if the session has none |
+| `get_onboarding_status` | Checklist (account, keys, connected integrations, workflows, subscription) plus one next recommended step |
+| `get_account_status` | Plan, trial days left, credit used, daily execution cap, blocked reason, billing URL (card entry is a human step) |
+
 ### Workflow Management
 
 | Tool | Description |
 |------|-------------|
 | `list_workflows` | List all workflows, optionally filtered by status |
 | `get_workflow` | Get workflow details including definition and trigger config |
-| `create_workflow` | Create a new workflow from a definition |
+| `create_workflow` | Create a new workflow from a definition; `simulated=true` saves it as simulated (testable with mocked outputs, activates once its integrations are connected) |
 | `update_workflow` | Update a workflow's name, description, or definition |
 | `delete_workflow` | Delete a workflow |
 | `activate_workflow` | Activate a workflow |
@@ -89,9 +104,8 @@ If `kestrel` isn't on your PATH, use the full path (e.g., `/usr/local/bin/kestre
 
 | Tool | Description |
 |------|-------------|
-| `generate_workflow` | Generate a workflow from natural language |
-| `request_workflow` | Submit a request to trigger a matching workflow. If nothing matches, returns `pending_confirmation` with a `request_id` |
-| `confirm_workflow_request` | Resolve a `pending_confirmation` request: confirm to send it to the platform team, or dismiss it. The agent asks you before calling this |
+| `generate_workflow` | Generate a workflow from natural language; `simulated=true` builds as if every integration were connected (prototype before connecting anything) |
+| `request_workflow` | Submit a request to trigger a matching workflow |
 | `list_suggested_workflows` | Get AI-suggested workflows |
 
 ### Execution Management
@@ -130,14 +144,20 @@ If `kestrel` isn't on your PATH, use the full path (e.g., `/usr/local/bin/kestre
 
 | Tool | Description |
 |------|-------------|
-| `list_integrations` | List every integration with its type, required credential fields, and connection status |
-| `connect_integration` | Connect a token or knowledge-source integration, or get the browser URL for OAuth integrations (GitHub, GitLab, Slack) |
+| `list_integrations` | List every integration with its type, required credential fields, connection status, and how to connect it |
+| `connect_integration` | Connect any integration. Token/knowledge: immediate. OAuth (GitHub, GitLab, Slack): returns the URL for the human to approve. `aws`: returns the CloudFormation launch URL, CLI command, and `external_id`; call again with `verify=true` and `{role_arn, external_id}`. `gcp`: returns the Cloud Shell setup script; call again with `verify=true` and `{project_id}`. `oci`: credentials from the OCI console. `kubernetes`: returns Helm values and the install command |
+| `get_connection_status` | Normalized state (connected / pending / summary / details) for any integration |
+| `wait_for_connection` | Poll until an integration connects after a human or cloud step (default 240s, max 600s; returns pending on timeout) |
 | `test_integration` | Test a connected integration's credentials |
 | `disconnect_integration` | Disconnect a token integration or knowledge source |
 
 <Note>
-Kubernetes, AWS, and OCI use multi-step flows and must be connected with the [CLI](/workflows/cli#integration-commands) (`kestrel integrations connect <name>`) instead of MCP tools. For credential safety, prefer the CLI's interactive hidden prompts for secrets rather than pasting tokens into an agent chat.
+For credential safety, prefer the CLI's interactive hidden prompts for secrets (`kestrel integrations connect <name>`) over pasting tokens into an agent chat when a human is present.
 </Note>
+
+## Client identification
+
+Every request the MCP server makes carries `X-Kestrel-Client: mcp/<harness>/<version>` from the MCP `initialize` handshake, and the CLI sends `cli` (or `cli/agent/<name>` when `KESTREL_AGENT` is set). Kestrel records this at signup and on every audited action so agent-driven usage is attributable.
 
 ## Example Conversations
 
@@ -164,9 +184,3 @@ The agent calls `list_pending_approvals`, identifies the right one, and calls `a
 > "Connect our PagerDuty account to Kestrel"
 
 The agent calls `list_integrations` to find the required credential fields, asks you for the values, then calls `connect_integration` and verifies with `test_integration`.
-
-**Requesting a change with no matching workflow:**
-
-> "Request a Redis cluster for the cache layer"
-
-The agent calls `request_workflow`. When no workflow matches, it gets back `pending_confirmation` and asks whether you want to send the request to your platform team; based on your answer, it calls `confirm_workflow_request` to file or dismiss it.
